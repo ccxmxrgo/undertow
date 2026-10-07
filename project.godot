@@ -9,6 +9,10 @@ config_version=5
 config/name="UNDERTOW"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
+[autoload]
+
+Settings="*res://src/autoload/settings.gd"
+
 [audio]
 
 buses/default_bus_layout="res://default_bus_layout.tres"
