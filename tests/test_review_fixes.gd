@@ -114,3 +114,19 @@ func test_confirm_dialog_focus_neighbours_stay_inside_dialog() -> void:
 	assert_object(d.safe_button.get_node(d.safe_button.focus_neighbor_left)).is_same(d.confirm_button)
 	await get_tree().process_frame
 	assert_bool(d.safe_button.has_focus()).is_true()
+
+
+func test_fail_screen_buttons_inert_until_faded_in() -> void:
+	var f := FailScreen.new()
+	add_child(f)
+	auto_free(f)
+	f.setup(120.0)
+	f.play(0.05)
+	assert_float(f.modulate.a).is_equal(0.0)
+	assert_bool(f.retry_button.disabled).is_true()
+	assert_bool(f.menu_button.disabled).is_true()
+	await get_tree().create_timer(0.05 + FailScreen.FADE_SEC + 0.25).timeout
+	assert_float(f.modulate.a).is_equal_approx(1.0, 0.001)
+	assert_bool(f.retry_button.disabled).is_false()
+	assert_bool(f.menu_button.disabled).is_false()
+	assert_bool(f.retry_button.has_focus()).is_true()

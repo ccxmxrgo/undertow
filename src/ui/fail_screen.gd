@@ -61,9 +61,15 @@ func setup(depth_m: float) -> void:
 func play(delay: float = SQUASH_SEC) -> void:
 	modulate.a = 0.0
 	if is_inside_tree():
-		retry_button.grab_focus()
+		# Inert until visible (WR-06): a mashed Space/Enter must not hit an invisible Retry.
+		retry_button.disabled = true
+		menu_button.disabled = true
 		var tw := create_tween()
 		tw.tween_interval(delay)
 		tw.tween_property(self, "modulate:a", 1.0, FADE_SEC)
+		tw.tween_callback(func() -> void:
+			retry_button.disabled = false
+			menu_button.disabled = false
+			retry_button.grab_focus())
 	else:
 		modulate.a = 1.0

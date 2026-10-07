@@ -36,6 +36,7 @@ var debug_overlay: DebugOverlay
 
 var _run_root: Control
 var _autoplay_player: Autoplay
+var _fail_tween: Tween
 var _end_time: float = 0.0
 
 
@@ -119,6 +120,9 @@ func _on_run_built() -> void:
 
 
 func _teardown() -> void:
+	if _fail_tween != null and _fail_tween.is_valid():
+		_fail_tween.kill()
+	_fail_tween = null
 	if _run_root == null:
 		return
 	if conductor != null and is_instance_valid(conductor):
@@ -194,6 +198,7 @@ func _on_failed() -> void:
 	for ctl in [highway, feedback]:
 		(ctl as Control).pivot_offset = pivot
 	var tw := create_tween().set_parallel(true)
+	_fail_tween = tw
 	if Settings.reduce_motion:
 		tw.tween_property(highway, "modulate:a", 0.0, FailScreen.SQUASH_SEC)
 		tw.tween_property(feedback, "modulate:a", 0.0, FailScreen.SQUASH_SEC)
