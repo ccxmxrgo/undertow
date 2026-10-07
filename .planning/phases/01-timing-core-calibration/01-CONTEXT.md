@@ -206,3 +206,8 @@ Fire and Target-cycle are bindable here but do nothing yet.
 
 *Phase: 01-timing-core-calibration*
 *Context gathered: 2026-10-07*
+
+## Amendments
+
+- **2026-10-07, gap closure 01-09:** D-17 refined. The "headset" marker counts as Bluetooth only together with "hands-free" or "bluetooth". This avoids false positives on 2.4 GHz dongles such as "Razer BlackShark V2 Pro 2.4". Under the "Default" output alias, Godot cannot see the real endpoint, so the Bluetooth warning is advisory only. The plan also adds a standing "Switched headphones or speakers? Calibrate Sonar again." line.
+- **2026-10-07, gap closure 01-09:** the runtime device-name lookup uses Godot APIs only. There is no OS.execute or PowerShell in shipped code.
