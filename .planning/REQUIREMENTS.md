@@ -35,7 +35,14 @@
 - [ ] **SONG-04**: Game ships with at least 2 bundled royalty-free/original songs with charts
 - [ ] **SONG-05**: Each song has a stable hash so peers can confirm they have the identical chart
 - [ ] **SONG-06**: Unsupported or broken songs show a readable error instead of crashing
-- [ ] **SONG-07**: Player can add any audio file they own and the game auto-generates a playable chart from its rhythm (onset/beat detection on the full mix)
+
+### Instrument Extraction (research first)
+
+- [ ] **STEM-01**: A research study compares stem-separation and stem-to-chart approaches on real songs and records the chosen approach
+- [ ] **STEM-02**: Player can load an audio file they own and extract instrument stems (drums, bass, guitar/other, vocals)
+- [ ] **STEM-03**: Player can generate a 4-lane chart from ONE chosen instrument stem
+- [ ] **STEM-04**: Player can generate an "instrument lanes" chart where each lane follows a different instrument
+- [ ] **STEM-05**: Extracted songs are saved to the library, synced to the original audio, and playable like any other song
 
 ### Playtest Polish (from friend feedback v0.1)
 
@@ -101,8 +108,7 @@
 ### Content
 
 - **CONT-01**: Import Clone Hero `.mid` charts
-- **CONT-02**: ~~Auto-generate charts from any audio file~~ promoted to v1 as SONG-07 (2026-10-07)
-- **CONT-03**: Instrument extraction tool: separate a song into stems (e.g. drums/bass/guitar/vocals) and generate a chart from one chosen instrument's rhythm
+- **CONT-02**: Auto-generate charts from the full mix (rejected by the user: charts come from extracted instruments instead, see STEM-*)
 
 ### Modes
 
@@ -169,7 +175,11 @@
 | PAY-05 | Phase 3 | Pending |
 | MATCH-05 | Phase 3 | Pending |
 | SONG-06 | Phase 2 | Pending |
-| SONG-07 | Phase 2 | Pending |
+| STEM-01 | Phase 2.1 | Pending |
+| STEM-02 | Phase 2.1 | Pending |
+| STEM-03 | Phase 2.1 | Pending |
+| STEM-04 | Phase 2.1 | Pending |
+| STEM-05 | Phase 2.1 | Pending |
 | POL-01 | Phase 1.1 | Pending |
 | POL-02 | Phase 1.1 | Pending |
 | POL-03 | Phase 1.1 | Pending |
@@ -196,8 +206,8 @@
 
 **Coverage:**
 
-- v1 requirements: 58 total
-- Mapped to phases: 58
+- v1 requirements: 62 total
+- Mapped to phases: 62
 - Unmapped: 0
 
 ---

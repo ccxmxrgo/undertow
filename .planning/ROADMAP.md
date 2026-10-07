@@ -50,6 +50,7 @@ UNDERTOW is built as a series of vertical slices, each playable on its own. Firs
   4. The game opens borderless fullscreen, and F11 or a Settings switch toggles windowed mode, remembered between launches
   5. Each song's best depth and accuracy are saved and shown on the results screen and the menu, and streak milestones pop up during play
   6. Practice (No-Fail) is offered right on the main menu, and a v0.2 playtest zip is exported for friends
+
 **UI hint**: yes
 **Depends on:** Phase 1
 **Plans:** 0 plans
@@ -63,7 +64,7 @@ Plans:
 **Goal**: Players can bring their own Clone Hero songs, browse them, and play bundled songs out of the box.
 **Mode:** mvp
 **Depends on**: Phase 1
-**Requirements**: SONG-01, SONG-02, SONG-03, SONG-04, SONG-05, SONG-06, SONG-07
+**Requirements**: SONG-01, SONG-02, SONG-03, SONG-04, SONG-05, SONG-06
 **Success Criteria** (what must be TRUE):
 
   1. Player points the game at a Clone Hero song folder (`.chart`, `song.ini`, OGG/MP3/WAV) and plays it
@@ -71,10 +72,29 @@ Plans:
   3. Player browses the library, picks a song and difficulty, and hears an audio preview
   4. A fresh install has at least 2 bundled royalty-free or original songs that are playable with no imports
   5. A broken or unsupported song shows a readable error instead of crashing, and each song has a stable hash for later peer matching
-  6. Player picks any audio file they own (OGG/MP3/WAV), and the game auto-generates a playable 4-lane chart from its rhythm (onset/beat detection) and adds it to the library
 
 **Plans**: TBD
 **UI hint**: yes
+
+### Phase 02.1: Instrument Extraction Tool (INSERTED)
+
+**Goal:** Players can turn a song they own into a playable chart by extracting its instruments. Research comes first: study how to separate stems and how to turn a stem into notes, then build the tool.
+**Mode:** mvp
+**Requirements**: STEM-01, STEM-02, STEM-03, STEM-04, STEM-05
+**Research:** REQUIRED before planning (stem separation models, licensing, runtime/packaging on friends' PCs, onset/pitch-to-lane charting, quality on real songs)
+**Success Criteria** (what must be TRUE):
+
+  1. A written study compares extraction approaches on real songs and records a chosen approach, with its reasons and trade-offs
+  2. Player gives the tool an audio file they own and gets separated instrument stems (e.g. drums, bass, guitar/other, vocals)
+  3. Player can chart ONE chosen instrument across the 4 lanes, or use INSTRUMENT LANES mode where each lane is a different instrument
+  4. Generated charts are synced to the original song and saved into the song library like any other song
+  5. The tool runs on the player's own PC without a paid service, and reports progress and failures clearly
+**Depends on:** Phase 2
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 02.1 to break down)
 
 ### Phase 3: Offline Versus
 

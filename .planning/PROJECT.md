@@ -76,8 +76,7 @@ Hitting notes must feel tight and fair on each player's own machine, while torpe
 - [ ] Torpedo/hull/score events replicate between players mid-song with beat-quantized arrival
 - [ ] Players can import Clone Hero-style charts (`.chart` / `.mid` + audio)
 - [ ] Bundled starter songs so the game works with no imports
-- [ ] Players can add any audio file they own and get an auto-generated chart
-- [ ] (later) Instrument extraction tool: pick a stem (drums, guitar...) and chart that instrument's rhythm
+- [ ] Instrument extraction tool (research first): separate a song the player owns into stems, then chart one instrument, or give each lane its own instrument ("instrument lanes")
 - [ ] Per-player latency calibration and rebindable keyboard/gamepad controls
 - [ ] Sonar CRT visual identity and underwater audio feedback
 - [ ] Wreck-ghost play for eliminated players
