@@ -10,8 +10,8 @@
 - [ ] **TIME-01**: Notes scroll in sync with the song, driven by the audio clock (no visible drift across a full 5-minute song)
 - [ ] **TIME-02**: Player's key/button presses are judged against song time, independent of frame rate
 - [ ] **TIME-03**: Each hit is graded into one of three tiers (Perfect / Good / Miss) using tunable timing windows
-- [ ] **TIME-04**: Player can play sustained (held) notes and chords
-- [ ] **TIME-05**: An autoplay mode plays any chart with all-Perfect results (correctness check)
+- [x] **TIME-04**: Player can play sustained (held) notes and chords
+- [x] **TIME-05**: An autoplay mode plays any chart with all-Perfect results (correctness check)
 
 ### Calibration & Input
 
@@ -22,10 +22,10 @@
 
 ### Hull & Scoring
 
-- [ ] **HULL-01**: Misses and wrong hits damage the player's hull. The hull reaching zero eliminates the player.
-- [ ] **HULL-02**: Player sees combo, score/depth and hull integrity during play
+- [x] **HULL-01**: Misses and wrong hits damage the player's hull. The hull reaching zero eliminates the player.
+- [x] **HULL-02**: Player sees combo, score/depth and hull integrity during play
 - [ ] **HULL-03**: Player gets clear visual and audio feedback for each Perfect/Good/Miss
-- [ ] **HULL-04**: Player can pause and resume during a solo song
+- [x] **HULL-04**: Player can pause and resume during a solo song
 
 ### Songs & Charts
 
@@ -126,16 +126,16 @@
 | TIME-01 | Phase 1 | Pending |
 | TIME-02 | Phase 1 | Pending |
 | TIME-03 | Phase 1 | Pending |
-| TIME-04 | Phase 1 | Pending |
-| TIME-05 | Phase 1 | Pending |
+| TIME-04 | Phase 1 | Complete |
+| TIME-05 | Phase 1 | Complete |
 | CAL-01 | Phase 1 | Pending |
-| HULL-01 | Phase 1 | Pending |
+| HULL-01 | Phase 1 | Complete |
 | CAL-02 | Phase 1 | Pending |
-| HULL-02 | Phase 1 | Pending |
+| HULL-02 | Phase 1 | Complete |
 | CAL-03 | Phase 1 | Pending |
 | HULL-03 | Phase 1 | Pending |
 | CAL-04 | Phase 1 | Complete |
-| HULL-04 | Phase 1 | Pending |
+| HULL-04 | Phase 1 | Complete |
 | SONG-01 | Phase 2 | Pending |
 | TORP-01 | Phase 3 | Pending |
 | PAY-01 | Phase 3 | Pending |
