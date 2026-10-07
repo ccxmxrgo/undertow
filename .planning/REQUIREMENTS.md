@@ -18,7 +18,7 @@
 - [ ] **CAL-01**: Player can run a calibration wizard that sets separate audio and visual offsets, saved per machine
 - [ ] **CAL-02**: Player can rebind the 4 lane keys, Fire and Target-cycle on keyboard
 - [ ] **CAL-03**: Player can play with a gamepad
-- [ ] **CAL-04**: Player can adjust scroll speed and music/SFX volume
+- [x] **CAL-04**: Player can adjust scroll speed and music/SFX volume
 
 ### Hull & Scoring
 
@@ -134,7 +134,7 @@
 | HULL-02 | Phase 1 | Pending |
 | CAL-03 | Phase 1 | Pending |
 | HULL-03 | Phase 1 | Pending |
-| CAL-04 | Phase 1 | Pending |
+| CAL-04 | Phase 1 | Complete |
 | HULL-04 | Phase 1 | Pending |
 | SONG-01 | Phase 2 | Pending |
 | TORP-01 | Phase 3 | Pending |
@@ -175,6 +175,7 @@
 | DIST-01 | Phase 5 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 50 total
 - Mapped to phases: 50
 - Unmapped: 0
