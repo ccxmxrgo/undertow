@@ -82,10 +82,23 @@ func test_debug_overlay_hidden_by_default_and_records_errors() -> void:
 
 
 func test_drift_harness_scene_boots_and_logs() -> void:
+	const TMP := "user://test_drift_log.csv"
+	# Snapshot the player's real log so we can prove the test never touches it (T-08-01).
+	var real_before := ""
+	var real_existed := FileAccess.file_exists(DriftHarness.LOG_PATH)
+	if real_existed:
+		real_before = FileAccess.get_file_as_string(DriftHarness.LOG_PATH)
 	var h: Node = (load("res://scenes/drift_harness.tscn") as PackedScene).instantiate()
+	h.set("log_path", TMP)  # must be set before add_child
 	add_child(h)
 	auto_free(h)
 	for i in range(10):
 		await get_tree().process_frame
 	assert_object(h.get("conductor")).is_not_null()
-	assert_bool(FileAccess.file_exists("user://drift_log.csv")).is_true()
+	assert_bool(FileAccess.file_exists(TMP)).is_true()
+	h.free()  # closes and flushes the CSV
+	assert_str(FileAccess.get_file_as_string(TMP)).starts_with("elapsed_s,song_time_s,drift_ms")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(TMP))
+	assert_bool(FileAccess.file_exists(DriftHarness.LOG_PATH)).is_equal(real_existed)
+	if real_existed:
+		assert_str(FileAccess.get_file_as_string(DriftHarness.LOG_PATH)).is_equal(real_before)

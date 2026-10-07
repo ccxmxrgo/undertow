@@ -9,6 +9,8 @@ const DURATION_SEC := 300.0
 const LEAD_IN_SEC := 2.0
 const MENU_SCENE := "res://scenes/main_menu.tscn"
 
+## CSV destination. Callers (tests) override this BEFORE add_child; default is LOG_PATH.
+var log_path: String = LOG_PATH
 var conductor: Conductor
 var _file: FileAccess
 var _start_ticks: int = 0
@@ -29,7 +31,7 @@ func _ready() -> void:
 	conductor = Conductor.new()
 	conductor.tempo_map = chart.tempo_map
 	add_child(conductor)
-	_file = FileAccess.open(LOG_PATH, FileAccess.WRITE)
+	_file = FileAccess.open(log_path, FileAccess.WRITE)
 	if _file != null:
 		_file.store_line("elapsed_s,song_time_s,drift_ms")
 	_start_ticks = Time.get_ticks_usec()
@@ -52,7 +54,7 @@ func _process(_delta: float) -> void:
 		while _rows.size() > 20:
 			_rows.pop_front()
 		_label.text = "Drift harness (Esc to stop) - log: %s\n\n%s" % [
-			ProjectSettings.globalize_path(LOG_PATH), "\n".join(_rows)]
+			ProjectSettings.globalize_path(log_path), "\n".join(_rows)]
 		_next_log_s += 1.0
 	if elapsed >= DURATION_SEC:
 		_stop()
@@ -77,4 +79,4 @@ func _stop() -> void:
 	if _file != null:
 		_file.close()
 		_file = null
-	_label.text += "\n\nDone. Log saved to %s" % ProjectSettings.globalize_path(LOG_PATH)
+	_label.text += "\n\nDone. Log saved to %s" % ProjectSettings.globalize_path(log_path)
