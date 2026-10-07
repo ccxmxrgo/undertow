@@ -14,6 +14,9 @@ const GAMEPLAY_ACTIONS: Array[StringName] = [
 	&"lane_1", &"lane_2", &"lane_3", &"lane_4", &"fire", &"target_cycle", &"pause",
 ]
 const SECTION := "bindings"
+const VERSION_KEY := "bindings_version"
+const CURRENT_VERSION := 2
+const LEGACY_LANE_KEYS: Array[int] = [KEY_D, KEY_F, KEY_J, KEY_K]
 const TRIGGER_DEADZONE := 0.5
 const TRIGGER_AXES: Array[int] = [JOY_AXIS_TRIGGER_LEFT, JOY_AXIS_TRIGGER_RIGHT]
 const KEY_CODE_BITS := 0x007FFFFF  # KEY_CODE_MASK: keycode + KEY_SPECIAL, no modifier bits
@@ -29,10 +32,10 @@ const PAD_BUTTON_NAMES := {
 ## {"kind": "button", "index": int} or {"kind": "axis", "axis": int, "sign": 1}.
 static func _defaults() -> Dictionary:
 	return {
-		&"lane_1": {"key": KEY_D, "pad": _button(JOY_BUTTON_LEFT_SHOULDER)},
-		&"lane_2": {"key": KEY_F, "pad": _axis(JOY_AXIS_TRIGGER_LEFT)},
-		&"lane_3": {"key": KEY_J, "pad": _axis(JOY_AXIS_TRIGGER_RIGHT)},
-		&"lane_4": {"key": KEY_K, "pad": _button(JOY_BUTTON_RIGHT_SHOULDER)},
+		&"lane_1": {"key": KEY_1, "pad": _button(JOY_BUTTON_LEFT_SHOULDER)},
+		&"lane_2": {"key": KEY_2, "pad": _axis(JOY_AXIS_TRIGGER_LEFT)},
+		&"lane_3": {"key": KEY_3, "pad": _axis(JOY_AXIS_TRIGGER_RIGHT)},
+		&"lane_4": {"key": KEY_4, "pad": _button(JOY_BUTTON_RIGHT_SHOULDER)},
 		&"fire": {"key": KEY_SPACE, "pad": _button(JOY_BUTTON_A)},
 		&"target_cycle": {"key": KEY_H, "pad": _button(JOY_BUTTON_Y)},
 		&"pause": {"key": KEY_ESCAPE, "pad": _button(JOY_BUTTON_START)},
@@ -92,6 +95,7 @@ func bind_pad(action: StringName, event: InputEvent) -> Dictionary:
 
 
 func to_config(cfg: ConfigFile) -> void:
+	cfg.set_value(SECTION, VERSION_KEY, CURRENT_VERSION)
 	for a in GAMEPLAY_ACTIONS:
 		var key := _current_key(a)
 		if key > 0:
@@ -108,10 +112,13 @@ func from_config(cfg: ConfigFile) -> void:
 	var defaults := _defaults()
 	var keys := {}
 	var pads := {}
+	var migrate := _is_legacy_lane_set(cfg)
 	for a in GAMEPLAY_ACTIONS:
 		keys[a] = defaults[a]["key"]
 		pads[a] = defaults[a]["pad"]
-		if cfg.has_section_key(SECTION, "%s_key" % a):
+		if migrate and _lane_index(a) >= 0:
+			pass  # D-11: untouched v0.1 D/F/J/K lane keys fall back to the new 1-4 defaults
+		elif cfg.has_section_key(SECTION, "%s_key" % a):
 			var kv: Variant = cfg.get_value(SECTION, "%s_key" % a)
 			if typeof(kv) == TYPE_INT and _validate_key(a, int(kv)) == Result.OK:
 				keys[a] = int(kv)
@@ -123,6 +130,25 @@ func from_config(cfg: ConfigFile) -> void:
 	_resolve_duplicates(pads, defaults, "pad")
 	for a in GAMEPLAY_ACTIONS:
 		_apply(a, keys[a], pads[a])
+
+
+## D-11: true only when no int bindings_version marker exists and the four lane keys are
+## exactly the old defaults D F J K. Anything else is a player choice and is never altered.
+func _is_legacy_lane_set(cfg: ConfigFile) -> bool:
+	if cfg.has_section_key(SECTION, VERSION_KEY) 			and typeof(cfg.get_value(SECTION, VERSION_KEY)) == TYPE_INT:
+		return false
+	for i in range(4):
+		var k := "lane_%d_key" % (i + 1)
+		if not cfg.has_section_key(SECTION, k):
+			return false
+		var v: Variant = cfg.get_value(SECTION, k)
+		if typeof(v) != TYPE_INT or int(v) != LEGACY_LANE_KEYS[i]:
+			return false
+	return true
+
+
+func _lane_index(action: StringName) -> int:
+	return [&"lane_1", &"lane_2", &"lane_3", &"lane_4"].find(action)
 
 
 ## Label for the lane/action UI. device is &"keyboard" or &"gamepad".

@@ -35,10 +35,10 @@ func _button_of(action: StringName) -> int:
 
 
 func test_defaults_keyboard() -> void:
-	assert_int(_key_of(&"lane_1")).is_equal(KEY_D)
-	assert_int(_key_of(&"lane_2")).is_equal(KEY_F)
-	assert_int(_key_of(&"lane_3")).is_equal(KEY_J)
-	assert_int(_key_of(&"lane_4")).is_equal(KEY_K)
+	assert_int(_key_of(&"lane_1")).is_equal(KEY_1)
+	assert_int(_key_of(&"lane_2")).is_equal(KEY_2)
+	assert_int(_key_of(&"lane_3")).is_equal(KEY_3)
+	assert_int(_key_of(&"lane_4")).is_equal(KEY_4)
 	assert_int(_key_of(&"fire")).is_equal(KEY_SPACE)
 	assert_int(_key_of(&"target_cycle")).is_equal(KEY_H)
 	assert_int(_key_of(&"pause")).is_equal(KEY_ESCAPE)
@@ -83,11 +83,11 @@ func test_bind_key_applies_live() -> void:
 
 
 func test_duplicate_rejected_without_change() -> void:
-	var r := store.bind_key(&"lane_1", KEY_F)
+	var r := store.bind_key(&"lane_1", KEY_2)
 	assert_int(r["result"]).is_equal(BindingStore.Result.DUPLICATE)
 	assert_str(String(r["conflict_action"])).is_equal("lane_2")
-	assert_int(_key_of(&"lane_1")).is_equal(KEY_D)
-	assert_int(_key_of(&"lane_2")).is_equal(KEY_F)
+	assert_int(_key_of(&"lane_1")).is_equal(KEY_1)
+	assert_int(_key_of(&"lane_2")).is_equal(KEY_2)
 
 
 func test_tab_is_reserved() -> void:
@@ -110,7 +110,7 @@ func test_invalid_action_and_key() -> void:
 
 
 func test_rebinding_same_key_to_same_action_ok() -> void:
-	assert_int(store.bind_key(&"lane_1", KEY_D)["result"]).is_equal(BindingStore.Result.OK)
+	assert_int(store.bind_key(&"lane_1", KEY_1)["result"]).is_equal(BindingStore.Result.OK)
 
 
 func test_bind_pad_button_and_duplicate() -> void:
@@ -182,9 +182,9 @@ func test_invalid_entries_fall_back_to_default() -> void:
 	cfg.set_value("bindings", "target_cycle_key", KEY_ESCAPE)
 	store.bind_key(&"lane_1", KEY_Z)
 	store.from_config(cfg)
-	assert_int(_key_of(&"lane_1")).is_equal(KEY_D)
-	assert_int(_key_of(&"lane_2")).is_equal(KEY_F)
-	assert_int(_key_of(&"lane_3")).is_equal(KEY_J)
+	assert_int(_key_of(&"lane_1")).is_equal(KEY_1)
+	assert_int(_key_of(&"lane_2")).is_equal(KEY_2)
+	assert_int(_key_of(&"lane_3")).is_equal(KEY_3)
 	assert_int(_button_of(&"lane_4")).is_equal(JOY_BUTTON_RIGHT_SHOULDER)
 	assert_int(_button_of(&"fire")).is_equal(JOY_BUTTON_A)
 	assert_int(_key_of(&"target_cycle")).is_equal(KEY_H)
@@ -192,8 +192,8 @@ func test_invalid_entries_fall_back_to_default() -> void:
 
 func test_duplicates_in_file_leave_no_duplicates() -> void:
 	var cfg := ConfigFile.new()
-	cfg.set_value("bindings", "lane_1_key", KEY_F)
-	cfg.set_value("bindings", "lane_2_key", KEY_F)
+	cfg.set_value("bindings", "lane_1_key", KEY_Q)
+	cfg.set_value("bindings", "lane_2_key", KEY_Q)
 	store.from_config(cfg)
 	var seen := {}
 	for a in BindingStore.GAMEPLAY_ACTIONS:
@@ -205,7 +205,7 @@ func test_duplicates_in_file_leave_no_duplicates() -> void:
 func test_missing_section_gives_defaults() -> void:
 	store.bind_key(&"lane_1", KEY_Z)
 	store.from_config(ConfigFile.new())
-	assert_int(_key_of(&"lane_1")).is_equal(KEY_D)
+	assert_int(_key_of(&"lane_1")).is_equal(KEY_1)
 
 
 func test_reset_restores_defaults() -> void:
@@ -213,11 +213,73 @@ func test_reset_restores_defaults() -> void:
 	store.bind_key(&"lane_1", KEY_A)
 	store.reset_defaults()
 	assert_int(_key_of(&"pause")).is_equal(KEY_ESCAPE)
-	assert_int(_key_of(&"lane_1")).is_equal(KEY_D)
+	assert_int(_key_of(&"lane_1")).is_equal(KEY_1)
 
 
 func test_display_names() -> void:
-	assert_str(store.display_name(&"lane_1", &"keyboard")).is_equal("D")
+	assert_str(store.display_name(&"lane_1", &"keyboard")).is_equal("1")
 	assert_str(store.display_name(&"lane_2", &"gamepad")).is_equal("LT")
 	assert_str(store.display_name(&"lane_3", &"gamepad")).is_equal("RT")
 	assert_str(store.display_name(&"lane_1", &"gamepad")).is_equal("LB")
+
+
+func _legacy_cfg(version: int = -1) -> ConfigFile:
+	var cfg := ConfigFile.new()
+	cfg.set_value("bindings", "lane_1_key", KEY_D)
+	cfg.set_value("bindings", "lane_2_key", KEY_F)
+	cfg.set_value("bindings", "lane_3_key", KEY_J)
+	cfg.set_value("bindings", "lane_4_key", KEY_K)
+	if version >= 0:
+		cfg.set_value("bindings", "bindings_version", version)
+	return cfg
+
+
+func _lane_keys() -> Array:
+	return [_key_of(&"lane_1"), _key_of(&"lane_2"), _key_of(&"lane_3"), _key_of(&"lane_4")]
+
+
+func test_custom_lane_key_without_version_is_kept() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("bindings", "lane_1_key", KEY_Q)
+	store.from_config(cfg)
+	assert_int(_key_of(&"lane_1")).is_equal(KEY_Q)
+
+
+func test_legacy_dfjk_without_version_migrates_to_1234() -> void:
+	store.from_config(_legacy_cfg())
+	assert_array(_lane_keys()).is_equal([KEY_1, KEY_2, KEY_3, KEY_4])
+
+
+func test_dfjk_with_version_is_preserved() -> void:
+	store.from_config(_legacy_cfg(2))
+	assert_array(_lane_keys()).is_equal([KEY_D, KEY_F, KEY_J, KEY_K])
+
+
+func test_partial_legacy_set_is_not_migrated() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("bindings", "lane_1_key", KEY_D)
+	store.from_config(cfg)
+	assert_int(_key_of(&"lane_1")).is_equal(KEY_D)
+
+
+func test_to_config_writes_bindings_version() -> void:
+	var cfg := ConfigFile.new()
+	store.to_config(cfg)
+	assert_int(int(cfg.get_value("bindings", "bindings_version"))).is_equal(2)
+
+
+func test_saved_key_colliding_with_new_default_leaves_no_duplicates() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("bindings", "lane_1_key", KEY_2)
+	store.from_config(cfg)
+	var seen := {}
+	for a in BindingStore.GAMEPLAY_ACTIONS:
+		var k := _key_of(a)
+		assert_bool(seen.has(k)).is_false()
+		seen[k] = true
+
+
+func test_reset_after_custom_rebind_returns_1234() -> void:
+	store.bind_key(&"lane_1", KEY_Q)
+	store.reset_defaults()
+	assert_array(_lane_keys()).is_equal([KEY_1, KEY_2, KEY_3, KEY_4])
