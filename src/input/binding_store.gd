@@ -111,13 +111,14 @@ func from_config(cfg: ConfigFile) -> void:
 	for a in GAMEPLAY_ACTIONS:
 		keys[a] = defaults[a]["key"]
 		pads[a] = defaults[a]["pad"]
-		var kv: Variant = cfg.get_value(SECTION, "%s_key" % a, null)
-		if typeof(kv) == TYPE_INT and _validate_key(a, int(kv)) == Result.OK:
-			keys[a] = int(kv)
-		var pv: Variant = cfg.get_value(SECTION, "%s_pad" % a, null)
-		var pad := _pad_from_config(pv)
-		if not pad.is_empty():
-			pads[a] = pad
+		if cfg.has_section_key(SECTION, "%s_key" % a):
+			var kv: Variant = cfg.get_value(SECTION, "%s_key" % a)
+			if typeof(kv) == TYPE_INT and _validate_key(a, int(kv)) == Result.OK:
+				keys[a] = int(kv)
+		if cfg.has_section_key(SECTION, "%s_pad" % a):
+			var pad := _pad_from_config(cfg.get_value(SECTION, "%s_pad" % a))
+			if not pad.is_empty():
+				pads[a] = pad
 	_resolve_duplicates(keys, defaults, "key")
 	_resolve_duplicates(pads, defaults, "pad")
 	for a in GAMEPLAY_ACTIONS:
