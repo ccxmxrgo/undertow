@@ -37,12 +37,33 @@ UNDERTOW is built as a series of vertical slices, each playable on its own. Firs
 **Plans**: TBD
 **UI hint**: yes
 
+### Phase 01.1: Playtest Feedback Polish (INSERTED)
+
+**Goal:** Act on friend playtest v0.1 feedback so the solo game is easier to read, fairer to aim at, and more motivating to replay, then ship playtest v0.2.
+**Mode:** mvp
+**Requirements**: POL-01, POL-02, POL-03, POL-04, POL-05, POL-06, POL-07
+**Success Criteria** (what must be TRUE):
+
+  1. A new player can play one-handed with the default keys 1 2 3 4, and gamepad defaults are unchanged
+  2. Each lane has its own neon color as well as its shape, and the highway sits inside a cyberpunk "goggles" visor frame
+  3. Each lane has a hit-marker receptor on the hull line, and a note only brightens once it is inside the hit window (no more "highlighted before it's ready")
+  4. The game opens borderless fullscreen, and F11 or a Settings switch toggles windowed mode, remembered between launches
+  5. Each song's best depth and accuracy are saved and shown on the results screen and the menu, and streak milestones pop up during play
+  6. Practice (No-Fail) is offered right on the main menu, and a v0.2 playtest zip is exported for friends
+**UI hint**: yes
+**Depends on:** Phase 1
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 01.1 to break down)
+
 ### Phase 2: Chart Import & Songs
 
 **Goal**: Players can bring their own Clone Hero songs, browse them, and play bundled songs out of the box.
 **Mode:** mvp
 **Depends on**: Phase 1
-**Requirements**: SONG-01, SONG-02, SONG-03, SONG-04, SONG-05, SONG-06
+**Requirements**: SONG-01, SONG-02, SONG-03, SONG-04, SONG-05, SONG-06, SONG-07
 **Success Criteria** (what must be TRUE):
 
   1. Player points the game at a Clone Hero song folder (`.chart`, `song.ini`, OGG/MP3/WAV) and plays it
@@ -50,6 +71,7 @@ UNDERTOW is built as a series of vertical slices, each playable on its own. Firs
   3. Player browses the library, picks a song and difficulty, and hears an audio preview
   4. A fresh install has at least 2 bundled royalty-free or original songs that are playable with no imports
   5. A broken or unsupported song shows a readable error instead of crashing, and each song has a stable hash for later peer matching
+  6. Player picks any audio file they own (OGG/MP3/WAV), and the game auto-generates a playable 4-lane chart from its rhythm (onset/beat detection) and adds it to the library
 
 **Plans**: TBD
 **UI hint**: yes

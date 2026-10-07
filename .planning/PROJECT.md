@@ -48,6 +48,8 @@ Hitting notes must feel tight and fair on each player's own machine, while torpe
 
 ### Look & Sound
 
+- **Art direction (user, 2026-10-07):** cyberpunk, "like you're inside the goggles". The sonar highway is seen through a diver's visor HUD, with neon lane colors (cyan, amber, magenta, lime) over sonar-green chrome.
+
 - **Visual:** CRT phosphor sonar UI (scanlines, bloom, sweep-arm afterglow), black water background with bioluminescent creatures pulsing on the beat, small "periscope" panels showing rivals' highways and hull states.
 - **Audio:** sonar pings on downbeats, hull creaks that get worse as hull drops, torpedo launches quantized to the beat, muffled underwater filter on the song as damage grows.
 - **Juice:** screen shake on impact, the rival panel flashes when you are targeted, an implosion animation when a player is eliminated.
@@ -74,6 +76,8 @@ Hitting notes must feel tight and fair on each player's own machine, while torpe
 - [ ] Torpedo/hull/score events replicate between players mid-song with beat-quantized arrival
 - [ ] Players can import Clone Hero-style charts (`.chart` / `.mid` + audio)
 - [ ] Bundled starter songs so the game works with no imports
+- [ ] Players can add any audio file they own and get an auto-generated chart
+- [ ] (later) Instrument extraction tool: pick a stem (drums, guitar...) and chart that instrument's rhythm
 - [ ] Per-player latency calibration and rebindable keyboard/gamepad controls
 - [ ] Sonar CRT visual identity and underwater audio feedback
 - [ ] Wreck-ghost play for eliminated players

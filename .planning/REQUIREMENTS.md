@@ -35,6 +35,17 @@
 - [ ] **SONG-04**: Game ships with at least 2 bundled royalty-free/original songs with charts
 - [ ] **SONG-05**: Each song has a stable hash so peers can confirm they have the identical chart
 - [ ] **SONG-06**: Unsupported or broken songs show a readable error instead of crashing
+- [ ] **SONG-07**: Player can add any audio file they own and the game auto-generates a playable chart from its rhythm (onset/beat detection on the full mix)
+
+### Playtest Polish (from friend feedback v0.1)
+
+- [ ] **POL-01**: Default lane keys are 1 2 3 4 so the game can be played with one hand
+- [ ] **POL-02**: Each lane has a distinct neon color (cyan, amber, magenta, lime) in addition to its shape, inside a cyberpunk "goggles" visor frame
+- [ ] **POL-03**: Each lane shows a hit-marker receptor on the hull line, and notes only brighten once they are inside the hit window
+- [ ] **POL-04**: Game opens borderless fullscreen, with an F11 / Settings toggle that is remembered
+- [ ] **POL-05**: Best score (depth and accuracy) is saved per song and shown on results and the menu
+- [ ] **POL-06**: Note streak is prominent, with milestone popups (e.g. 10/25/50/100)
+- [ ] **POL-07**: Practice (No-Fail) can be started directly from the main menu
 
 ### Torpedoes (Versus Core)
 
@@ -90,7 +101,8 @@
 ### Content
 
 - **CONT-01**: Import Clone Hero `.mid` charts
-- **CONT-02**: Auto-generate charts from any audio file (onset/beat detection)
+- **CONT-02**: ~~Auto-generate charts from any audio file~~ promoted to v1 as SONG-07 (2026-10-07)
+- **CONT-03**: Instrument extraction tool: separate a song into stems (e.g. drums/bass/guitar/vocals) and generate a chart from one chosen instrument's rhythm
 
 ### Modes
 
@@ -157,6 +169,14 @@
 | PAY-05 | Phase 3 | Pending |
 | MATCH-05 | Phase 3 | Pending |
 | SONG-06 | Phase 2 | Pending |
+| SONG-07 | Phase 2 | Pending |
+| POL-01 | Phase 1.1 | Pending |
+| POL-02 | Phase 1.1 | Pending |
+| POL-03 | Phase 1.1 | Pending |
+| POL-04 | Phase 1.1 | Pending |
+| POL-05 | Phase 1.1 | Pending |
+| POL-06 | Phase 1.1 | Pending |
+| POL-07 | Phase 1.1 | Pending |
 | TORP-06 | Phase 3 | Pending |
 | PAY-06 | Phase 3 | Pending |
 | MATCH-06 | Phase 3 | Pending |
@@ -176,8 +196,8 @@
 
 **Coverage:**
 
-- v1 requirements: 50 total
-- Mapped to phases: 50
+- v1 requirements: 58 total
+- Mapped to phases: 58
 - Unmapped: 0
 
 ---
