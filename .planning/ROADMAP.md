@@ -113,7 +113,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Timing Core & Calibration | 8/10 | In Progress|  |
+| 1. Timing Core & Calibration | 9/10 | In Progress|  |
 | 2. Chart Import & Songs | 0/TBD | Not started | - |
 | 3. Offline Versus | 0/TBD | Not started | - |
 | 4. Online Play | 0/TBD | Not started | - |
