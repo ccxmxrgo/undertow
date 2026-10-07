@@ -97,3 +97,20 @@ func test_key_and_trigger_share_lane_without_releasing_each_other() -> void:
 	up.pressed = false
 	li.inject(up)
 	assert_int(released.size()).is_equal(1)
+
+
+func test_confirm_dialog_focus_neighbours_stay_inside_dialog() -> void:
+	var d := ConfirmDialog.new()
+	add_child(d)
+	auto_free(d)
+	d.setup("T", "B", "Yes", "No")
+	for b in [d.confirm_button, d.safe_button]:
+		for np in [b.focus_neighbor_top, b.focus_neighbor_bottom, b.focus_neighbor_left,
+				b.focus_neighbor_right, b.focus_next, b.focus_previous]:
+			assert_bool(np.is_empty()).is_false()
+			var target: Node = b.get_node(np)
+			assert_bool(target == d.confirm_button or target == d.safe_button).is_true()
+	assert_object(d.safe_button.focus_neighbor_top).is_equal(d.safe_button.get_path_to(d.safe_button))
+	assert_object(d.safe_button.get_node(d.safe_button.focus_neighbor_left)).is_same(d.confirm_button)
+	await get_tree().process_frame
+	assert_bool(d.safe_button.has_focus()).is_true()

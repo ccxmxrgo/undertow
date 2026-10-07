@@ -63,8 +63,22 @@ func setup(title: String, body: String, confirm_text: String, safe_text: String)
 	safe_button.custom_minimum_size = Vector2(280.0, 56.0)
 	safe_button.pressed.connect(_on_cancel)
 	row.add_child(safe_button)
-	confirm_button.focus_neighbor_right = confirm_button.get_path_to(safe_button)
-	safe_button.focus_neighbor_left = safe_button.get_path_to(confirm_button)
+	# Real modal focus (WR-05): every direction (and Tab order) stays inside the dialog, so
+	# the controls behind the dim cannot be reached with the keyboard or gamepad.
+	var to_safe := confirm_button.get_path_to(safe_button)
+	var to_confirm := safe_button.get_path_to(confirm_button)
+	confirm_button.focus_neighbor_left = confirm_button.get_path_to(confirm_button)
+	confirm_button.focus_neighbor_right = to_safe
+	confirm_button.focus_neighbor_top = confirm_button.get_path_to(confirm_button)
+	confirm_button.focus_neighbor_bottom = confirm_button.get_path_to(confirm_button)
+	confirm_button.focus_next = to_safe
+	confirm_button.focus_previous = to_safe
+	safe_button.focus_neighbor_left = to_confirm
+	safe_button.focus_neighbor_right = safe_button.get_path_to(safe_button)
+	safe_button.focus_neighbor_top = safe_button.get_path_to(safe_button)
+	safe_button.focus_neighbor_bottom = safe_button.get_path_to(safe_button)
+	safe_button.focus_next = to_confirm
+	safe_button.focus_previous = to_confirm
 	if is_inside_tree():
 		safe_button.grab_focus()
 
