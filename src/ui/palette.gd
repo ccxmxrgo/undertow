@@ -9,6 +9,11 @@ const TEXT := Color("8FD98A")  # secondary text, GOOD
 const ACCENT := Color("39FF14")  # hull line, notes, focus, PERFECT
 const DESTRUCTIVE := Color("FF4A3D")  # MISS, critical hull
 
+## Per-lane identity colors (D-02), lane order. ACCENT stays for hull line, edges, HUD.
+const LANE_COLORS: Array[Color] = [Color("22D3EE"), Color("FBBF24"), Color("F472B6"), Color("A3E635")]
+## RGB multiplier for notes outside the Good window (alpha is never reduced).
+const NOTE_DIM := 0.60
+
 const SP_XS := 4
 const SP_SM := 8
 const SP_MD := 16
@@ -31,6 +36,15 @@ static var _bold: Font
 ## c with its alpha replaced.
 static func alpha(c: Color, a: float) -> Color:
 	return Color(c, a)
+
+
+static func lane_color(lane: int) -> Color:
+	return LANE_COLORS[posmod(lane, LANE_COLORS.size())]
+
+
+## RGB scaled by NOTE_DIM; alpha preserved exactly.
+static func dim(c: Color) -> Color:
+	return Color(c.r * NOTE_DIM, c.g * NOTE_DIM, c.b * NOTE_DIM, c.a)
 
 
 ## Share Tech Mono, or Godot's fallback font when the file is missing (T-05-01).

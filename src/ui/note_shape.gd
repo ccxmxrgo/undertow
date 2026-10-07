@@ -29,6 +29,19 @@ static func draw(canvas: CanvasItem, kind: int, center: Vector2, size: float, co
 			canvas.draw_polyline(closed, color, OUTLINE_W, true)
 
 
+## Outline only (no fill), same geometry as `draw`, for receptors and halos.
+static func draw_outline(canvas: CanvasItem, kind: int, center: Vector2, size: float, color: Color, width: float = OUTLINE_W) -> void:
+	var h := size * 0.5
+	match kind:
+		Kind.CIRCLE:
+			canvas.draw_arc(center, h - width * 0.5, 0.0, TAU, 48, color, width, true)
+		_:
+			var pts := _polygon(kind, center, h)
+			var closed := pts.duplicate()
+			closed.append(pts[0])
+			canvas.draw_polyline(closed, color, width, true)
+
+
 static func _polygon(kind: int, c: Vector2, h: float) -> PackedVector2Array:
 	match kind:
 		Kind.DIAMOND:
