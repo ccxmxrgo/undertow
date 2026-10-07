@@ -20,7 +20,7 @@ const SETTINGS_SCENE := "res://scenes/settings.tscn"
 const DRIFT := "res://scenes/drift_harness.tscn"
 const LANE_KEYS := [KEY_D, KEY_F, KEY_J, KEY_K]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
-	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 60.0}
+	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note. Values stay >= 5 ms
 ## from window edges (35 / 70 / 100 ms) so frame jitter cannot flip the expected judgment.
 const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
@@ -410,6 +410,53 @@ func clock_analysis(rows: Array, t_from: float, t_to: float) -> Dictionary:
 	return out
 
 
+## D-30 jitter figure, same method as tools/playtest/analyze_probe.py: fit the raw audio target
+## against system time over audio-valid, unpaused frames with song_time in [t_from, t_to], then
+## report song_time minus that smooth line (ms), overall and per `window_s` of system time.
+func smooth_clock_error(rows: Array, t_from: float, t_to: float, window_s: float = 60.0) -> Dictionary:
+	var xs: Array = []
+	var tg: Array = []
+	var sts: Array = []
+	var t0 := -1
+	for r in rows:
+		var st: float = r[1]
+		if bool(r[5]) or not bool(r[2]) or st < t_from or st > t_to:
+			continue
+		if t0 < 0:
+			t0 = int(r[0])
+		xs.append((int(r[0]) - t0) / 1000000.0)
+		tg.append(float(r[3]))
+		sts.append(st)
+	var fit := linfit(xs, tg)
+	if fit.is_empty():
+		return {}
+	var a := float(fit["a"])
+	var b := float(fit["b"])
+	var err: Array = []
+	var windows: Array = []
+	var cur_w := -1
+	var w_err: Array = []
+	for i in range(xs.size()):
+		var e := (float(sts[i]) - (a + b * float(xs[i]))) * 1000.0
+		err.append(e)
+		var wi := int(float(xs[i]) / window_s)
+		if wi != cur_w:
+			if not w_err.is_empty():
+				windows.append(_win_stats(cur_w, window_s, w_err))
+			cur_w = wi
+			w_err = []
+		w_err.append(e)
+	if not w_err.is_empty():
+		windows.append(_win_stats(cur_w, window_s, w_err))
+	return {"song_minus_smooth_audio_ms": stats(err), "windows": windows,
+		"audio_vs_system_rate_ppm": (b - 1.0) * 1000000.0, "frames": xs.size()}
+
+
+func _win_stats(wi: int, window_s: float, v: Array) -> Dictionary:
+	var s := stats(v)
+	return {"from_s": wi * window_s, "n": s["n"], "std": s["std"], "p99_abs": s["p99_abs"], "max_abs": s["max_abs"]}
+
+
 # ------------------------------------------------------------------------------------------------
 # a. first launch + calibration wizard
 # ------------------------------------------------------------------------------------------------
@@ -429,6 +476,22 @@ func sc_a() -> void:
 	check("readout shows latency, buffer and device",
 		info.contains("Output latency:") and info.contains("Buffer:") and info.contains("Output device:"), info)
 	metrics["bluetooth_warning_visible"] = w.bluetooth_warning_visible()
+	# Gap 2 (01-09): honest readout from the Godot-only device snapshot.
+	var snap: Dictionary = Settings.device_info.snapshot()
+	metrics["device_snapshot"] = {"configured": snap.configured, "display": snap.display,
+		"is_alias": snap.is_alias, "signature": snap.signature, "is_bluetooth": snap.is_bluetooth}
+	check("readout names the snapshot display ('Output device: %s')" % snap.display,
+		info.contains("Output device: %s" % snap.display), info)
+	if bool(snap.is_alias):
+		check("alias readout says 'Output device: System default', not the bare 'Default'",
+			info.contains("Output device: System default") and not info.contains("Output device: Default"), info)
+	check("Bluetooth warning follows the snapshot (alias -> hidden)",
+		w.bluetooth_warning_visible() == bool(snap.is_bluetooth), "visible=%s is_bluetooth=%s" % [w.bluetooth_warning_visible(), snap.is_bluetooth])
+	var note_text: String = w.note_label.text if w.note_label != null else ""
+	metrics["recalibration_note"] = note_text
+	check("recalibration note shown", w.note_label != null and w.note_label.is_visible_in_tree()
+		and note_text == "Switched headphones or speakers? Calibrate Sonar again.", note_text)
+	_check_button_widths("intro", {"begin": w.begin_button, "skip": w.skip_button})
 	await shot("wizard_intro")
 	check("Begin button focused", focus_owner() == w.begin_button, focus_owner())
 	await press_key(KEY_ENTER)
@@ -439,6 +502,8 @@ func sc_a() -> void:
 	metrics["run1_measured_ms"] = r1 * 1000.0
 	check("run 1: taps at heard click +40 ms -> measured +40 ms (+-5)", absf(r1 - lag) <= 0.005,
 		"%.2f ms" % (r1 * 1000.0))
+	_check_button_widths("audio_result", {"accept": w.accept_button, "retry": w.retry_button})
+	check("first run: no 'Previously saved' caption (nothing saved yet)", w.previous_label.text == "", w.previous_label.text)
 	await shot("wizard_audio_result")
 
 	# Accept -> visual step
@@ -471,14 +536,22 @@ func sc_a() -> void:
 	w.accept_button.grab_focus()
 	await press_key(KEY_ENTER)
 	check("Accept -> summary step", w.step == CalibrationWizard.Step.SUMMARY, w.step)
+	_check_button_widths("summary", {"save": w.save_button})
 	await shot("wizard_summary")
 	check("Save and Continue focused", focus_owner() == w.save_button, focus_owner())
 	await press_key(KEY_ENTER)
 	ok = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
 	check("Save and Continue -> main menu", ok, cur())
-	check("calibration saved: audio_offset ~ +40 ms, done=true, device recorded",
-		absf(Settings.audio_offset - lag) <= 0.005 and Settings.calibration_done and Settings.output_device_name == AudioServer.output_device,
-		"audio %.2f ms, visual %.1f ms, device '%s'" % [Settings.audio_offset * 1000.0, Settings.visual_offset * 1000.0, Settings.output_device_name])
+	var live: Dictionary = Settings.device_info.snapshot()
+	metrics["saved_device_name"] = Settings.output_device_name
+	metrics["saved_device_signature"] = Settings.output_device_signature
+	check("calibration saved: audio_offset ~ +40 ms, done=true, device name + signature = live snapshot",
+		absf(Settings.audio_offset - lag) <= 0.005 and Settings.calibration_done
+		and Settings.output_device_name == live.configured and Settings.output_device_signature == live.signature
+		and not Settings.output_device_signature.is_empty(),
+		"audio %.2f ms, visual %.1f ms, device '%s', signature '%s'" % [Settings.audio_offset * 1000.0,
+			Settings.visual_offset * 1000.0, Settings.output_device_name, Settings.output_device_signature])
+	check("no device-change prompt right after saving (signature unchanged)", not Settings.device_changed())
 	check("saved to the redirected temp settings file", FileAccess.file_exists(TEMP_SETTINGS))
 	await wait(0.3)
 	var m := cur() as MainMenu
@@ -503,12 +576,38 @@ func sc_a() -> void:
 		"%.2f ms" % (r2 * 1000.0))
 	check("run 2 residual vs applied offset ~ 0 ms (+-5)", absf(r2 - Settings.audio_offset) <= 0.005,
 		"%.2f ms" % ((r2 - Settings.audio_offset) * 1000.0))
-	note("Plan task 3 step 1 says a re-run 'should be near 0'. The wizard shows the ABSOLUTE offset by design (01-07 decision), so a correct re-run shows ~+40 MS, and the residual is ~0. The checklist wording and the implementation disagree.")
+	# Gap 5 (01-09): the re-run shows the saved offset beside the new absolute result.
+	var prev_text: String = w.previous_label.text
+	metrics["run2_previous_caption"] = prev_text
+	check("run 2: 'Previously saved' caption shows the saved offset",
+		prev_text == "Previously saved: %s" % CalibrationWizard.format_ms(Settings.audio_offset), prev_text)
+	check("run 2: 'Previously saved' value within 5 ms of the new result",
+		prev_text.begins_with("Previously saved: ") and absf(Settings.audio_offset - r2) <= 0.005,
+		"saved %.2f ms vs new %.2f ms" % [Settings.audio_offset * 1000.0, r2 * 1000.0])
+	_check_button_widths("rerun_result", {"accept": w.accept_button, "retry": w.retry_button})
+	await shot("wizard_rerun_previously_saved")
 	# A tap-perfect player (0 ms lag) on a calibrated (+40) profile should measure 0.
 	await press_key(KEY_ESCAPE)
 	ok = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
 	check("Esc in wizard = Skip, back to menu, offset unchanged", ok and absf(Settings.audio_offset - lag) <= 0.005,
 		"%.2f ms" % (Settings.audio_offset * 1000.0))
+
+
+## Gap 6 (01-09): wizard buttons stay 280-480 px wide instead of stretching across the window.
+func _check_button_widths(step: String, buttons: Dictionary) -> void:
+	var widths := {}
+	var ok := true
+	for k in buttons:
+		var b: Button = buttons[k]
+		if b == null or not is_instance_valid(b):
+			widths[k] = "missing"
+			ok = false
+			continue
+		var wpx := b.get_global_rect().size.x
+		widths[k] = wpx
+		ok = ok and wpx >= 280.0 and wpx <= 480.0
+	metrics["button_widths_%s" % step] = widths
+	check("%s: wizard buttons 280-480 px wide" % step, ok, widths)
 
 
 ## Plays one 16-click audio test. The simulated player taps `lag` seconds after the click is HEARD,
@@ -720,6 +819,13 @@ func sc_c() -> void:
 	check("per-frame song_time delta tracks system delta (|dev| max < 4 ms)", float(dev["max_abs"]) < 4.0,
 		"mean %.3f std %.3f max %.3f ms" % [dev["mean"], dev["std"], dev["max_abs"]])
 	check("no clock snaps (> 50 ms error) during play", int(a["tracking_err_gt_50ms_frames"]) == 0, a["tracking_err_gt_50ms_frames"])
+	# Recorded metric, not a gate (20 s is short for a p99; the drift run gates D-30).
+	var sm := smooth_clock_error(probe.rows, 1.5, 21.5, 5.0)
+	metrics["jitter"] = sm
+	if not sm.is_empty():
+		var j: Dictionary = sm["song_minus_smooth_audio_ms"]
+		note("Jitter (song_time - smooth audio clock, %d frames): std %.3f p99 %.3f max %.3f ms" % [
+			int(j["n"]), float(j["std"]), float(j["p99_abs"]), float(j["max_abs"])])
 	_save_probe_csv("c_probe.csv")
 
 
@@ -1216,12 +1322,27 @@ func sc_drift() -> void:
 	if not steady_d.is_empty():
 		metrics["csv_drift_first_last_ms"] = [steady_d[0], steady_d[steady_d.size() - 1]]
 	check("drift_log.csv covers 300 s", xs.size() >= 300, xs.size())
-	var tr: Dictionary = a["song_minus_audio_target_ms"]
-	check("D-30: song_time within +-2 ms of the audio clock model (p99)", float(tr["p99_abs"]) <= 2.0,
-		"mean %.3f std %.3f p99 %.3f max %.3f ms" % [tr["mean"], tr["std"], tr["p99_abs"], tr["max_abs"]])
-	check("D-30 strict: max |song_time - audio clock| <= 2 ms every frame", float(tr["max_abs"]) <= 2.0, "max %.3f ms" % tr["max_abs"])
+	# D-30 reference is the smooth (fitted) audio clock, as in analyze_probe.py. The instantaneous
+	# audio target itself steps in 10.67 ms mix chunks (std ~3.2 ms, max ~15 ms in the first run), so
+	# it is recorded as a metric (probe.song_minus_audio_target_ms) but cannot be a +-2 ms reference.
+	var sm := smooth_clock_error(probe.rows, 1.0, 299.5, 60.0)
+	metrics["jitter"] = sm
+	var tr: Dictionary = sm.get("song_minus_smooth_audio_ms", {"n": 0, "mean": INF, "std": INF, "p99_abs": INF, "max_abs": INF})
+	check("D-30: song_time - smooth audio clock p99 <= 2.0 ms (t >= 1 s)", float(tr["p99_abs"]) <= 2.0,
+		"mean %.3f std %.3f p99 %.3f max %.3f ms over %d frames" % [tr["mean"], tr["std"], tr["p99_abs"], tr["max_abs"], int(tr["n"])])
+	check("D-30 strict: max |song_time - smooth audio clock| <= 2 ms every frame", float(tr["max_abs"]) <= 2.0, "max %.3f ms" % tr["max_abs"])
+	var wins: Array = sm.get("windows", [])
+	var win_p99: Array = []
+	for wd in wins:
+		if int(wd["n"]) >= 1000:
+			win_p99.append(snappedf(float(wd["p99_abs"]), 0.001))
+	check("jitter flat across 60 s windows (every window p99 <= 2.0 ms)", win_p99.size() >= 4 and (win_p99.max() as float) <= 2.0, win_p99)
 	check("song_time monotonic for 5 min", int(a["backwards_steps"]) == 0, a["backwards_steps"])
 	check("no clock snaps in 5 min", int(a["tracking_err_gt_50ms_frames"]) == 0, a["tracking_err_gt_50ms_frames"])
+	var trend := float(fit.get("b", 0.0)) * 60.0
+	check("drift trend near 0 (|trend| <= 0.5 ms/min over drift_log.csv)", not fit.is_empty() and absf(trend) <= 0.5, "%.4f ms/min" % trend)
+	check("audio clock vs system clock within 100 ppm", absf(float(a.get("audio_vs_system_rate_ppm", INF))) <= 100.0,
+		"%.2f ppm" % float(a.get("audio_vs_system_rate_ppm", INF)))
 	var spread := float(dst.get("max", 0.0)) - float(dst.get("min", 0.0))
 	metrics["csv_drift_spread_ms"] = spread
 	note("Raw audio clock vs system clock rate: %.1f ppm (%.2f ms over 300 s). song_time follows the audio clock by design, so song_time - system elapsed tracks this." % [
@@ -1229,7 +1350,8 @@ func sc_drift() -> void:
 
 
 # ------------------------------------------------------------------------------------------------
-# layout: rects of the in-run overlays (evidence for the top-left overlay finding)
+# layout: every modal overlay must be viewport-sized, dimmed (alpha >= 0.7) and block the mouse
+# (gap 1, plan 01-08). Asserts, not just evidence.
 # ------------------------------------------------------------------------------------------------
 
 
@@ -1237,27 +1359,152 @@ func _rect(c: Control) -> String:
 	return str(c.get_global_rect()) if c != null and is_instance_valid(c) else "null"
 
 
+func _find_dim(root: Node, vp: Vector2) -> ColorRect:
+	var best: ColorRect = null
+	for n in root.find_children("*", "ColorRect", true, false):
+		var cr := n as ColorRect
+		if cr.is_visible_in_tree() and cr.get_global_rect().size.is_equal_approx(vp) \
+				and cr.get_global_rect().position.is_equal_approx(Vector2.ZERO):
+			if best == null or cr.color.a > best.color.a:
+				best = cr
+	return best
+
+
+## Synthetic left click at (5, 5) with a probe Button placed behind the overlay under `host`.
+## Returns true when the click did NOT reach the probe.
+func _click_blocked(host: Control) -> bool:
+	var probe_btn := Button.new()
+	probe_btn.name = "PlaytestClickProbe"
+	probe_btn.custom_minimum_size = Vector2(100.0, 100.0)
+	probe_btn.position = Vector2.ZERO
+	probe_btn.focus_mode = Control.FOCUS_NONE
+	host.add_child(probe_btn)
+	host.move_child(probe_btn, 0)
+	var hits := [0]
+	probe_btn.pressed.connect(func() -> void: hits[0] += 1)
+	await frame()
+	await frame()
+	var vp := host.get_viewport()
+	var mm := InputEventMouseMotion.new()
+	mm.position = Vector2(5.0, 5.0)
+	mm.global_position = mm.position
+	vp.push_input(mm)
+	for pressed in [true, false]:
+		var mb := InputEventMouseButton.new()
+		mb.button_index = MOUSE_BUTTON_LEFT
+		mb.pressed = pressed
+		mb.position = Vector2(5.0, 5.0)
+		mb.global_position = mb.position
+		vp.push_input(mb)
+	await frame()
+	await frame()
+	probe_btn.queue_free()
+	return hits[0] == 0
+
+
+## Asserts the three gap-1 properties for one overlay and records its rect in layout.json.
+## `root` is the overlay node itself, `modal` the node that must stop the mouse (may equal root).
+func _assert_overlay(label: String, root: Control, modal: Control, host: Control) -> void:
+	var vp := get_viewport().get_visible_rect().size
+	if not check("%s exists" % label, root != null and is_instance_valid(root) and modal != null and is_instance_valid(modal)):
+		return
+	await frame()
+	var dim := _find_dim(modal, vp)
+	var entry := {"root_rect": _rect(root), "modal_rect": _rect(modal),
+		"dim_alpha": dim.color.a if dim != null else -1.0, "mouse_filter": modal.mouse_filter}
+	check("%s global rect == viewport %s" % [label, vp],
+		root.get_global_rect().size.is_equal_approx(vp) and root.get_global_rect().position.is_equal_approx(Vector2.ZERO)
+		and modal.get_global_rect().size.is_equal_approx(vp), "%s / modal %s" % [entry["root_rect"], entry["modal_rect"]])
+	check("%s dim ColorRect covers the viewport, alpha >= 0.7" % label, dim != null and dim.color.a >= 0.7 - 0.0001,
+		"alpha %.3f" % float(entry["dim_alpha"]))
+	var blocked: bool = await _click_blocked(host)
+	entry["click_at_5_5_blocked"] = blocked
+	check("%s blocks a click at (5, 5) from reaching a control behind it" % label, blocked)
+	var overlays: Dictionary = metrics.get("overlays", {})
+	overlays[label] = entry
+	metrics["overlays"] = overlays
+
+
 func sc_layout() -> void:
 	isolate_settings(true)
+	var vp := get_viewport().get_visible_rect().size
+	metrics["viewport"] = str(vp)
 	var g: Gameplay = await start_dive_from_menu(false)
 	if g == null:
 		return
-	await wait(1.0)
-	var vp := get_viewport().get_visible_rect().size
+	var c := g.conductor
 	var run_root: Control = g.get("_run_root")
-	metrics["viewport"] = str(vp)
 	metrics["gameplay_rect"] = _rect(g)
 	metrics["run_root_rect"] = _rect(run_root)
-	await press_key(KEY_ESCAPE)
-	var panel: Control = g.pause_menu.get("_panel_root")
-	metrics["pause_menu_rect"] = _rect(g.pause_menu)
-	metrics["pause_panel_rect"] = _rect(panel)
 	check("gameplay root fills the viewport", g.size.is_equal_approx(vp), metrics["gameplay_rect"])
 	check("run root fills the viewport", run_root.size.is_equal_approx(vp), metrics["run_root_rect"])
-	check("pause menu (and its dim + CenterContainer) fills the viewport", g.pause_menu.size.is_equal_approx(vp), metrics["pause_menu_rect"])
-	await shot("pause_layout")
+	# Score some notes so Restart asks for confirmation (score > 0), then stop playing.
+	var stop_bot := [false]
+	var gw: WeakRef = weakref(g)
+	var sched := keyboard_schedule(g.chart.notes, [0.0])
+	var bot := func() -> void:
+		await run_schedule(c, sched, func() -> bool: return stop_bot[0] or _gone_or_stopped(gw) or not scene_is(GAMEPLAY))
+	bot.call()
+	await wait_until(func() -> bool: return c.song_time() > 4.0 and g.score.score > 0, 15.0)
+
+	# Pause menu
 	await press_key(KEY_ESCAPE)
-	await wait_until(func() -> bool: return g.state == Gameplay.State.FAILED, 30.0)
+	check("Esc opens pause menu", g.pause_menu.is_open())
+	var panel: Control = g.pause_menu.get("_panel_root")
+	await _assert_overlay("PauseMenu", g.pause_menu, panel, g)
+	await shot("pause_menu")
+
+	# Restart confirm (score > 0)
+	g.pause_menu.restart_button.grab_focus()
+	await press_key(KEY_ENTER)
+	var dlg: ConfirmDialog = g.pause_menu.get("_dialog")
+	check("Restart Dive asks for confirmation (score %d)" % g.score.score, dlg != null)
+	await _assert_overlay("ConfirmDialog(restart)", dlg, dlg, g)
+	await shot("restart_confirm")
+	await press_key(KEY_ESCAPE)
+	check("Esc on restart confirm = Keep Playing (dialog closed, still paused)",
+		g.pause_menu.get("_dialog") == null and g.pause_menu.is_open())
+
+	# Back to Menu confirm
+	g.pause_menu.menu_button.grab_focus()
+	await press_key(KEY_ENTER)
+	dlg = g.pause_menu.get("_dialog")
+	await _assert_overlay("ConfirmDialog(menu)", dlg, dlg, g)
+	await shot("menu_confirm")
+	await press_key(KEY_ESCAPE)
+	check("Esc on menu confirm = Stay", g.pause_menu.get("_dialog") == null and g.pause_menu.is_open())
+
+	# Fail screen: resume, stop the bot, let the hull reach 0.
+	stop_bot[0] = true
+	await press_key(KEY_ESCAPE)
+	var failed: bool = await wait_until(func() -> bool: return g.state == Gameplay.State.FAILED, 40.0)
+	check("hull reaches 0 -> FAILED", failed)
 	await wait(1.0)
-	metrics["fail_screen_rect"] = _rect(g.fail_screen)
-	check("fail screen fills the viewport (IMPLOSION centered)", g.fail_screen != null and g.fail_screen.size.is_equal_approx(vp), metrics["fail_screen_rect"])
+	await _assert_overlay("FailScreen", g.fail_screen, g.fail_screen, g)
+	await shot("implosion")
+
+	# Results screen: autoplay run to the end.
+	await goto(MENU)
+	var g2: Gameplay = await start_dive_from_menu(true)
+	if g2 == null:
+		return
+	var done: bool = await wait_until(func() -> bool: return g2.state == Gameplay.State.DONE, 120.0)
+	check("autoplay run reaches results", done)
+	await wait(0.8)
+	await _assert_overlay("ResultsScreen", g2.results, g2.results, g2)
+	await shot("results")
+
+	# Reset Controls confirm in Settings.
+	if not await goto(SETTINGS_SCENE):
+		check("settings scene loads", false)
+		return
+	var s := cur() as Control
+	var reset_btn: Button = s.get("reset_button")
+	reset_btn.grab_focus()
+	await press_key(KEY_ENTER)
+	var rdlg: ConfirmDialog = s.get("dialog")
+	check("Reset Controls asks for confirmation", rdlg != null)
+	await _assert_overlay("ConfirmDialog(reset_controls)", rdlg, rdlg, s)
+	await shot("reset_controls_confirm")
+	await press_key(KEY_ESCAPE)
+	check("Esc on Reset Controls confirm = Keep Bindings", s.get("dialog") == null)

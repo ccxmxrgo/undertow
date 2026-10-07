@@ -2,7 +2,7 @@ extends Node
 ## Playtest bootstrap. Usage (windowed, real audio):
 ##   godot --path . res://tools/playtest/playtest.tscn -- <scenario>
 ## Adds a persistent driver under the root (it survives scene changes) and gets out of the way.
-## Scenarios: a b c d e f g h i drift. Results: build/playtest/<scenario>.json + PNG screenshots.
+## Scenarios: a b c d e f g h i layout drift. Results: build/playtest/<scenario>.json + PNG screenshots.
 
 
 func _ready() -> void:
