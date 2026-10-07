@@ -31,6 +31,7 @@ var hud: Hud
 var feedback: Feedback
 var fail_screen: FailScreen
 var results: ResultsScreen
+var pause_menu: PauseMenu
 
 var _run_root: Control
 var _autoplay_player: Autoplay
@@ -104,9 +105,13 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	_on_run_built()
 
 
-## Hook for pause / debug overlay wiring (task 2/3).
 func _on_run_built() -> void:
-	pass
+	pause_menu = PauseMenu.new()
+	_run_root.add_child(pause_menu)
+	pause_menu.setup(conductor, lane_input, score)
+	pause_menu.restore_input = not autoplay
+	pause_menu.restart_confirmed.connect(func() -> void: call_deferred("restart", false))
+	pause_menu.menu_confirmed.connect(go_to_menu)
 
 
 func _teardown() -> void:
@@ -119,6 +124,7 @@ func _teardown() -> void:
 	_run_root = null
 	conductor = null
 	lane_input = null
+	pause_menu = null
 
 
 func is_done() -> bool:
@@ -140,6 +146,10 @@ func _process(_delta: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_echo():
+		return
+	if event.is_action_pressed(&"pause") and state == State.RUNNING and pause_menu != null 			and not pause_menu.is_open() and not pause_menu.is_counting_down():
+		get_viewport().set_input_as_handled()
+		pause_menu.open()
 		return
 	if event.is_action_pressed(&"debug_autoplay"):
 		get_viewport().set_input_as_handled()
