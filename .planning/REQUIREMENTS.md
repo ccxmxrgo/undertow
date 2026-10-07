@@ -24,7 +24,7 @@
 
 - [x] **HULL-01**: Misses and wrong hits damage the player's hull. The hull reaching zero eliminates the player.
 - [x] **HULL-02**: Player sees combo, score/depth and hull integrity during play
-- [ ] **HULL-03**: Player gets clear visual and audio feedback for each Perfect/Good/Miss
+- [x] **HULL-03**: Player gets clear visual and audio feedback for each Perfect/Good/Miss
 - [x] **HULL-04**: Player can pause and resume during a solo song
 
 ### Songs & Charts
@@ -133,7 +133,7 @@
 | CAL-02 | Phase 1 | Complete |
 | HULL-02 | Phase 1 | Complete |
 | CAL-03 | Phase 1 | Complete |
-| HULL-03 | Phase 1 | Pending |
+| HULL-03 | Phase 1 | Complete |
 | CAL-04 | Phase 1 | Complete |
 | HULL-04 | Phase 1 | Complete |
 | SONG-01 | Phase 2 | Pending |

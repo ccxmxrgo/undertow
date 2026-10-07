@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-04-PLAN.md
-last_updated: "2026-10-07T16:49:43.460Z"
+stopped_at: Phase 1 UI-SPEC approved
+last_updated: "2026-10-07T16:56:39.026Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 7
-  completed_plans: 4
-  percent: 57
+  completed_plans: 5
+  percent: 71
 ---
 
 # Project State
@@ -26,17 +26,17 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 1 (Timing Core & Calibration) — EXECUTING
-Plan: 5 of 7 (01-04 complete)
+Plan: 6 of 7 (01-05 complete)
 Status: Ready to execute
 Last activity: 2026-10-07
 
-Progress: [######....] 57%
+Progress: [#######...] 71%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 4
+- Total plans completed: 5
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -55,6 +55,7 @@ Progress: [######....] 57%
 | Phase 01 P02 | ~40min (tasks 1-4) | 4 tasks | 21 files |
 | Phase 01 P03 | 45min | 3 tasks | 14 files |
 | Phase 01 P04 | 35min | 2 tasks | 11 files |
+| Phase 01 P05 | 45min | 1 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,7 @@ Recent decisions affecting current work:
 - [Phase 01-02]: Conductor schedules play() at song_time -(next_mix+latency)-audio_offset; Settings uses ConfigFile.parse on file text
 - [Phase 01]: 01-03: sustain ticks frame-rate independent; hit score uses pre-hit multiplier; resume restarts audio via play(paused_position) launched early by output delay
 - [Phase 01]: 01-04: Bindings serialize as <action>_key and <action>_pad; invalid or duplicate entries revert that action to default; trigger lanes press at 0.5, release at 0.4
+- [Phase 01]: 01-05: Feedback owns lane flash/text/SFX/nudge; Hud owns hull damage flash; Highway.on_sustain_end must be wired to InputJudge.sustain_end
 
 ### Pending Todos
 
@@ -86,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-07T16:49:39.391Z
-Stopped at: Phase 1 UI-SPEC approved
+Last session: 2026-10-07T16:56:35.511Z
+Stopped at: Completed 01-05-PLAN.md
 Resume file: None
