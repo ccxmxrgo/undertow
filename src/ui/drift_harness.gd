@@ -21,7 +21,7 @@ var _finished: bool = false
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(self)
 	theme = Palette.load_theme()
 	_label = Label.new()
 	_label.position = Vector2(64.0, 64.0)

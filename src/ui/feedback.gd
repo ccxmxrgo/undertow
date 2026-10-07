@@ -32,7 +32,7 @@ var _nudge_end: int = 0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(self)
 	if sfx == null and audio_enabled:
 		sfx = SfxPool.new()
 		add_child(sfx)

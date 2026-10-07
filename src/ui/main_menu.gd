@@ -29,7 +29,7 @@ var _empty_state: Control
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(self)
 	if theme == null:
 		theme = Palette.load_theme()
 	_build()
@@ -50,10 +50,10 @@ func _route_on_boot() -> void:
 func _build() -> void:
 	var bg := ColorRect.new()
 	bg.color = Palette.BG
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(bg)
 	add_child(bg)
 	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(center)
 	add_child(center)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", Palette.SP_MD)

@@ -146,3 +146,11 @@ func test_settings_save_is_atomic_and_overwrites_existing_file() -> void:
 	# Unwritable target directory reports an error instead of silently succeeding.
 	assert_int(s.save_to("user://no_such_dir_review/x.cfg")).is_not_equal(OK)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+
+func test_no_full_rect_anchor_preset_left_in_ui() -> void:
+	var dir := DirAccess.open("res://src/ui")
+	for f in dir.get_files():
+		if f.ends_with(".gd") and f != "ui_layout.gd":
+			var src := FileAccess.get_file_as_string("res://src/ui/" + f)
+			assert_bool(src.contains("PRESET_FULL_RECT")).override_failure_message(f).is_false()

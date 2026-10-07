@@ -41,7 +41,7 @@ var _end_time: float = 0.0
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(self)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	theme = Palette.load_theme()
 	var c := pending_chart if pending_chart != null else TestCharts.hand_chart()
@@ -61,7 +61,7 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	fail_screen = null
 	results = null
 	_run_root = Control.new()
-	_run_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(_run_root)
 	_run_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_run_root)
 	if chart.audio_stream == null:
@@ -81,7 +81,7 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	lane_input.setup(conductor, judge)
 	lane_input.enabled = not autoplay  # autoplay presses for the player
 	highway = Highway.new()
-	highway.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(highway)
 	highway.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_run_root.add_child(highway)
 	highway.setup(chart, conductor)

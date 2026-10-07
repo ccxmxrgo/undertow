@@ -36,7 +36,7 @@ var _pulses: Dictionary = {}  # Label -> Tween
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(self)
 	if theme == null:
 		theme = Palette.load_theme()
 	hull_value = _make_label(Vector2(BAR_POS.x + BAR_SIZE.x + Palette.SP_MD, BAR_POS.y - 8.0), Vector2(160.0, 48.0), "", true, HORIZONTAL_ALIGNMENT_LEFT)

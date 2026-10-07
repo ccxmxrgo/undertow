@@ -58,7 +58,7 @@ var _device_name: String = ""
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(self)
 	if theme == null:
 		theme = Palette.load_theme()
 	pending_audio = Settings.audio_offset
@@ -75,10 +75,10 @@ func _ready() -> void:
 func _build_frame() -> void:
 	var bg := ColorRect.new()
 	bg.color = Palette.BG
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(bg)
 	add_child(bg)
 	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(margin)
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, Palette.SP_3XL)
 	add_child(margin)
