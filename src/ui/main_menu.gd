@@ -17,6 +17,7 @@ static var boot_handled: bool = false
 var navigate: Callable = Callable()
 
 var start_button: Button
+var practice_button: Button
 var autoplay_button: Button
 var calibrate_button: Button
 var settings_button: Button
@@ -70,13 +71,14 @@ func _build() -> void:
 	box.add_child(_empty_state)
 
 	start_button = _item(box, "Start Dive", func() -> void: launch(false))
+	practice_button = _item(box, "Practice Dive (No-Fail)", func() -> void: launch_practice())
 	autoplay_button = _item(box, "Autoplay Dive (test)", func() -> void: launch(true))
 	calibrate_button = _item(box, "Calibrate Sonar", func() -> void: _go(CALIBRATION_SCENE))
 	settings_button = _item(box, "Settings", func() -> void: _go(SETTINGS_SCENE))
 	quit_button = _item(box, "Quit Game", func() -> void:
 		if is_inside_tree():
 			get_tree().quit())
-	var items := [start_button, autoplay_button, calibrate_button, settings_button, quit_button]
+	var items := [start_button, practice_button, autoplay_button, calibrate_button, settings_button, quit_button]
 	for i in range(items.size()):
 		var b: Button = items[i]
 		b.focus_neighbor_top = b.get_path_to(items[(i + items.size() - 1) % items.size()])
@@ -150,6 +152,15 @@ func empty_state_visible() -> bool:
 func launch(autoplay: bool) -> void:
 	Gameplay.pending_chart = TestCharts.hand_chart()
 	Gameplay.pending_autoplay = autoplay
+	Gameplay.pending_practice = false
+	_go(GAMEPLAY_SCENE)
+
+
+## D-09: No-Fail run that never touches the persisted Settings.no_fail.
+func launch_practice() -> void:
+	Gameplay.pending_chart = TestCharts.hand_chart()
+	Gameplay.pending_autoplay = false
+	Gameplay.pending_practice = true
 	_go(GAMEPLAY_SCENE)
 
 

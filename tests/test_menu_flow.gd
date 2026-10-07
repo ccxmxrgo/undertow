@@ -183,3 +183,36 @@ func test_initial_focus_set_in_code() -> void:
 	var s := _screen()
 	await get_tree().process_frame
 	assert_bool(s.cells["lane_1:keyboard"].has_focus()).is_true()
+
+
+func _main_menu() -> MainMenu:
+	MainMenu.boot_handled = true
+	var m: MainMenu = (load("res://scenes/main_menu.tscn") as PackedScene).instantiate()
+	add_child(m)
+	auto_free(m)
+	return m
+
+
+func test_practice_button_directly_under_start() -> void:
+	var m := _main_menu()
+	assert_str(m.practice_button.text).is_equal("Practice Dive (No-Fail)")
+	assert_int(m.practice_button.get_index()).is_equal(m.start_button.get_index() + 1)
+	assert_bool(m.start_button.get_node(m.start_button.focus_neighbor_bottom) == m.practice_button).is_true()
+	assert_bool(m.practice_button.get_node(m.practice_button.focus_neighbor_top) == m.start_button).is_true()
+	assert_bool(m.start_button.has_focus()).is_true()
+
+
+func test_launch_practice_sets_pending_and_keeps_no_fail_setting() -> void:
+	var m := _main_menu()
+	var calls: Array = []
+	m.navigate = func(p: String) -> void: calls.append(p)
+	Settings.no_fail = false
+	m.launch_practice()
+	assert_bool(Gameplay.pending_practice).is_true()
+	assert_bool(Gameplay.pending_autoplay).is_false()
+	assert_array(calls).is_equal([MainMenu.GAMEPLAY_SCENE])
+	assert_bool(Settings.no_fail).is_false()
+	m.launch(false)
+	assert_bool(Gameplay.pending_practice).is_false()
+	Gameplay.pending_chart = null
+	MainMenu.boot_handled = false

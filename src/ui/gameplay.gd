@@ -17,7 +17,10 @@ const AUDIO_ERROR := "Song audio could not be loaded. Reinstall the game files o
 ## Launch parameters set by the menu before changing scene.
 static var pending_chart: ChartData
 static var pending_autoplay: bool = false
+static var pending_practice: bool = false
 
+## Practice Dive: No-Fail forced on for this run only (never written to Settings).
+var practice: bool = false
 var state: State = State.RUNNING
 var chart: ChartData
 var autoplay: bool = false
@@ -48,6 +51,8 @@ func _ready() -> void:
 	var a := pending_autoplay
 	pending_chart = null
 	pending_autoplay = false
+	practice = pending_practice
+	pending_practice = false
 	start(c, a)
 
 
@@ -70,7 +75,7 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	var cfg := JudgeConfig.new()
 	judge = InputJudge.new(chart, cfg)
 	score = HullScore.new(cfg)
-	score.no_fail = Settings.no_fail
+	score.no_fail = Settings.no_fail or practice
 	score.connect_judge(judge)
 	score.failed.connect(_on_failed)
 	conductor = Conductor.new()

@@ -17,6 +17,7 @@ func after_test() -> void:
 	Settings.no_fail = _saved_no_fail
 	Gameplay.pending_chart = null
 	Gameplay.pending_autoplay = false
+	Gameplay.pending_practice = false
 
 
 func _launch(autoplay: bool) -> Gameplay:
@@ -102,3 +103,28 @@ func test_drift_harness_scene_boots_and_logs() -> void:
 	assert_bool(FileAccess.file_exists(DriftHarness.LOG_PATH)).is_equal(real_existed)
 	if real_existed:
 		assert_str(FileAccess.get_file_as_string(DriftHarness.LOG_PATH)).is_equal(real_before)
+
+
+func test_practice_forces_no_fail_without_touching_setting_and_survives_restart() -> void:
+	Gameplay.pending_practice = true
+	var gp := _launch(false)
+	await get_tree().process_frame
+	assert_bool(gp.practice).is_true()
+	assert_bool(gp.score.no_fail).is_true()
+	assert_bool(Settings.no_fail).is_false()
+	assert_bool(Gameplay.pending_practice).is_false()
+	gp.restart(false)
+	assert_bool(gp.practice).is_true()
+	assert_bool(gp.score.no_fail).is_true()
+	gp.restart(true)
+	assert_bool(gp.practice).is_true()
+	assert_bool(gp.score.no_fail).is_true()
+	assert_bool(Settings.no_fail).is_false()
+	await get_tree().process_frame
+
+
+func test_normal_run_is_not_practice() -> void:
+	var gp := _launch(false)
+	await get_tree().process_frame
+	assert_bool(gp.practice).is_false()
+	assert_bool(gp.score.no_fail).is_false()
