@@ -20,6 +20,8 @@ extends Resource
 @export var score_sustain_tick: int = 10
 @export var combo_per_multiplier_step: int = 10
 @export var max_multiplier: int = 4
+## Depth in meters = score / score_per_meter (D-14).
+@export var score_per_meter: float = 100.0
 
 ## Clock discipline tuning (ClockModel): snap above this error, else slew.
 @export var clock_snap_s: float = 0.050
