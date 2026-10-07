@@ -71,6 +71,30 @@ static func hand_chart(rate: int = 0) -> ChartData:
 	return c
 
 
+## About 10 s at 120 BPM: taps on beats, one chord at 4.0 s and one 1.0 s sustain (lane 3) at
+## 5.0 s with no tap in that lane while it is held. Used by the gameplay smoke tests.
+static func short_chart(rate: int = 0) -> ChartData:
+	const BPM := 120.0
+	var c := ChartData.new()
+	c.title = "Short chart"
+	c.tempo_map.append({"time": 0.0, "bpm": BPM})
+	var spb := 60.0 / BPM
+	for beat in range(1, 17):
+		var t := beat * spb
+		if is_equal_approx(t, 4.0):
+			for l in [0, 1, 2]:
+				c.add_note(l, t)
+		elif is_equal_approx(t, 5.0):
+			c.add_note(3, t, 1.0)
+		elif t > 5.0 and t < 6.0:
+			c.add_note(beat % 3, t)
+		else:
+			c.add_note(beat % 4, t)
+	c.audio_stream = AudioSynth.make_song(c.tempo_map, 10.0, rate)
+	c.finalize()
+	return c
+
+
 ## 300 s of notes on every beat (lanes cycle) with a matching click track.
 static func five_minute_click_chart(bpm: float = 120.0, rate: int = 0) -> ChartData:
 	return click_chart(bpm, int(300.0 * bpm / 60.0), rate)

@@ -30,6 +30,7 @@ var _hull: float = 100.0
 var _shown_hull: float = 100.0
 var _flash_until: int = 0
 var _no_fail: bool = false
+var _autoplay: bool = false
 var _pulses: Dictionary = {}  # Label -> Tween
 
 
@@ -69,6 +70,16 @@ func bind(score: HullScore, p_hull_max: float = 100.0) -> void:
 	score.score_changed.connect(_on_score_changed)
 	if is_node_ready():
 		_refresh_all()
+
+
+## Outlined AUTOPLAY badge, same style as NO-FAIL (UI-SPEC copy "AUTOPLAY").
+func set_autoplay(on: bool) -> void:
+	_autoplay = on
+	queue_redraw()
+
+
+func is_autoplay_shown() -> bool:
+	return _autoplay
 
 
 func is_critical() -> bool:
@@ -194,3 +205,8 @@ func _draw() -> void:
 		var r := Rect2(bx, by, 144.0, 32.0)
 		draw_rect(r, Palette.TEXT, false, 2.0)
 		draw_string(Palette.font(), Vector2(bx, by + 22.0), "NO-FAIL", HORIZONTAL_ALIGNMENT_CENTER, 144.0, Palette.SIZE_LABEL, Palette.TEXT)
+	if _autoplay:
+		var ax := BAR_POS.x + (144.0 + Palette.SP_MD if _no_fail else 0.0)
+		var ay := BAR_POS.y + BAR_SIZE.y + 38.0
+		draw_rect(Rect2(ax, ay, 144.0, 32.0), Palette.TEXT, false, 2.0)
+		draw_string(Palette.font(), Vector2(ax, ay + 22.0), "AUTOPLAY", HORIZONTAL_ALIGNMENT_CENTER, 144.0, Palette.SIZE_LABEL, Palette.TEXT)
