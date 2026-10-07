@@ -185,3 +185,5 @@ Pending: the plan 01-10 Task 3 checkpoint (human-verify) is awaiting the user's 
 ## Human results
 
 2026-10-07: user approved (feel, gamepad, second PC, output switch). No issues reported.
+
+2026-10-07 (after code-review fixes CR-01, WR-01..09): user playtested on the dev PC and reported it "feeling smooth".
