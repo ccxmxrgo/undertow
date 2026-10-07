@@ -16,6 +16,8 @@ var audio_offset: float = 0.0
 var visual_offset: float = 0.0
 var scroll_speed: float = 1.0
 var output_device_name: String = ""
+## True once the player has completed (saved) the calibration wizard.
+var calibration_done: bool = false
 var early_late_indicator: bool = true
 var no_fail: bool = false
 var reduce_motion: bool = false
@@ -39,6 +41,7 @@ func reset_defaults() -> void:
 	visual_offset = 0.0
 	scroll_speed = 1.0
 	output_device_name = ""
+	calibration_done = false
 	early_late_indicator = true
 	no_fail = false
 	reduce_motion = false
@@ -46,6 +49,22 @@ func reset_defaults() -> void:
 	volume_music = 0.8
 	volume_sfx = 0.8
 	bindings.reset_defaults()
+
+
+## True when the player calibrated on a different output device than the one in use now (T-06-01:
+## the saved name is plain data, only ever compared against AudioServer.output_device).
+func device_changed() -> bool:
+	return calibration_done and output_device_name != AudioServer.output_device
+
+
+## Persists the wizard result. Offsets are clamped to +-0.5 s (T-06-03).
+func save_calibration(p_audio: float, p_visual: float) -> void:
+	audio_offset = CalibrationMath.clamp_offset(p_audio if is_finite(p_audio) else 0.0)
+	visual_offset = CalibrationMath.visual_offset_clamp(p_visual if is_finite(p_visual) else 0.0)
+	output_device_name = AudioServer.output_device
+	calibration_done = true
+	save_to(save_path)
+	settings_changed.emit()
 
 
 func set_scroll_speed(v: float) -> void:
@@ -95,6 +114,7 @@ func save_to(path: String = DEFAULT_PATH) -> int:
 	cfg.set_value("calibration", "audio_offset", audio_offset)
 	cfg.set_value("calibration", "visual_offset", visual_offset)
 	cfg.set_value("calibration", "output_device", output_device_name)
+	cfg.set_value("calibration", "done", calibration_done)
 	cfg.set_value("gameplay", "scroll_speed", scroll_speed)
 	cfg.set_value("gameplay", "early_late_indicator", early_late_indicator)
 	cfg.set_value("gameplay", "no_fail", no_fail)
@@ -133,6 +153,7 @@ func load_from(path: String = DEFAULT_PATH) -> void:
 	bindings.from_config(cfg)
 	var dev: Variant = cfg.get_value("calibration", "output_device", "")
 	output_device_name = dev if typeof(dev) == TYPE_STRING else ""
+	calibration_done = _bool(cfg, "calibration", "done", false)
 	apply_audio()
 	settings_changed.emit()
 
