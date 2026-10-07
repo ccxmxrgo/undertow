@@ -48,3 +48,20 @@ func test_wizard_visual_step_uses_pending_audio_offset() -> void:
 	w.show_step(CalibrationWizard.Step.AUDIO)
 	assert_float(w.conductor.audio_offset()).is_equal(Settings.audio_offset)
 	await get_tree().process_frame  # let queue_free'd step content go before orphan accounting
+
+
+func test_overlapping_hold_in_same_lane_ends_previous_hold() -> void:
+	var chart := ChartData.new()
+	chart.add_note(0, 1.0, 2.0)  # tail at 3.0
+	chart.add_note(0, 2.0, 0.5)  # head inside the first hold
+	chart.finalize()
+	var j := InputJudge.new(chart, JudgeConfig.new())
+	var ends: Array = []
+	j.sustain_end.connect(func(lane: int, c: bool) -> void: ends.append([lane, c]))
+	j.press(0, 1.0)
+	j.press(0, 2.0)
+	assert_int(ends.size()).is_equal(1)
+	assert_int(ends[0][0]).is_equal(0)
+	assert_bool(ends[0][1]).is_false()  # cut short, not completed
+	j.tick(5.0)
+	assert_int(ends.size()).is_equal(2)

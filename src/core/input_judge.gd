@@ -126,6 +126,12 @@ func _resolve(lane: int, idx: int, judgment: int, err: float) -> void:
 	var dur: float = note["duration"]
 	if judgment != Judgment.MISS and dur > 0.0:
 		var head: float = note["time"]
+		if _holds[lane] != null:
+			# Overlapping sustain in one lane (WR-03): close the earlier hold so its tail
+			# state is not silently dropped.
+			var prev: Dictionary = _holds[lane]
+			_emit_ticks(lane, prev, minf(head, prev["tail"]))
+			_end_hold(lane, head >= prev["tail"] - _cfg.release_forgive_window - EPS)
 		_holds[lane] = {
 			"head": head,
 			"tail": head + dur,
