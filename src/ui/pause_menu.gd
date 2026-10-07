@@ -36,7 +36,7 @@ var _counting: bool = false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(self)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if theme == null:
 		theme = Palette.load_theme()
@@ -191,15 +191,16 @@ func _close_dialog() -> void:
 
 func _build() -> void:
 	_panel_root = Control.new()
-	_panel_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(_panel_root)
+	_panel_root.mouse_filter = Control.MOUSE_FILTER_STOP
 	_panel_root.visible = false
 	add_child(_panel_root)
 	var dim := ColorRect.new()
 	dim.color = Palette.alpha(Palette.BG, 0.7)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(dim)
 	_panel_root.add_child(dim)
 	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(center)
 	_panel_root.add_child(center)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", Palette.SP_MD)

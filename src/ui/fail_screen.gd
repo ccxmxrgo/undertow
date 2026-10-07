@@ -17,17 +17,17 @@ var body_label: Label
 
 
 func setup(depth_m: float) -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if theme == null:
 		theme = Palette.load_theme()
 	var dim := ColorRect.new()
 	dim.color = Palette.alpha(Palette.BG, 0.7)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(dim)
 	add_child(dim)
 	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	UiLayout.fill_rect(center)
 	add_child(center)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", Palette.SP_LG)
