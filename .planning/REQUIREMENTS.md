@@ -1,0 +1,135 @@
+# Requirements: UNDERTOW
+
+**Defined:** 2026-10-07
+**Core Value:** Hitting notes feels tight and fair on each player's own machine, while torpedoes reach rivals over the network fast enough that a friend's perfect streak is felt inside the same song.
+
+## v1 Requirements
+
+### Timing Core
+
+- [ ] **TIME-01**: Notes scroll in sync with the song, driven by the audio clock (no visible drift across a full 5-minute song)
+- [ ] **TIME-02**: Player's key/button presses are judged against song time, independent of frame rate
+- [ ] **TIME-03**: Each hit is graded into one of three tiers (Perfect / Good / Miss) using tunable timing windows
+- [ ] **TIME-04**: Player can play sustained (held) notes and chords
+- [ ] **TIME-05**: An autoplay mode plays any chart with all-Perfect results (correctness check)
+
+### Calibration & Input
+
+- [ ] **CAL-01**: Player can run a calibration wizard that sets separate audio and visual offsets, saved per machine
+- [ ] **CAL-02**: Player can rebind the 4 lane keys, Fire and Target-cycle on keyboard
+- [ ] **CAL-03**: Player can play with a gamepad
+- [ ] **CAL-04**: Player can adjust scroll speed and music/SFX volume
+
+### Hull & Scoring
+
+- [ ] **HULL-01**: Misses and wrong hits damage the player's hull. The hull reaching zero eliminates the player.
+- [ ] **HULL-02**: Player sees combo, score/depth and hull integrity during play
+- [ ] **HULL-03**: Player gets clear visual and audio feedback for each Perfect/Good/Miss
+- [ ] **HULL-04**: Player can pause and resume during a solo song
+
+### Songs & Charts
+
+- [ ] **SONG-01**: Player can import Clone Hero `.chart` songs (with `song.ini` and OGG/MP3/WAV audio) from a folder
+- [ ] **SONG-02**: Imported 5-fret charts are mapped to 4 lanes by a documented, consistent rule (HOPO/tap become plain notes)
+- [ ] **SONG-03**: Player can browse the song library and pick a song and difficulty with an audio preview
+- [ ] **SONG-04**: Game ships with at least 2 bundled royalty-free/original songs with charts
+- [ ] **SONG-05**: Each song has a stable hash so peers can confirm they have the identical chart
+- [ ] **SONG-06**: Unsupported or broken songs show a readable error instead of crashing
+
+### Torpedoes (Versus Core)
+
+- [ ] **TORP-01**: A Perfect streak fills the player's torpedo tube meter, which is always visible
+- [ ] **TORP-02**: Player can fire a full torpedo at a target. Launch and arrival snap to beats.
+- [ ] **TORP-03**: Player can cycle targets. The default target is the current leader. An "Attackers" toggle targets whoever last hit you.
+- [ ] **TORP-04**: The target sees a telegraph warning at least 1 beat before a payload lands
+- [ ] **TORP-05**: Only one payload can be active on a player at a time, followed by a short immunity window
+- [ ] **TORP-06**: No payload requires button-mashing to clear or can instantly eliminate a player
+
+### Payloads
+
+- [ ] **PAY-01**: Pressure Crack: the target's scroll speed spikes for a few bars
+- [ ] **PAY-02**: Lane Flip: the target's lanes are mirrored for a few bars
+- [ ] **PAY-03**: Ghost Notes: fake notes (visually distinguishable by shape, not only color) that damage the hull if hit
+- [ ] **PAY-04**: Ink Cloud: the lower part of the target's highway is obscured for a few bars
+- [ ] **PAY-05**: Depth Charge: a burst of extra notes derived from the song's rhythm, capped by local chart density
+- [ ] **PAY-06**: Return to Sender: hitting all marked warhead notes of a payload perfectly reflects it to the sender
+
+### Match Flow
+
+- [ ] **MATCH-01**: Player can play a versus match offline against bot rivals (used for practice and testing)
+- [ ] **MATCH-02**: The last sub with an intact hull wins. If several survive the song, the deepest score wins, with a defined tie-break.
+- [ ] **MATCH-03**: Eliminated players continue as wreck ghosts that charge weak, capped debris attacks
+- [ ] **MATCH-04**: Player sees periscope panels showing each rival's hull, tube and incoming/active payloads
+- [ ] **MATCH-05**: Results screen shows winner, depth, accuracy, torpedoes landed and reflected
+- [ ] **MATCH-06**: Solo Dive mode lets a player practice any song with chosen training payloads
+
+### Online Play
+
+- [ ] **NET-01**: A friend can host a lobby, and 1-3 others can join from their own PCs over the internet
+- [ ] **NET-02**: The lobby shows each player's ready state and whether they have the selected song (hash match)
+- [ ] **NET-03**: All players' songs start in sync (clock-synced, host-scheduled start)
+- [ ] **NET-04**: Torpedo, hull, elimination and score events reach other players mid-song and land on the intended beat
+- [ ] **NET-05**: A player disconnecting is treated as eliminated, and the match continues for the rest
+- [ ] **NET-06**: A host leaving ends the match cleanly for everyone, with a message
+- [ ] **NET-07**: There is a documented, working way for friends behind home routers to connect (e.g., Tailscale/ZeroTier, or Steam relay)
+
+### Look & Sound
+
+- [ ] **AV-01**: Highway renders as a sonar CRT screen (phosphor glow, scanlines, sweep afterglow)
+- [ ] **AV-02**: Background shows the trench with bioluminescent life pulsing on the beat
+- [ ] **AV-03**: Sonar pings on downbeats, hull creaks and a muffled filter that grows with damage
+- [ ] **AV-04**: Torpedo impacts, eliminations and launches have screen shake/flash/implosion feedback
+- [ ] **AV-05**: A low-effects toggle keeps the game smooth on weaker PCs
+
+### Distribution
+
+- [ ] **DIST-01**: Game exports as a Windows build that friends can download and run without installing Godot
+
+## v2 Requirements
+
+### Content
+
+- **CONT-01**: Import Clone Hero `.mid` charts
+- **CONT-02**: Auto-generate charts from any audio file (onset/beat detection)
+
+### Modes
+
+- **MODE-01**: Wolfpack 2v2 with shared team hull and pooled torpedoes
+- **MODE-02**: Alternate pitched modes (MIMIC social deduction, ECHO call-and-response, ONE ORGAN co-op)
+- **MODE-03**: Optional handicap / catch-up system
+
+### Online
+
+- **ONL-01**: Steam invites / Steam relay via GodotSteam (if not chosen as v1 transport)
+- **ONL-02**: Host migration
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Plastic guitar / real instrument controllers | Hardware-specific input work. Keyboard and gamepad are enough for friends. |
+| Public matchmaking, ranked play, accounts | Game is for one friend group. Join by host address/invite is enough. |
+| Anti-cheat | Friends only. The host does basic sanity checks. |
+| Bundling copyrighted songs | Legal risk. Players import their own. |
+| Strum key / HOPO mechanics | Flattened to plain notes for keyboard play. Keeps the 4-lane game readable. |
+| Random power-up pickups | GH3 Battle Mode lesson: randomness decided matches. Torpedoes are earned by skill only. |
+| Pausing during online matches | Can't pause a shared song fairly |
+| Voice chat | Friends already use Discord |
+| Chart editor | Imports cover content |
+| Mobile / console builds | Friends play on PCs |
+| Story / campaign | The game is about friends playing against each other |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| (filled by roadmap) | | |
+
+**Coverage:**
+- v1 requirements: 50 total
+- Mapped to phases: 0 (pending roadmap)
+- Unmapped: 50 ⚠️
+
+---
+*Requirements defined: 2026-10-07*
+*Last updated: 2026-10-07 after initial definition*
