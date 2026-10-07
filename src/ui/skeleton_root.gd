@@ -18,8 +18,10 @@ func _ready() -> void:
 	judge = InputJudge.new(chart, JudgeConfig.new())
 	lane_input.setup(conductor, judge)
 	highway.setup(chart, conductor)
+	highway.show_spike_readout = true
 	judge.judged.connect(highway.on_judged)
 	judge.stray.connect(highway.on_stray)
+	judge.sustain_end.connect(highway.on_sustain_end)
 	conductor.begin(chart.audio_stream, LEAD_IN_BEATS * 60.0 / BPM)
 
 

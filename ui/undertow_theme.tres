@@ -1,0 +1,99 @@
+[gd_resource type="Theme" load_steps=9 format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/ShareTechMono-Regular.ttf" id="1_font"]
+
+[sub_resource type="FontVariation" id="FontVariation_bold"]
+base_font = ExtResource("1_font")
+variation_embolden = 0.5
+
+[sub_resource type="FontVariation" id="FontVariation_heading"]
+base_font = ExtResource("1_font")
+variation_embolden = 0.5
+spacing_glyph = 2
+
+[sub_resource type="StyleBoxFlat" id="Style_panel"]
+bg_color = Color(0.0392157, 0.1215686, 0.0392157, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.1215686, 0.5607843, 0.0470588, 1)
+content_margin_left = 24.0
+content_margin_top = 24.0
+content_margin_right = 24.0
+content_margin_bottom = 24.0
+
+[sub_resource type="StyleBoxFlat" id="Style_row"]
+bg_color = Color(0.0392157, 0.1215686, 0.0392157, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.1215686, 0.5607843, 0.0470588, 1)
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="Style_focus"]
+bg_color = Color(0.0392157, 0.1215686, 0.0392157, 1)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.2235294, 1, 0.0784314, 1)
+content_margin_left = 16.0
+content_margin_top = 8.0
+content_margin_right = 16.0
+content_margin_bottom = 8.0
+
+[sub_resource type="StyleBoxFlat" id="Style_track"]
+bg_color = Color(0.0392157, 0.1215686, 0.0392157, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.1215686, 0.5607843, 0.0470588, 1)
+
+[sub_resource type="StyleBoxFlat" id="Style_fill"]
+bg_color = Color(0.2235294, 1, 0.0784314, 1)
+
+[resource]
+default_font = ExtResource("1_font")
+default_font_size = 28
+HeadingLabel/base_type = &"Label"
+HeadingLabel/colors/font_color = Color(0.5607843, 0.8509804, 0.5411765, 1)
+HeadingLabel/font_sizes/font_size = 40
+HeadingLabel/fonts/font = SubResource("FontVariation_heading")
+DisplayLabel/base_type = &"Label"
+DisplayLabel/colors/font_color = Color(0.2235294, 1, 0.0784314, 1)
+DisplayLabel/font_sizes/font_size = 96
+DisplayLabel/fonts/font = SubResource("FontVariation_heading")
+CaptionLabel/base_type = &"Label"
+CaptionLabel/colors/font_color = Color(0.5607843, 0.8509804, 0.5411765, 1)
+CaptionLabel/font_sizes/font_size = 20
+Button/colors/font_color = Color(0.5607843, 0.8509804, 0.5411765, 1)
+Button/colors/font_focus_color = Color(0.2235294, 1, 0.0784314, 1)
+Button/colors/font_hover_color = Color(0.2235294, 1, 0.0784314, 1)
+Button/colors/font_pressed_color = Color(0.2235294, 1, 0.0784314, 1)
+Button/colors/font_disabled_color = Color(0.1215686, 0.5607843, 0.0470588, 1)
+Button/constants/h_separation = 8
+Button/font_sizes/font_size = 28
+Button/fonts/font = SubResource("FontVariation_bold")
+Button/styles/disabled = SubResource("Style_row")
+Button/styles/focus = SubResource("Style_focus")
+Button/styles/hover = SubResource("Style_row")
+Button/styles/normal = SubResource("Style_row")
+Button/styles/pressed = SubResource("Style_row")
+HBoxContainer/constants/separation = 16
+Label/colors/font_color = Color(0.5607843, 0.8509804, 0.5411765, 1)
+Label/font_sizes/font_size = 28
+MarginContainer/constants/margin_bottom = 32
+MarginContainer/constants/margin_left = 32
+MarginContainer/constants/margin_right = 32
+MarginContainer/constants/margin_top = 32
+Panel/styles/panel = SubResource("Style_panel")
+PanelContainer/styles/panel = SubResource("Style_panel")
+ProgressBar/styles/background = SubResource("Style_track")
+ProgressBar/styles/fill = SubResource("Style_fill")
+VBoxContainer/constants/separation = 16

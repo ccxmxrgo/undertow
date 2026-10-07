@@ -32,6 +32,45 @@ static func make_click_track(bpm: float, seconds: float, rate: int = 0) -> Audio
 	return w
 
 
+## Short hit tick (SFX). pitch 1.0 = 1800 Hz; Good uses a lower pitch. ~45 ms, 16-bit mono.
+static func make_tick(pitch: float = 1.0, rate: int = 0) -> AudioStreamWAV:
+	if rate <= 0:
+		rate = int(AudioServer.get_mix_rate())
+	var n := int(0.045 * rate)
+	var buf := PackedByteArray()
+	buf.resize(n * 2)
+	for i in range(n):
+		var s := sin(TAU * 1800.0 * pitch * i / rate) * exp(-i / (0.008 * rate)) * 0.5
+		buf.encode_s16(i * 2, int(s * 32767.0))
+	return _wav16(buf, rate)
+
+
+## Dull low clunk for a Miss: 90 Hz thump plus a little deterministic noise. ~140 ms.
+static func make_clunk(rate: int = 0) -> AudioStreamWAV:
+	if rate <= 0:
+		rate = int(AudioServer.get_mix_rate())
+	var n := int(0.14 * rate)
+	var buf := PackedByteArray()
+	buf.resize(n * 2)
+	var seed_v := 12345
+	for i in range(n):
+		seed_v = (seed_v * 1103515245 + 12345) & 0x7FFFFFFF
+		var noise := float(seed_v) / float(0x7FFFFFFF) * 2.0 - 1.0
+		var env := exp(-i / (0.035 * rate))
+		var s := (sin(TAU * 90.0 * i / rate) * 0.7 + noise * 0.15) * env * 0.6
+		buf.encode_s16(i * 2, int(s * 32767.0))
+	return _wav16(buf, rate)
+
+
+static func _wav16(buf: PackedByteArray, rate: int) -> AudioStreamWAV:
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = rate
+	w.stereo = false
+	w.data = buf
+	return w
+
+
 ## Kick on every beat plus a bass sine on each bar's first two beats, following a tempo map
 ## ({time, bpm} sorted, 4/4) so a tempo change is audible. 16-bit mono PCM.
 static func make_song(tempo_map: Array, seconds: float, rate: int = 0) -> AudioStreamWAV:
