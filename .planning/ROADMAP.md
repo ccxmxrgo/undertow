@@ -81,7 +81,7 @@ Plans:
 **Goal:** Players can turn a song they own into a playable chart by extracting its instruments. Research comes first: study how to separate stems and how to turn a stem into notes, then build the tool.
 **Mode:** mvp
 **Requirements**: STEM-01, STEM-02, STEM-03, STEM-04, STEM-05
-**Research:** REQUIRED before planning (stem separation models, licensing, runtime/packaging on friends' PCs, onset/pitch-to-lane charting, quality on real songs)
+**Research:** REQUIRED before planning (stem separation models, runtime/packaging on friends' PCs, onset/pitch-to-lane charting, quality on real songs)
 **Success Criteria** (what must be TRUE):
 
   1. A written study compares extraction approaches on real songs and records a chosen approach, with its reasons and trade-offs
