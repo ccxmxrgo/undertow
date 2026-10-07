@@ -15,9 +15,9 @@
 
 ### Calibration & Input
 
-- [ ] **CAL-01**: Player can run a calibration wizard that sets separate audio and visual offsets, saved per machine
-- [ ] **CAL-02**: Player can rebind the 4 lane keys, Fire and Target-cycle on keyboard
-- [ ] **CAL-03**: Player can play with a gamepad
+- [x] **CAL-01**: Player can run a calibration wizard that sets separate audio and visual offsets, saved per machine
+- [x] **CAL-02**: Player can rebind the 4 lane keys, Fire and Target-cycle on keyboard
+- [x] **CAL-03**: Player can play with a gamepad
 - [x] **CAL-04**: Player can adjust scroll speed and music/SFX volume
 
 ### Hull & Scoring
@@ -128,11 +128,11 @@
 | TIME-03 | Phase 1 | Pending |
 | TIME-04 | Phase 1 | Complete |
 | TIME-05 | Phase 1 | Complete |
-| CAL-01 | Phase 1 | Pending |
+| CAL-01 | Phase 1 | Complete |
 | HULL-01 | Phase 1 | Complete |
-| CAL-02 | Phase 1 | Pending |
+| CAL-02 | Phase 1 | Complete |
 | HULL-02 | Phase 1 | Complete |
-| CAL-03 | Phase 1 | Pending |
+| CAL-03 | Phase 1 | Complete |
 | HULL-03 | Phase 1 | Pending |
 | CAL-04 | Phase 1 | Complete |
 | HULL-04 | Phase 1 | Complete |

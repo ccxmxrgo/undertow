@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-10-07T16:40:57.789Z"
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-10-07T16:49:43.460Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 7
-  completed_plans: 3
-  percent: 0
+  completed_plans: 4
+  percent: 57
 ---
 
 # Project State
@@ -26,17 +26,17 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 1 (Timing Core & Calibration) — EXECUTING
-Plan: 3 of 7
+Plan: 5 of 7 (01-04 complete)
 Status: Ready to execute
 Last activity: 2026-10-07
 
-Progress: [..........] 0%
+Progress: [######....] 57%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
+- Total plans completed: 4
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -54,6 +54,7 @@ Progress: [..........] 0%
 | Phase 01 P01 | 15min | 2 tasks | 7 files |
 | Phase 01 P02 | ~40min (tasks 1-4) | 4 tasks | 21 files |
 | Phase 01 P03 | 45min | 3 tasks | 14 files |
+| Phase 01 P04 | 35min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,7 @@ Recent decisions affecting current work:
 - [Phase 01]: [01-01] gdUnit4 6.2.1 runs headless on 4.7.2 only with --ignoreHeadlessMode (in tools/run_tests.ps1)
 - [Phase 01-02]: Conductor schedules play() at song_time -(next_mix+latency)-audio_offset; Settings uses ConfigFile.parse on file text
 - [Phase 01]: 01-03: sustain ticks frame-rate independent; hit score uses pre-hit multiplier; resume restarts audio via play(paused_position) launched early by output delay
+- [Phase 01]: 01-04: Bindings serialize as <action>_key and <action>_pad; invalid or duplicate entries revert that action to default; trigger lanes press at 0.5, release at 0.4
 
 ### Pending Todos
 
@@ -84,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-07T16:40:51.651Z
+Last session: 2026-10-07T16:49:39.391Z
 Stopped at: Phase 1 UI-SPEC approved
 Resume file: None
