@@ -2,6 +2,7 @@
 
 **Phase:** 1
 **Generated:** 2026-10-07
+**Refreshed:** 2026-10-07 after plan 01-02 execution (tasks 1-4)
 
 ## Capability Proven End-to-End
 
@@ -16,12 +17,14 @@ A player launches the Godot project, hears a generated click track, watches note
 | Song clock | `Conductor` Node wrapping pure `ClockModel` RefCounted; `get_playback_position() + get_time_since_last_mix() - cached output latency - audio_offset`, slewed, monotonic (D-05) | Audio clock is truth; math is headless-testable with injected ticks |
 | Input timing | Judge in `_input()`, stamp `Time.get_ticks_usec()` first, map via `song_time_at(ticks)` (D-06) | Removes frame quantization of per-frame song_time |
 | Logic layer | `RefCounted` classes: ClockModel, InputJudge, HullScore, Autoplay, CalibrationMath, BindingStore, ChartData; `JudgeConfig` Resource holds all tunables (D-03, D-08) | Testable with gdUnit4 headless; Phase 2-4 reuse the same API |
-| Data layer | `ConfigFile` at `user://settings.cfg` via `Settings` autoload, validated and clamped on load | No code-exec risk of `.tres`; stands in for "database" |
-| Test framework | gdUnit4 v6.2.1 vendored in `addons/` (fallback GUT 9.x if it fails on 4.7.2) | D-03 |
+| Data layer | `ConfigFile` at `user://settings.cfg` via `Settings` autoload (file text read then `ConfigFile.parse`), type-checked and clamped on load; unparsable file renamed to `.bak` and defaults restored | No code-exec risk of `.tres`; stands in for "database" |
+| Test framework | gdUnit4 v6.2.1 vendored in `addons/`; works on 4.7.2 headless with `--ignoreHeadlessMode` (no GUT fallback needed) | D-03 |
 | Content | Procedural `AudioStreamWAV` click track and synth song, hand-authored `ChartData` (D-27) | Sample-accurate, no licensing |
-| Rendering | Single `_draw()` highway, pure function of song_time (D-25) | Simplest for ~30 visible notes |
+| Rendering | Single `_draw()` highway, pure function of song_time (D-25); lane shapes in `NoteShape`; 700 px/s at 1.0x scroll; moving index cull window | Simplest for ~30 visible notes |
 | Autoloads | `Settings` only (calibration state lives inside it); everything else match-scoped nodes | Per CONTEXT established patterns |
-| "Deployment" | Windows debug export `build/undertow-debug.exe` via `tools/export.ps1`, run on a second PC (D-31) | Early gate for latency and feel |
+| "Deployment" | Windows debug export `build/undertow-debug.exe` (separate .pck, `modify_resources=false`, addons/tests excluded) via `tools/export.ps1`, run on a second PC (D-31) | Early gate for latency and feel |
+| Conductor ordering | `process_priority = -1000` so song_time is fresh before the root's `judge.tick` and the highway redraw | Avoids a one-frame-stale clock |
+| Pre-roll handoff | Audio `play()` fires at song_time `-(time_to_next_mix + cached latency) - audio_offset` so the audible start lands at song_time 0 | Clock continuity at handoff (Pitfall 2) |
 | Directory layout | `src/{core,input,audio,content,ui,autoload}`, `scenes/`, `tests/`, `tools/`, `addons/gdUnit4/` | Matches research recommended structure |
 
 ## Stack Touched in Phase 1
@@ -29,8 +32,8 @@ A player launches the Godot project, hears a generated click track, watches note
 - [x] Project scaffold (Godot project, gdUnit4, `tools/run_tests.ps1`) — plan 01
 - [x] Scene / routing — `scenes/skeleton.tscn` as main scene (menu replaces it in plan 07) — plan 02
 - [x] Data persistence — `settings.cfg` read AND write of audio/visual offset and scroll speed — plan 02
-- [x] UI — highway draw plus judgment text wired to real key presses — plan 02
-- [x] Deployment — Windows debug export runs on a PC without Godot — plan 02
+- [x] UI: highway draw plus judgment text wired to D/F/J/K `_input` presses (audible/visual feel confirmed only at the human checkpoint) - plan 02
+- [ ] Deployment: Windows debug export builds and launches on the dev PC (verified); running on a PC without Godot is PENDING the plan 02 task 5 human checkpoint
 
 ## Out of Scope (Deferred to Later Slices)
 
