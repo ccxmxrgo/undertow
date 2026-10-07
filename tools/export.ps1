@@ -12,6 +12,9 @@ $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 try {
     New-Item -ItemType Directory -Force -Path build | Out-Null
+    # build/ holds playtest evidence (JSON, CSV, PNG). Keep Godot from importing it and the export
+    # from packing it (export_presets.cfg also excludes build/*).
+    if (-not (Test-Path "build/.gdignore")) { New-Item -ItemType File -Path "build/.gdignore" | Out-Null }
     if (-not (Test-Path ".godot")) {
         & $godot --headless --path . --import
     }

@@ -43,6 +43,11 @@ func _ready() -> void:
 	if args.size() > 0:
 		scenario = String(args[0])
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
+	# Evidence must never be imported as resources or packed into an export (01-10 finding).
+	if not FileAccess.file_exists("res://build/.gdignore"):
+		var gi := FileAccess.open("res://build/.gdignore", FileAccess.WRITE)
+		if gi != null:
+			gi.close()
 	_real_settings_existed = FileAccess.file_exists(REAL_SETTINGS)
 	probe = preload("res://tools/playtest/frame_probe.gd").new()
 	add_child(probe)
