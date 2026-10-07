@@ -2,7 +2,7 @@
 phase: 01-timing-core-calibration
 plan: 07
 subsystem: menus-calibration-settings
-status: awaiting-checkpoint
+status: complete
 tags: [godot, gdscript, calibration, settings, rebind, main-menu]
 requires:
   - phase: 01-04
@@ -102,3 +102,7 @@ Status: awaiting-checkpoint. This gate also absorbs the checkpoint deferred from
 ## Self-Check: PASSED
 
 Files and commits b6fdb6b, cb248ac verified present.
+
+## Checkpoint Resolution (Task 3)
+
+Superseded by gap closure 01-08..01-10. An automated real-hardware playtest found 6 gaps (01-HARDWARE-PLAYTEST.md), and all were fixed and re-verified. The user approved the remaining human-only checks on 2026-10-07, as recorded in 01-10-SUMMARY.md.

@@ -181,3 +181,7 @@ Same PC, same session conditions as the original run (240 Hz, WASAPI 48 kHz, lat
 ## Human results
 
 Pending: the plan 01-10 Task 3 checkpoint (human-verify) is awaiting the user's reply.
+
+## Human results
+
+2026-10-07: user approved (feel, gamepad, second PC, output switch). No issues reported.

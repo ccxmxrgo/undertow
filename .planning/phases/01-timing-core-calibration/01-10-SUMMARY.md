@@ -2,7 +2,7 @@
 phase: 01-timing-core-calibration
 plan: 10
 subsystem: playtest-verification
-status: awaiting-checkpoint
+status: complete
 gap_closure: true
 tags: [godot, playtest, hardware, verification, gap-closure]
 requires:
@@ -112,3 +112,7 @@ None.
 ## Self-Check: PASSED
 
 Commits 006ecf0, 801f007 and 1db57ab exist. The files tools/playtest/playtest_driver.gd, tools/playtest/run_all.ps1, export_presets.cfg and 01-HARDWARE-PLAYTEST.md exist and were modified. The evidence files build/playtest/layout.json, a.json, drift.json, drift_before.json and k_01_export_boot_desktop.png are present (build/ is gitignored).
+
+## Human Results (Task 3)
+
+2026-10-07: the user replied "approved" to the hands-on checklist (feel on the dev PC, gamepad, second PC, output switch). No issues were reported. No specific numbers were given (audio offset, second-PC device line).

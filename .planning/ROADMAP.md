@@ -11,7 +11,7 @@ UNDERTOW is built as a series of vertical slices, each playable on its own. Firs
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Timing Core & Calibration** - A solo song on a 4-lane sonar highway that feels tight, with hull, calibration and rebindable input
+- [x] **Phase 1: Timing Core & Calibration** - A solo song on a 4-lane sonar highway that feels tight, with hull, calibration and rebindable input (completed 2026-10-07)
 - [ ] **Phase 2: Chart Import & Songs** - Import Clone Hero charts, browse a song library, and ship bundled starter songs
 - [ ] **Phase 3: Offline Versus** - Torpedoes, five payloads, Return to Sender, elimination, wreck ghosts and results against bot rivals
 - [ ] **Phase 4: Online Play** - Host a lobby, start in sync, and have torpedoes land mid-song across 2-4 PCs
@@ -113,7 +113,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Timing Core & Calibration | 9/10 | In Progress|  |
+| 1. Timing Core & Calibration | 10/10 | Complete   | 2026-10-07 |
 | 2. Chart Import & Songs | 0/TBD | Not started | - |
 | 3. Offline Versus | 0/TBD | Not started | - |
 | 4. Online Play | 0/TBD | Not started | - |
