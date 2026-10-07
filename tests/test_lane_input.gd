@@ -60,14 +60,14 @@ func test_wrong_direction_or_other_axis_ignored() -> void:
 
 
 func test_keyboard_press_release_and_echo() -> void:
-	li.inject(_key(KEY_D, true))
-	li.inject(_key(KEY_D, true, true))
-	li.inject(_key(KEY_D, true))
+	li.inject(_key(KEY_1, true))
+	li.inject(_key(KEY_1, true, true))
+	li.inject(_key(KEY_1, true))
 	assert_int(pressed.size()).is_equal(1)
 	assert_int(pressed[0][0]).is_equal(0)
-	li.inject(_key(KEY_D, false))
+	li.inject(_key(KEY_1, false))
 	assert_int(released.size()).is_equal(1)
-	li.inject(_key(KEY_D, false))
+	li.inject(_key(KEY_1, false))
 	assert_int(released.size()).is_equal(1)
 
 
@@ -81,29 +81,29 @@ func test_button_behaves_like_key() -> void:
 
 
 func test_focus_loss_releases_all_held_lanes() -> void:
-	li.inject(_key(KEY_D, true))
-	li.inject(_key(KEY_K, true))
+	li.inject(_key(KEY_1, true))
+	li.inject(_key(KEY_4, true))
 	li._notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
 	assert_int(released.size()).is_equal(2)
-	li.inject(_key(KEY_D, false))
+	li.inject(_key(KEY_1, false))
 	assert_int(released.size()).is_equal(2)
 
 
 func test_event_carries_tick_captured_in_input() -> void:
 	var before := Time.get_ticks_usec()
-	li.inject(_key(KEY_F, true))
+	li.inject(_key(KEY_2, true))
 	var after := Time.get_ticks_usec()
 	assert_int(pressed[0][1]).is_between(before, after)
 
 
 func test_disabled_ignores_input_and_releases_held() -> void:
-	li.inject(_key(KEY_D, true))
+	li.inject(_key(KEY_1, true))
 	li.enabled = false
 	assert_int(released.size()).is_equal(1)
-	li.inject(_key(KEY_F, true))
+	li.inject(_key(KEY_2, true))
 	assert_int(pressed.size()).is_equal(1)
 	li.enabled = true
-	li.inject(_key(KEY_F, true))
+	li.inject(_key(KEY_2, true))
 	assert_int(pressed.size()).is_equal(2)
 
 
@@ -114,8 +114,8 @@ func test_drives_judge_when_connected() -> void:
 	var hits := [0]
 	judge.judged.connect(func(_l: int, _i: int, _j: int, _e: float) -> void: hits[0] += 1)
 	li.setup(conductor, judge)
-	li.inject(_key(KEY_D, true))
-	li.inject(_key(KEY_D, false))
+	li.inject(_key(KEY_1, true))
+	li.inject(_key(KEY_1, false))
 	# No crash and signals still emitted with a connected (idle) conductor.
 	assert_int(pressed.size()).is_equal(1)
 	assert_int(released.size()).is_equal(1)

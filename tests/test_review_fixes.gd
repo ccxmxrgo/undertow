@@ -75,7 +75,7 @@ func test_key_and_trigger_share_lane_without_releasing_each_other() -> void:
 	li.lane_pressed.connect(func(l: int, _t: int) -> void: pressed.append(l))
 	li.lane_released.connect(func(l: int, _t: int) -> void: released.append(l))
 	var f := InputEventKey.new()
-	f.physical_keycode = KEY_F
+	f.physical_keycode = KEY_2
 	f.pressed = true
 	li.inject(f)  # lane_2 key down
 	var idle := InputEventJoypadMotion.new()
@@ -93,7 +93,7 @@ func test_key_and_trigger_share_lane_without_releasing_each_other() -> void:
 	li.inject(trig)  # trigger released, key still down: still held
 	assert_int(released.size()).is_equal(0)
 	var up := InputEventKey.new()
-	up.physical_keycode = KEY_F
+	up.physical_keycode = KEY_2
 	up.pressed = false
 	li.inject(up)
 	assert_int(released.size()).is_equal(1)

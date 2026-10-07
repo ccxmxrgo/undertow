@@ -40,7 +40,7 @@ func _key(code: int) -> InputEventKey:
 func test_has_all_seven_actions_with_defaults() -> void:
 	var s := _screen()
 	assert_int(s.cells.size()).is_equal(14)
-	assert_bool(s.cells["lane_1:keyboard"].text == "D").is_true()
+	assert_bool(s.cells["lane_1:keyboard"].text == "1").is_true()
 	assert_bool(s.cells["lane_1:gamepad"].text == "LB").is_true()
 	assert_bool(s.cells["fire:keyboard"].text == "Space").is_true()
 
@@ -60,9 +60,9 @@ func test_duplicate_rejected_with_copy_and_unchanged() -> void:
 	var s := _screen()
 	var cell: RebindCell = s.cells["lane_1:keyboard"]
 	cell.begin_listen()
-	cell.handle_event(_key(KEY_F))  # Lane 2 default
-	assert_str(s.message_text(&"lane_1")).is_equal("! F is already used for Lane 2. Pick a different key.")
-	assert_str(cell.text).is_equal("D")
+	cell.handle_event(_key(KEY_2))  # Lane 2 default
+	assert_str(s.message_text(&"lane_1")).is_equal("! 2 is already used for Lane 2. Pick a different key.")
+	assert_str(cell.text).is_equal("1")
 	assert_bool(cell.listening).is_false()
 
 
@@ -72,7 +72,7 @@ func test_tab_rejected() -> void:
 	cell.begin_listen()
 	cell.handle_event(_key(KEY_TAB))
 	assert_str(s.message_text(&"lane_1")).is_equal("! Tab can't be used. It is reserved for menus.")
-	assert_str(cell.text).is_equal("D")
+	assert_str(cell.text).is_equal("1")
 
 
 func test_escape_cancels_without_change() -> void:
@@ -81,7 +81,7 @@ func test_escape_cancels_without_change() -> void:
 	cell.begin_listen()
 	cell.handle_event(_key(KEY_ESCAPE))
 	assert_bool(cell.listening).is_false()
-	assert_str(cell.text).is_equal("F")
+	assert_str(cell.text).is_equal("2")
 	assert_str(s.message_text(&"lane_2")).is_equal("")
 
 
@@ -126,7 +126,7 @@ func test_reset_controls_restores_defaults() -> void:
 	s.request_reset()
 	assert_object(s.dialog).is_not_null()
 	s.dialog.confirmed.emit()
-	assert_str(s.cells["lane_1:keyboard"].text).is_equal("D")
+	assert_str(s.cells["lane_1:keyboard"].text).is_equal("1")
 	assert_object(s.dialog).is_null()
 
 

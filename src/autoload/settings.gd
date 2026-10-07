@@ -10,6 +10,7 @@ const DEFAULT_PATH := "user://settings.cfg"
 const OFFSET_LIMIT := 0.5
 const SCROLL_MIN := 0.5
 const SCROLL_MAX := 3.0
+const WINDOWED_SIZE := Vector2i(1600, 900)
 
 ## Seconds. Positive audio_offset = player taps late, song_time is reduced by it.
 var audio_offset: float = 0.0
@@ -25,6 +26,10 @@ var calibration_done: bool = false
 var early_late_indicator: bool = true
 var no_fail: bool = false
 var reduce_motion: bool = false
+## D-06: borderless fullscreen by default; F11 toggles. Persisted in [display].
+var fullscreen: bool = true
+## Plan 03 consumes this: turns off vignette, scanlines and edge readouts.
+var low_effects: bool = false
 ## Linear 0-1 volumes for the Master/Music/SFX buses.
 var volume_master: float = 1.0
 var volume_music: float = 0.8
@@ -50,6 +55,8 @@ func reset_defaults() -> void:
 	early_late_indicator = true
 	no_fail = false
 	reduce_motion = false
+	fullscreen = true
+	low_effects = false
 	volume_master = 1.0
 	volume_music = 0.8
 	volume_sfx = 0.8
@@ -74,6 +81,38 @@ func save_calibration(p_audio: float, p_visual: float) -> void:
 	calibration_done = true
 	save_to(save_path)
 	settings_changed.emit()
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		var k := event as InputEventKey
+		if k.pressed and not k.echo and k.keycode == KEY_F11:
+			set_fullscreen(not fullscreen)
+			if is_inside_tree() and get_viewport() != null:
+				get_viewport().set_input_as_handled()
+
+
+func set_fullscreen(v: bool) -> void:
+	fullscreen = v
+	apply_window()
+	save_to(save_path)
+	settings_changed.emit()
+
+
+## Borderless fullscreen or a centered 1600x900 window. No-op headless (tests).
+func apply_window() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	if fullscreen:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		return
+	# Pitfall 4: set the mode first; a size set while fullscreen is discarded.
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	DisplayServer.window_set_size(WINDOWED_SIZE)
+	var scr := DisplayServer.window_get_current_screen()
+	var pos := DisplayServer.screen_get_position(scr)
+	var sz := DisplayServer.screen_get_size(scr)
+	DisplayServer.window_set_position(pos + (sz - WINDOWED_SIZE) / 2)
 
 
 func set_scroll_speed(v: float) -> void:
@@ -129,6 +168,8 @@ func save_to(path: String = DEFAULT_PATH) -> int:
 	cfg.set_value("gameplay", "early_late_indicator", early_late_indicator)
 	cfg.set_value("gameplay", "no_fail", no_fail)
 	cfg.set_value("gameplay", "reduce_motion", reduce_motion)
+	cfg.set_value("display", "fullscreen", fullscreen)
+	cfg.set_value("display", "low_effects", low_effects)
 	cfg.set_value("audio", "master", volume_master)
 	cfg.set_value("audio", "music", volume_music)
 	cfg.set_value("audio", "sfx", volume_sfx)
@@ -149,6 +190,7 @@ func save_to(path: String = DEFAULT_PATH) -> int:
 func load_from(path: String = DEFAULT_PATH) -> void:
 	reset_defaults()
 	if not FileAccess.file_exists(path):
+		apply_window()
 		apply_audio()
 		settings_changed.emit()
 		return
@@ -158,6 +200,7 @@ func load_from(path: String = DEFAULT_PATH) -> void:
 	if err != OK:
 		_back_up_bad_file(path)
 		reset_defaults()
+		apply_window()
 		apply_audio()
 		settings_changed.emit()
 		return
@@ -167,6 +210,8 @@ func load_from(path: String = DEFAULT_PATH) -> void:
 	early_late_indicator = _bool(cfg, "gameplay", "early_late_indicator", true)
 	no_fail = _bool(cfg, "gameplay", "no_fail", false)
 	reduce_motion = _bool(cfg, "gameplay", "reduce_motion", false)
+	fullscreen = _bool(cfg, "display", "fullscreen", true)
+	low_effects = _bool(cfg, "display", "low_effects", false)
 	volume_master = _num(cfg, "audio", "master", 1.0, 0.0, 1.0)
 	volume_music = _num(cfg, "audio", "music", 0.8, 0.0, 1.0)
 	volume_sfx = _num(cfg, "audio", "sfx", 0.8, 0.0, 1.0)
@@ -176,6 +221,7 @@ func load_from(path: String = DEFAULT_PATH) -> void:
 	var sig: Variant = cfg.get_value("calibration", "output_signature", "")
 	output_device_signature = sig.left(512) if typeof(sig) == TYPE_STRING else ""
 	calibration_done = _bool(cfg, "calibration", "done", false)
+	apply_window()
 	apply_audio()
 	settings_changed.emit()
 

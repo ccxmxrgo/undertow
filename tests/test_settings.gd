@@ -206,3 +206,59 @@ output_device=[1,2]
 	assert_str(s.output_device_name).is_empty()
 	assert_bool(s.device_changed()).is_false()
 
+
+
+func test_display_defaults() -> void:
+	var s := _settings()
+	assert_bool(s.fullscreen).is_true()
+	assert_bool(s.low_effects).is_false()
+
+
+func test_display_wrong_types_fall_back() -> void:
+	_write("[display]\nfullscreen=\"yes\"\nlow_effects=5\n")
+	var s := _settings()
+	s.load_from(PATH)
+	assert_bool(s.fullscreen).is_true()
+	assert_bool(s.low_effects).is_false()
+
+
+func test_set_fullscreen_persists_and_emits() -> void:
+	var s := _settings()
+	var count := [0]
+	s.settings_changed.connect(func() -> void: count[0] += 1)
+	s.set_fullscreen(false)
+	assert_bool(s.fullscreen).is_false()
+	assert_int(count[0]).is_equal(1)
+	var s2 := _settings()
+	s2.load_from(PATH)
+	assert_bool(s2.fullscreen).is_false()
+	s.apply_window()  # headless no-op, must not error
+
+
+func _f11(pressed: bool, echo: bool, key: Key = KEY_F11) -> InputEventKey:
+	var ev := InputEventKey.new()
+	ev.keycode = key
+	ev.pressed = pressed
+	ev.echo = echo
+	return ev
+
+
+func test_f11_toggles_fullscreen() -> void:
+	var s := _settings()
+	s._input(_f11(true, false))
+	assert_bool(s.fullscreen).is_false()
+	s._input(_f11(true, true))
+	assert_bool(s.fullscreen).is_false()
+	s._input(_f11(true, false, KEY_F10))
+	assert_bool(s.fullscreen).is_false()
+	s._input(_f11(true, false))
+	assert_bool(s.fullscreen).is_true()
+
+
+func test_reset_defaults_restores_display() -> void:
+	var s := _settings()
+	s.fullscreen = false
+	s.low_effects = true
+	s.reset_defaults()
+	assert_bool(s.fullscreen).is_true()
+	assert_bool(s.low_effects).is_false()

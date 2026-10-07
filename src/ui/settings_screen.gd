@@ -27,6 +27,8 @@ var sfx_slider: StepSlider
 var early_late_button: Button
 var no_fail_button: Button
 var reduce_motion_button: Button
+var fullscreen_button: Button
+var low_effects_button: Button
 var reset_button: Button
 var recalibrate_button: Button
 var dialog: ConfirmDialog
@@ -71,6 +73,7 @@ func _build() -> void:
 	root.add_child(_heading("SETTINGS"))
 	_build_controls(root)
 	_build_gameplay(root)
+	_build_display(root)
 	_build_audio(root)
 	_build_calibration(root)
 
@@ -85,6 +88,12 @@ func _build() -> void:
 	_sample_player.stream = AudioSynth.make_tick(1.0)
 	add_child(_sample_player)
 	_refresh_all()
+	Settings.settings_changed.connect(_refresh_all)
+
+
+func _exit_tree() -> void:
+	if Settings.settings_changed.is_connected(_refresh_all):
+		Settings.settings_changed.disconnect(_refresh_all)
 
 
 func _heading(text: String) -> Label:
@@ -151,6 +160,24 @@ func _build_gameplay(root: VBoxContainer) -> void:
 		Settings.no_fail = not Settings.no_fail)
 	reduce_motion_button = _toggle_row(root, "Reduce screen shake", func() -> void:
 		Settings.reduce_motion = not Settings.reduce_motion)
+
+
+func _build_display(root: VBoxContainer) -> void:
+	root.add_child(_heading("DISPLAY"))
+	fullscreen_button = _toggle_row(root, "Fullscreen", func() -> void:
+		Settings.set_fullscreen(not Settings.fullscreen))
+	root.add_child(_hint("F11 toggles fullscreen at any time."))
+	low_effects_button = _toggle_row(root, "Low effects", func() -> void:
+		Settings.low_effects = not Settings.low_effects)
+	root.add_child(_hint("Turns off the visor vignette, scanlines and edge readouts."))
+
+
+func _hint(text: String) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 20)
+	l.modulate = Color(1, 1, 1, 0.7)
+	return l
 
 
 func _build_audio(root: VBoxContainer) -> void:
@@ -236,6 +263,8 @@ func _refresh_all() -> void:
 	early_late_button.text = _on_off(Settings.early_late_indicator)
 	no_fail_button.text = _on_off(Settings.no_fail)
 	reduce_motion_button.text = _on_off(Settings.reduce_motion)
+	fullscreen_button.text = _on_off(Settings.fullscreen)
+	low_effects_button.text = _on_off(Settings.low_effects)
 	_offsets_label.text = "Audio offset: %+d ms    Visual offset: %+d ms" % [
 		roundi(Settings.audio_offset * 1000.0), roundi(Settings.visual_offset * 1000.0)]
 	for c in cells.values():

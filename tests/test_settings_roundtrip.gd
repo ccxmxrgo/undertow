@@ -82,3 +82,14 @@ func test_click_chart_has_16_notes_cycling_lanes_at_beat_times() -> void:
 		assert_int(c.notes[i]["lane"]).is_equal(i % 4)
 		assert_float(c.notes[i]["time"]).is_equal_approx(i * 0.5, 1e-9)
 	assert_object(c.audio_stream).is_not_null()
+
+
+func test_roundtrip_display_flags() -> void:
+	var a: Node = auto_free(SettingsScript.new())
+	a.fullscreen = false
+	a.low_effects = true
+	assert_int(a.save_to(PATH)).is_equal(OK)
+	var b: Node = auto_free(SettingsScript.new())
+	b.load_from(PATH)
+	assert_bool(b.fullscreen).is_false()
+	assert_bool(b.low_effects).is_true()
