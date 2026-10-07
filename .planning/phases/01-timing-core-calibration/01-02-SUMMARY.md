@@ -51,7 +51,7 @@ key-decisions:
 requirements-completed: []
 duration: ~40min
 completed: 2026-10-07
-status: awaiting-checkpoint
+status: complete
 ---
 
 # Phase 1 Plan 02: Walking Skeleton Summary
@@ -116,3 +116,7 @@ See the checkpoint message returned with this plan. Results (dev PC feel, second
 ## Self-Check: PASSED
 
 All created files exist and commits 3de5808, 510fd76, c788e37, 38946b3, 482b024, 587d013 verified in git log.
+
+## Checkpoint Resolution (Task 5)
+
+Auto-approved by the orchestrator under `--auto` (human-verify policy) on 2026-10-07. The hands-on checks (dev-PC feel, second-PC export run, clock-smoothness graph) were NOT performed yet; they are deferred to and must be covered by the final real-hardware human gate in plan 01-07. TIME-01..03 real-audio evidence remains pending until that gate.
