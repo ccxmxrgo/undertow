@@ -171,6 +171,11 @@ func _build_calibration(root: VBoxContainer) -> void:
 	# A scene change would tear down the paused run, so the overlay never offers it.
 	recalibrate_button.disabled = overlay
 	root.add_child(recalibrate_button)
+	var note := Label.new()
+	note.text = "Switched headphones or speakers? Calibrate Sonar again."
+	note.theme_type_variation = &"CaptionLabel"
+	note.add_theme_color_override("font_color", Palette.TEXT)
+	root.add_child(note)
 
 
 func _volume_row(root: VBoxContainer, title: String, bus: String, start: float, sample: bool) -> StepSlider:

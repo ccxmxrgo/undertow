@@ -142,3 +142,67 @@ func test_settings_changed_signal() -> void:
 	s.settings_changed.connect(func() -> void: count[0] += 1)
 	s.set_scroll_speed(2.0)
 	assert_int(count[0]).is_greater_equal(1)
+
+
+# --- device signature (01-09) ---------------------------------------------------------------------
+
+var _dev: Dictionary = {}
+
+
+func _with_device(s: Node) -> void:
+	_dev = {"configured": "Default", "devices": PackedStringArray(["Default", "Speakers"]),
+		"mix_rate": 48000, "latency_s": 0.01}
+	s.device_info = AudioDeviceInfo.new(func() -> Dictionary: return _dev.duplicate())
+
+
+func test_device_unchanged_on_same_hardware() -> void:
+	var s := _settings()
+	_with_device(s)
+	s.save_calibration(0.02, 0.0)
+	assert_bool(s.device_changed()).is_false()
+	var s2 := _settings()
+	_with_device(s2)
+	s2.load_from(PATH)
+	assert_bool(s2.device_changed()).is_false()
+	assert_str(s2.output_device_signature).is_equal(s.output_device_signature)
+
+
+func test_device_changed_on_endpoint_mix_rate_latency() -> void:
+	var s := _settings()
+	_with_device(s)
+	s.save_calibration(0.02, 0.0)
+	_dev["latency_s"] = 0.0123
+	assert_bool(s.device_changed()).is_false()
+	_dev["devices"] = PackedStringArray(["Default", "Speakers", "USB DAC"])
+	assert_bool(s.device_changed()).is_true()
+	_dev["devices"] = PackedStringArray(["Default", "Speakers"])
+	_dev["mix_rate"] = 44100
+	assert_bool(s.device_changed()).is_true()
+
+
+func test_legacy_file_without_signature_never_prompts() -> void:
+	_write("[calibration]
+audio_offset=0.02
+done=true
+output_device=\"Old\"
+")
+	var s := _settings()
+	_with_device(s)
+	s.load_from(PATH)
+	assert_bool(s.calibration_done).is_true()
+	assert_bool(s.device_changed()).is_false()
+
+
+func test_tampered_signature_is_sanitised() -> void:
+	_write("[calibration]
+done=true
+output_signature=42
+output_device=[1,2]
+")
+	var s := _settings()
+	_with_device(s)
+	s.load_from(PATH)
+	assert_str(s.output_device_signature).is_empty()
+	assert_str(s.output_device_name).is_empty()
+	assert_bool(s.device_changed()).is_false()
+

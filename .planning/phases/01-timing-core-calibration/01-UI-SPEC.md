@@ -240,6 +240,9 @@ Diegetic sonar/submarine language per PROJECT.md. Sentence-case body, UPPERCASE 
 | Empty state heading (no saved calibration) | "SONAR NOT CALIBRATED" |
 | Empty state body | "Timing may feel off until you calibrate. Choose Calibrate Sonar to fix it." |
 | Empty state (no bound key, cell shows) | "UNBOUND" (Body, `#8FD98A`, 2px `#1F8F0C` border) |
+| Recalibration reminder (wizard info panel, Settings under Re-run Calibration) | "Switched headphones or speakers? Calibrate Sonar again." Label size, secondary text `#8FD98A`, non-blocking (added by gap closure 01-09) |
+| Output device readout under the Windows "Default" alias | "Output device: System default" (added by gap closure 01-09) |
+| Re-run calibration saved-offset caption | "Previously saved: +41 MS" Label size, secondary text, shown only when calibration is done (added by gap closure 01-09) |
 | Output device changed prompt | "Output device changed. Calibrate Sonar again for accurate timing." Buttons: "Calibrate Sonar" (initial focus), "Skip for now" |
 | Error: Bluetooth warning | "Bluetooth audio detected. It adds delay that varies. Use wired headphones or speakers for the best timing." |
 | Error: too few taps recorded | "Not enough taps recorded. Tap along to all the pings and try again." |

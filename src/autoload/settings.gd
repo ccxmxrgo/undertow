@@ -16,6 +16,10 @@ var audio_offset: float = 0.0
 var visual_offset: float = 0.0
 var scroll_speed: float = 1.0
 var output_device_name: String = ""
+## Device-list/mix-rate/latency signature saved with the calibration (see AudioDeviceInfo).
+var output_device_signature: String = ""
+## Godot-only device snapshot; tests inject a fake provider.
+var device_info := AudioDeviceInfo.new()
 ## True once the player has completed (saved) the calibration wizard.
 var calibration_done: bool = false
 var early_late_indicator: bool = true
@@ -41,6 +45,7 @@ func reset_defaults() -> void:
 	visual_offset = 0.0
 	scroll_speed = 1.0
 	output_device_name = ""
+	output_device_signature = ""
 	calibration_done = false
 	early_late_indicator = true
 	no_fail = false
@@ -51,17 +56,21 @@ func reset_defaults() -> void:
 	bindings.reset_defaults()
 
 
-## True when the player calibrated on a different output device than the one in use now (T-06-01:
-## the saved name is plain data, only ever compared against AudioServer.output_device).
+## True when the audio setup differs from the one calibrated on (plug/unplug, mix rate, latency).
+## A plain Windows default-output switch is NOT detectable (Godot limitation, see AudioDeviceInfo).
+## T-06-01 / T-09-03: stored values are plain data compared only to live snapshot values.
+## Legacy files without a signature never prompt.
 func device_changed() -> bool:
-	return calibration_done and output_device_name != AudioServer.output_device
+	return calibration_done and device_info.changed_since(output_device_signature)
 
 
 ## Persists the wizard result. Offsets are clamped to +-0.5 s (T-06-03).
 func save_calibration(p_audio: float, p_visual: float) -> void:
 	audio_offset = CalibrationMath.clamp_offset(p_audio if is_finite(p_audio) else 0.0)
 	visual_offset = CalibrationMath.visual_offset_clamp(p_visual if is_finite(p_visual) else 0.0)
-	output_device_name = AudioServer.output_device
+	var snap := device_info.snapshot()
+	output_device_name = snap.configured
+	output_device_signature = snap.signature
 	calibration_done = true
 	save_to(save_path)
 	settings_changed.emit()
@@ -114,6 +123,7 @@ func save_to(path: String = DEFAULT_PATH) -> int:
 	cfg.set_value("calibration", "audio_offset", audio_offset)
 	cfg.set_value("calibration", "visual_offset", visual_offset)
 	cfg.set_value("calibration", "output_device", output_device_name)
+	cfg.set_value("calibration", "output_signature", output_device_signature)
 	cfg.set_value("calibration", "done", calibration_done)
 	cfg.set_value("gameplay", "scroll_speed", scroll_speed)
 	cfg.set_value("gameplay", "early_late_indicator", early_late_indicator)
@@ -152,7 +162,9 @@ func load_from(path: String = DEFAULT_PATH) -> void:
 	volume_sfx = _num(cfg, "audio", "sfx", 0.8, 0.0, 1.0)
 	bindings.from_config(cfg)
 	var dev: Variant = cfg.get_value("calibration", "output_device", "")
-	output_device_name = dev if typeof(dev) == TYPE_STRING else ""
+	output_device_name = dev.left(512) if typeof(dev) == TYPE_STRING else ""
+	var sig: Variant = cfg.get_value("calibration", "output_signature", "")
+	output_device_signature = sig.left(512) if typeof(sig) == TYPE_STRING else ""
 	calibration_done = _bool(cfg, "calibration", "done", false)
 	apply_audio()
 	settings_changed.emit()

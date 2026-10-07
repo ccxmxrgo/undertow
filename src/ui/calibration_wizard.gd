@@ -19,6 +19,7 @@ const STAGE_SIZE := Vector2(640.0, 440.0)
 const WARNING_COPY := "Bluetooth audio detected. It adds delay that varies. Use wired headphones or speakers for the best timing."
 const INTRO_COPY := "Your speakers and screen add delay. We will measure it so your hits line up. Tap along to the pings. Takes about one minute."
 const FEW_TAPS_COPY := "Not enough taps recorded. Tap along to all the pings and try again."
+const RECAL_NOTE := "Switched headphones or speakers? Calibrate Sonar again."
 const LARGE_COPY := "That offset looks unusually large. Check your audio output and retry."
 
 var navigate: Callable = Callable()
@@ -45,6 +46,8 @@ var result_label: Label
 var caption_label: Label
 var counter_label: Label
 var tap_feedback_label: Label
+var previous_label: Label
+var note_label: Label
 
 var _step_label: Label
 var _info_label: Label
@@ -88,6 +91,11 @@ func _build_frame() -> void:
 	_info_label = Label.new()
 	_info_label.theme_type_variation = &"CaptionLabel"
 	root.add_child(_info_label)
+	note_label = Label.new()
+	note_label.text = RECAL_NOTE
+	note_label.theme_type_variation = &"CaptionLabel"
+	note_label.add_theme_color_override("font_color", Palette.TEXT)
+	root.add_child(note_label)
 	_bt_panel = _build_warning()
 	root.add_child(_bt_panel)
 	_content = VBoxContainer.new()
@@ -97,6 +105,7 @@ func _build_frame() -> void:
 	skip_button = Button.new()
 	skip_button.text = "Skip for now"
 	skip_button.custom_minimum_size = Vector2(280.0, 48.0)
+	skip_button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	skip_button.pressed.connect(skip)
 	root.add_child(skip_button)
 	refresh_info()
@@ -124,12 +133,15 @@ func _build_warning() -> PanelContainer:
 
 ## Latency / buffer / device readout and the (non-blocking) Bluetooth heuristic.
 func refresh_info() -> void:
-	_device_name = AudioServer.output_device
+	var snap := Settings.device_info.snapshot()
+	_device_name = snap.display
 	var latency_ms := AudioServer.get_output_latency() * 1000.0
 	var buffer_ms := float(ProjectSettings.get_setting("audio/driver/output_latency", 15))
-	_info_label.text = "Output latency: %d ms\nBuffer: %d ms\nOutput device: %s" % [
+	_info_label.text = "Output latency: %d ms
+Buffer: %d ms
+Output device: %s" % [
 		roundi(latency_ms), roundi(buffer_ms), _device_name]
-	_bt_panel.visible = DeviceHeuristics.is_bluetooth_name(_device_name)
+	_bt_panel.visible = snap.is_bluetooth
 
 
 func bluetooth_warning_visible() -> bool:
@@ -151,6 +163,7 @@ func _clear_content() -> void:
 	caption_label = null
 	counter_label = null
 	tap_feedback_label = null
+	previous_label = null
 
 
 func _heading(text: String) -> Label:
@@ -172,6 +185,7 @@ func _button(text: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.custom_minimum_size = Vector2(320.0, 56.0)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	b.pressed.connect(cb)
 	return b
 
@@ -234,6 +248,10 @@ func _build_audio_step() -> void:
 	_content.add_child(_stage)
 	_content.add_child(tap_feedback_label)
 	_content.add_child(result_label)
+	previous_label = Label.new()
+	previous_label.theme_type_variation = &"CaptionLabel"
+	previous_label.add_theme_color_override("font_color", Palette.TEXT)
+	_content.add_child(previous_label)
 	_content.add_child(status_label)
 	var row := HBoxContainer.new()
 	accept_button = _button("Accept Offset", accept_audio)
@@ -302,6 +320,7 @@ func begin_audio_test() -> void:
 	if status_label != null:
 		status_label.text = ""
 		result_label.text = ""
+		previous_label.text = ""
 		tap_feedback_label.text = ""
 		accept_button.visible = false
 		retry_button.visible = false
@@ -358,10 +377,13 @@ func evaluate_audio() -> void:
 	retry_button.visible = true
 	if is_nan(audio_result):
 		result_label.text = ""
+		previous_label.text = ""
 		status_label.text = FEW_TAPS_COPY
 	else:
 		audio_result = CalibrationMath.clamp_offset(audio_result)
 		result_label.text = format_ms(audio_result)
+		# Gap 5: the result is the ABSOLUTE offset (what Accept stores); show the saved one beside it.
+		previous_label.text = ("Previously saved: %s" % format_ms(Settings.audio_offset)) 			if Settings.calibration_done else ""
 		status_label.text = LARGE_COPY if CalibrationMath.is_suspicious(audio_result) else ""
 		accept_button.visible = true
 	(accept_button if accept_button.visible else retry_button).grab_focus()

@@ -167,7 +167,7 @@ func test_calibrated_boot_stays_on_menu_without_prompt() -> void:
 
 func test_device_change_shows_prompt_with_focus_and_skip() -> void:
 	Settings.save_calibration(0.02, 0.0)
-	Settings.output_device_name = "Some Other Device"
+	Settings.output_device_signature = "stale|signature"
 	assert_bool(Settings.device_changed()).is_true()
 	var m := _menu()
 	await get_tree().process_frame
@@ -191,7 +191,69 @@ func test_menu_start_and_autoplay_set_launch_params() -> void:
 	assert_str(m.autoplay_button.text).is_equal("Autoplay Dive (test)")
 
 
+func _fake_info(configured: String) -> AudioDeviceInfo:
+	return AudioDeviceInfo.new(func() -> Dictionary:
+		return {"configured": configured, "devices": PackedStringArray(["Default", configured]),
+			"mix_rate": 48000, "latency_s": 0.01})
+
+
 func test_bluetooth_warning_follows_device_name() -> void:
+	var old := Settings.device_info
+	Settings.device_info = _fake_info("AirPods Pro")
 	var w := _wizard()
-	assert_bool(w.bluetooth_warning_visible()).is_equal(
-		DeviceHeuristics.is_bluetooth_name(AudioServer.output_device))
+	assert_bool(w.bluetooth_warning_visible()).is_true()
+	Settings.device_info = _fake_info("Default")
+	w.refresh_info()
+	assert_bool(w.bluetooth_warning_visible()).is_false()
+	Settings.device_info = old
+
+
+func test_readout_says_system_default_under_alias_and_note_shown() -> void:
+	var old := Settings.device_info
+	Settings.device_info = _fake_info("Default")
+	var w := _wizard()
+	assert_str(w._info_label.text).contains("Output device: System default")
+	assert_str(w.note_label.text).is_equal("Switched headphones or speakers? Calibrate Sonar again.")
+	Settings.device_info = old
+
+
+func test_rerun_shows_absolute_offset_and_previous_caption() -> void:
+	Settings.audio_offset = 0.041
+	Settings.calibration_done = true
+	var w := _wizard()
+	_to_audio(w)
+	for c in w.click_times():
+		w.record_tap(float(c) + 0.041 - 0.041)  # conductor domain: applied offset subtracted
+	w.evaluate_audio()
+	assert_float(w.audio_result).is_equal_approx(0.041, 0.002)
+	assert_str(w.result_label.text).is_equal("+41 MS")
+	assert_str(w.previous_label.text).contains("+41 MS")
+	assert_str(w.previous_label.text).contains("Previously saved")
+
+
+func test_no_previous_caption_when_not_calibrated() -> void:
+	Settings.calibration_done = false
+	var w := _wizard()
+	_to_audio(w)
+	for c in w.click_times():
+		w.record_tap(float(c) + 0.03)
+	w.evaluate_audio()
+	assert_str(w.previous_label.text).is_empty()
+
+
+func test_buttons_are_not_window_wide() -> void:
+	var w := _wizard()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	for b in [w.begin_button, w.skip_button]:
+		assert_float(b.size.x).is_between(280.0, 480.0)
+	_to_audio(w)
+	w.evaluate_audio()
+	w.retry_button.visible = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert_float(w.retry_button.size.x).is_between(280.0, 480.0)
+	w.show_step(CalibrationWizard.Step.SUMMARY)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert_float(w.save_button.size.x).is_between(280.0, 480.0)
