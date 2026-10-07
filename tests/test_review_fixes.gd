@@ -130,3 +130,19 @@ func test_fail_screen_buttons_inert_until_faded_in() -> void:
 	assert_bool(f.retry_button.disabled).is_false()
 	assert_bool(f.menu_button.disabled).is_false()
 	assert_bool(f.retry_button.has_focus()).is_true()
+
+
+func test_settings_save_is_atomic_and_overwrites_existing_file() -> void:
+	var path := "user://test_review_atomic.cfg"
+	var s: Node = auto_free(preload("res://src/autoload/settings.gd").new())
+	s.audio_offset = 0.01
+	assert_int(s.save_to(path)).is_equal(OK)
+	s.audio_offset = 0.02
+	assert_int(s.save_to(path)).is_equal(OK)  # second save replaces the existing file
+	assert_bool(FileAccess.file_exists(path + ".tmp")).is_false()
+	var cfg := ConfigFile.new()
+	assert_int(cfg.load(path)).is_equal(OK)
+	assert_float(float(cfg.get_value("calibration", "audio_offset"))).is_equal_approx(0.02, 1e-9)
+	# Unwritable target directory reports an error instead of silently succeeding.
+	assert_int(s.save_to("user://no_such_dir_review/x.cfg")).is_not_equal(OK)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))

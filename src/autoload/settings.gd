@@ -133,7 +133,17 @@ func save_to(path: String = DEFAULT_PATH) -> int:
 	cfg.set_value("audio", "music", volume_music)
 	cfg.set_value("audio", "sfx", volume_sfx)
 	bindings.to_config(cfg)
-	return cfg.save(path)
+	# Atomic save (WR-08): write a temp file, then rename over the target, so a crash mid-write
+	# cannot leave a truncated settings file.
+	var tmp := path + ".tmp"
+	var err := cfg.save(tmp)
+	if err == OK:
+		err = DirAccess.rename_absolute(tmp, path)
+	if err != OK:
+		push_warning("Settings: could not save %s (error %d)" % [path, err])
+		if FileAccess.file_exists(tmp):
+			DirAccess.remove_absolute(tmp)
+	return err
 
 
 func load_from(path: String = DEFAULT_PATH) -> void:
