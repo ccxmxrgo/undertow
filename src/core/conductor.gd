@@ -22,6 +22,9 @@ var _play_at: float = 0.0
 var _audio_valid: bool = false
 var _start_pos: float = 0.0  # stream position the current/next audio start plays from
 ## {time, bpm} entries (sorted); lets resume() compute the countdown from the chart BPM.
+## When finite, used instead of Settings.audio_offset (calibration wizard applies the pending
+## value so the visual step is measured against the offset that will be saved).
+var offset_override: float = NAN
 var tempo_map: Array[Dictionary] = []
 var _resume_pending: bool = false
 var _deferred_start: bool = false  # resumed from a negative (pre-roll) position: audio starts later
@@ -55,7 +58,7 @@ func _start(start_pos: float, lead_in_s: float) -> void:
 	clock.begin_preroll(now, lead_in_s, start_pos)
 	var time_delay := AudioServer.get_time_to_next_mix() + _latency_cache
 	# Heard position p maps to song_time p - audio_offset, so start must be heard at -audio_offset.
-	_play_at = start_pos - time_delay - Settings.audio_offset
+	_play_at = start_pos - time_delay - audio_offset()
 	_playing_requested = false
 	_audio_valid = false
 	_resume_pending = false
@@ -92,7 +95,7 @@ func resume(beats: int = 3) -> void:
 	_start_pos = maxf(paused_pos, 0.0)
 	_deferred_start = paused_pos < 0.0
 	if _deferred_start:
-		_play_at = -(AudioServer.get_time_to_next_mix() + _latency_cache) - Settings.audio_offset
+		_play_at = -(AudioServer.get_time_to_next_mix() + _latency_cache) - audio_offset()
 	_cd_beats = beats
 	_cd_spb = 60.0 / bpm_at(paused_pos)
 	_cd_start_ticks = now
@@ -100,6 +103,10 @@ func resume(beats: int = 3) -> void:
 	clock.resume(now, beats * _cd_spb)
 	_resume_pending = true
 	_emit_countdown_ticks(now)
+
+
+func audio_offset() -> float:
+	return Settings.audio_offset if is_nan(offset_override) else offset_override
 
 
 func is_paused() -> bool:
@@ -153,7 +160,7 @@ func _process(_delta: float) -> void:
 	_refresh_latency_if_due(now)
 	if _resume_pending:
 		_emit_countdown_ticks(now)
-		var lead_ticks := int((AudioServer.get_time_to_next_mix() + _latency_cache + Settings.audio_offset) * 1000000.0)
+		var lead_ticks := int((AudioServer.get_time_to_next_mix() + _latency_cache + audio_offset()) * 1000000.0)
 		if not _deferred_start and not _playing_requested and now >= clock.resume_ticks() - lead_ticks:
 			_start_audio()
 	elif _preroll and not _playing_requested and clock.song_time() >= _play_at:
@@ -161,7 +168,7 @@ func _process(_delta: float) -> void:
 	_audio_valid = _playing_requested and _player.playing and _player.get_playback_position() > _start_pos
 	var target := 0.0
 	if _audio_valid:
-		target = _player.get_playback_position() + AudioServer.get_time_since_last_mix() 			- _latency_cache - Settings.audio_offset
+		target = _player.get_playback_position() + AudioServer.get_time_since_last_mix() 			- _latency_cache - audio_offset()
 	clock.update(now, target, _audio_valid)
 	if _resume_pending and not clock.is_paused():
 		_resume_pending = false

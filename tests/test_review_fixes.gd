@@ -35,3 +35,16 @@ func test_clock_slews_instead_of_freezing_when_audio_is_behind() -> void:
 		advanced += st - prev
 		prev = st
 	assert_float(advanced).is_equal_approx(0.5, 0.02)
+
+
+func test_wizard_visual_step_uses_pending_audio_offset() -> void:
+	var w: CalibrationWizard = (load("res://scenes/calibration.tscn") as PackedScene).instantiate()
+	add_child(w)
+	auto_free(w)
+	Settings.audio_offset = 0.0
+	w.pending_audio = 0.05
+	w.show_step(CalibrationWizard.Step.VISUAL)
+	assert_float(w.conductor.audio_offset()).is_equal_approx(0.05, 1e-9)
+	w.show_step(CalibrationWizard.Step.AUDIO)
+	assert_float(w.conductor.audio_offset()).is_equal(Settings.audio_offset)
+	await get_tree().process_frame  # let queue_free'd step content go before orphan accounting

@@ -195,6 +195,7 @@ func _button(text: String, cb: Callable) -> Button:
 
 func show_step(s: int) -> void:
 	conductor.stop()
+	conductor.offset_override = NAN
 	step = s
 	_clear_content()
 	audio_phase = AudioPhase.IDLE
@@ -282,6 +283,8 @@ func _build_visual_step() -> void:
 	row.add_child(retry_button)
 	_content.add_child(row)
 	_on_visual_changed(visual_slider.value)
+	# WR-02: measure against the audio offset that is about to be saved, not the old one.
+	conductor.offset_override = pending_audio
 	_start_loop()
 	visual_slider.grab_focus()
 
