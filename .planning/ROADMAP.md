@@ -53,7 +53,7 @@ UNDERTOW is built as a series of vertical slices, each playable on its own. Firs
 
 **UI hint**: yes
 **Depends on:** Phase 1
-**Plans:** 0 plans
+**Plans:** 1/5 plans executed
 
 Plans:
 
@@ -89,6 +89,7 @@ Plans:
   3. Player can chart ONE chosen instrument across the 4 lanes, or use INSTRUMENT LANES mode where each lane is a different instrument
   4. Generated charts are synced to the original song and saved into the song library like any other song
   5. The tool runs on the player's own PC without a paid service, and reports progress and failures clearly
+
 **Depends on:** Phase 2
 **Plans:** 0 plans
 

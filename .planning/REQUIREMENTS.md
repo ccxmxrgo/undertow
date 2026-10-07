@@ -46,13 +46,13 @@
 
 ### Playtest Polish (from friend feedback v0.1)
 
-- [ ] **POL-01**: Default lane keys are 1 2 3 4 so the game can be played with one hand
+- [x] **POL-01**: Default lane keys are 1 2 3 4 so the game can be played with one hand
 - [ ] **POL-02**: Each lane has a distinct neon color (cyan, amber, magenta, lime) in addition to its shape, inside a cyberpunk "goggles" visor frame
 - [ ] **POL-03**: Each lane shows a hit-marker receptor on the hull line, and notes only brighten once they are inside the hit window
-- [ ] **POL-04**: Game opens borderless fullscreen, with an F11 / Settings toggle that is remembered
+- [x] **POL-04**: Game opens borderless fullscreen, with an F11 / Settings toggle that is remembered
 - [ ] **POL-05**: Best score (depth and accuracy) is saved per song and shown on results and the menu
 - [ ] **POL-06**: Note streak is prominent, with milestone popups (e.g. 10/25/50/100)
-- [ ] **POL-07**: Practice (No-Fail) can be started directly from the main menu
+- [x] **POL-07**: Practice (No-Fail) can be started directly from the main menu
 
 ### Torpedoes (Versus Core)
 
@@ -180,13 +180,13 @@
 | STEM-03 | Phase 2.1 | Pending |
 | STEM-04 | Phase 2.1 | Pending |
 | STEM-05 | Phase 2.1 | Pending |
-| POL-01 | Phase 1.1 | Pending |
+| POL-01 | Phase 1.1 | Complete |
 | POL-02 | Phase 1.1 | Pending |
 | POL-03 | Phase 1.1 | Pending |
-| POL-04 | Phase 1.1 | Pending |
+| POL-04 | Phase 1.1 | Complete |
 | POL-05 | Phase 1.1 | Pending |
 | POL-06 | Phase 1.1 | Pending |
-| POL-07 | Phase 1.1 | Pending |
+| POL-07 | Phase 1.1 | Complete |
 | TORP-06 | Phase 3 | Pending |
 | PAY-06 | Phase 3 | Pending |
 | MATCH-06 | Phase 3 | Pending |
