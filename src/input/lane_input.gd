@@ -24,7 +24,10 @@ var enabled: bool = true:
 			_release_all(Time.get_ticks_usec())
 		enabled = v
 
-var _held: Array[bool] = [false, false, false, false]
+var _held: Array[bool] = [false, false, false, false]  # union of the two sources below
+# Per-source state (WR-04): a lane's key/button and its trigger axis must not release each other.
+var _key_held: Array[bool] = [false, false, false, false]
+var _axis_held: Array[bool] = [false, false, false, false]
 
 
 func _ready() -> void:
@@ -50,10 +53,10 @@ func _input(event: InputEvent) -> void:
 		return
 	for lane in range(ACTIONS.size()):
 		if event.is_action_pressed(ACTIONS[lane]):
-			_press(lane, ticks)
+			_set_source(lane, _key_held, true, ticks)
 			return
 		if event.is_action_released(ACTIONS[lane]):
-			_release(lane, ticks)
+			_set_source(lane, _key_held, false, ticks)
 			return
 
 
@@ -69,10 +72,19 @@ func _handle_motion(m: InputEventJoypadMotion, ticks: int) -> void:
 				continue
 			var sign_dir := -1.0 if (mapped as InputEventJoypadMotion).axis_value < 0.0 else 1.0
 			var strength := m.axis_value * sign_dir
-			if not _held[lane] and strength >= PRESS_THRESHOLD:
-				_press(lane, ticks)
-			elif _held[lane] and strength <= RELEASE_THRESHOLD:
-				_release(lane, ticks)
+			if not _axis_held[lane] and strength >= PRESS_THRESHOLD:
+				_set_source(lane, _axis_held, true, ticks)
+			elif _axis_held[lane] and strength <= RELEASE_THRESHOLD:
+				_set_source(lane, _axis_held, false, ticks)
+
+
+## Update one source's flag; press/release fire only on the union's 0->1 / 1->0 edges.
+func _set_source(lane: int, source: Array[bool], down: bool, ticks: int) -> void:
+	source[lane] = down
+	if down:
+		_press(lane, ticks)
+	elif not _key_held[lane] and not _axis_held[lane]:
+		_release(lane, ticks)
 
 
 func _press(lane: int, ticks: int) -> void:
@@ -95,4 +107,6 @@ func _release(lane: int, ticks: int) -> void:
 
 func _release_all(ticks: int) -> void:
 	for lane in range(ACTIONS.size()):
+		_key_held[lane] = false
+		_axis_held[lane] = false
 		_release(lane, ticks)
