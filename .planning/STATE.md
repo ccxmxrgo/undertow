@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 01-05-PLAN.md
+status: executing
+stopped_at: Completed 01-08-PLAN.md
 last_updated: "2026-10-07T20:32:02.870Z"
 last_activity: 2026-10-07
 progress:
@@ -11,7 +11,7 @@ progress:
   completed_phases: 0
   total_plans: 10
   completed_plans: 8
-  percent: 0
+  percent: 80
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 1 (Timing Core & Calibration) — EXECUTING
-Plan: 7 of 7 (tasks 1-2 done; task 3 human gate pending)
-Status: Phase complete — ready for verification
+Plan: 8 of 10 complete (01-09, 01-10 gap closure remaining)
+Status: Executing gap closure plans
 Last activity: 2026-10-07
 
-Progress: [#########.] 86%
+Progress: [########..] 80%
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Progress: [#########.] 86%
 | Phase 01 P05 | 45min | 1 tasks | 10 files |
 | Phase 01 P06 | 50min | 3 tasks | 14 files |
 | Phase 01 P07 | ~60min (tasks 1-2) | 2 of 3 tasks | 12 files |
+| Phase 01 P08 | ~1h | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,7 @@ Progress: [#########.] 86%
 
 Decisions are logged in PROJECT.md Key Decisions table.
 
+- 01-08: clock_slew_tau_s = 0.4 s (time-constant smoothing, p99 < 2 ms at 30-240 fps); overlays use UiLayout.fill_rect; DriftHarness.log_path injectable
 - 01-06: per-run _run_root rebuilt on restart; autoplay disables LaneInput; pause menu emits restart/menu signals and Gameplay owns scene changes; Back to Menu falls back to skeleton until plan 07 menu exists.
 
 Recent decisions affecting current work:
