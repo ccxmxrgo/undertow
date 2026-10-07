@@ -1,0 +1,1263 @@
+extends Node
+## Automated real-hardware playtest driver (Phase 1 human gate, plan 01-07 task 3).
+## Drives the shipped scenes only through Input.parse_input_event (keyboard / joypad), waits on real
+## time and song_time, and asserts on game state. Never modifies game code or the player's
+## settings: Settings.save_path is redirected to user://playtest_settings.cfg for the whole run.
+##
+## Bot timing: input dispatch is synchronous (use_accumulated_input = false), so a press scheduled
+## for song time T spin-waits inside the frame until Conductor.song_time_at(now) >= T and then
+## parses the event. LaneInput stamps ticks on dispatch, so the judged error is the scheduled
+## offset to well under 1 ms. This tests the clock + judge pipeline; it cannot measure the
+## acoustic path (speaker -> ear), which needs a human or a loopback microphone.
+
+const OUT_DIR := "res://build/playtest"
+const TEMP_SETTINGS := "user://playtest_settings.cfg"
+const REAL_SETTINGS := "user://settings.cfg"
+const MENU := "res://scenes/main_menu.tscn"
+const GAMEPLAY := "res://scenes/gameplay.tscn"
+const CALIB := "res://scenes/calibration.tscn"
+const SETTINGS_SCENE := "res://scenes/settings.tscn"
+const DRIFT := "res://scenes/drift_harness.tscn"
+const LANE_KEYS := [KEY_D, KEY_F, KEY_J, KEY_K]
+const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
+	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 60.0}
+## Scenario b offsets (seconds) per note, cycled. null = skip the note. Values stay >= 5 ms
+## from window edges (35 / 70 / 100 ms) so frame jitter cannot flip the expected judgment.
+const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
+	0.050, -0.050, 0.0, 0.060, -0.060, 0.0, 0.005, -0.005, 0.090, 0.0, -0.090, 0.015, null]
+
+var scenario: String = "a"
+var checks: Array = []
+var metrics: Dictionary = {}
+var shots: Array = []
+var notes_log: Array = []
+var probe: Node
+var _start_ms: int = 0
+var _done: bool = false
+var _real_settings_existed: bool = false
+
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	var args := OS.get_cmdline_user_args()
+	if args.size() > 0:
+		scenario = String(args[0])
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT_DIR))
+	_real_settings_existed = FileAccess.file_exists(REAL_SETTINGS)
+	probe = preload("res://tools/playtest/frame_probe.gd").new()
+	add_child(probe)
+	_start_ms = Time.get_ticks_msec()
+	print("[playtest] scenario=%s" % scenario)
+	_run.call_deferred()
+
+
+func _process(_delta: float) -> void:
+	if _done:
+		return
+	var limit: float = TIMEOUTS.get(scenario, 120.0)
+	if (Time.get_ticks_msec() - _start_ms) / 1000.0 > limit:
+		check("scenario finished before %.0f s watchdog" % limit, false, "TIMEOUT")
+		_finish()
+
+
+func _run() -> void:
+	match scenario:
+		"a": await sc_a()
+		"b": await sc_b()
+		"c": await sc_c()
+		"d": await sc_d()
+		"e": await sc_e()
+		"f": await sc_f()
+		"g": await sc_g()
+		"h": await sc_h()
+		"i": await sc_i()
+		"drift": await sc_drift()
+		"layout": await sc_layout()
+		_: check("known scenario", false, scenario)
+	_finish()
+
+
+# ------------------------------------------------------------------------------------------------
+# infrastructure
+# ------------------------------------------------------------------------------------------------
+
+
+func isolate_settings(calibrated: bool) -> void:
+	Settings.save_path = TEMP_SETTINGS
+	if FileAccess.file_exists(TEMP_SETTINGS):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(TEMP_SETTINGS))
+	Settings.load_from(TEMP_SETTINGS)
+	if calibrated:
+		Settings.save_calibration(0.0, 0.0)
+		MainMenu.boot_handled = true
+
+
+func check(name: String, ok: bool, detail: Variant = "") -> bool:
+	checks.append({"name": name, "pass": ok, "detail": str(detail)})
+	print("[%s] %s  %s" % ["PASS" if ok else "FAIL", name, str(detail)])
+	return ok
+
+
+func note(text: String) -> void:
+	notes_log.append(text)
+	print("[note] " + text)
+
+
+func env_info() -> Dictionary:
+	var d := {
+		"engine": Engine.get_version_info()["string"],
+		"os": "%s %s" % [OS.get_name(), OS.get_version()],
+		"debug_build": OS.is_debug_build(),
+		"audio_driver_setting": str(ProjectSettings.get_setting("audio/driver/driver", "")),
+		"audio_output_device": AudioServer.output_device,
+		"audio_device_list": AudioServer.get_output_device_list(),
+		"audio_output_latency_ms": AudioServer.get_output_latency() * 1000.0,
+		"audio_mix_rate": AudioServer.get_mix_rate(),
+		"audio_buffer_setting_ms": ProjectSettings.get_setting("audio/driver/output_latency", 15),
+		"render_method": RenderingServer.get_current_rendering_method(),
+		"render_driver": RenderingServer.get_current_rendering_driver_name(),
+		"gpu": RenderingServer.get_video_adapter_name(),
+		"refresh_hz": DisplayServer.screen_get_refresh_rate(),
+		"vsync_mode": DisplayServer.window_get_vsync_mode(),
+		"window_size": str(DisplayServer.window_get_size()),
+		"joypads": Input.get_connected_joypads(),
+	}
+	if AudioServer.has_method("get_driver_name"):
+		d["audio_driver"] = AudioServer.call("get_driver_name")
+	return d
+
+
+func _finish() -> void:
+	if _done:
+		return
+	_done = true
+	if not _real_settings_existed:
+		check("real user://settings.cfg untouched (still absent)", not FileAccess.file_exists(REAL_SETTINGS))
+	var ok := true
+	for c in checks:
+		ok = ok and bool(c["pass"])
+	var out := {
+		"scenario": scenario,
+		"pass": ok,
+		"checks": checks,
+		"metrics": metrics,
+		"notes": notes_log,
+		"screenshots": shots,
+		"env": env_info(),
+		"duration_s": (Time.get_ticks_msec() - _start_ms) / 1000.0,
+	}
+	var f := FileAccess.open("%s/%s.json" % [OUT_DIR, scenario], FileAccess.WRITE)
+	f.store_string(JSON.stringify(out, "  "))
+	f.close()
+	if FileAccess.file_exists(TEMP_SETTINGS):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(TEMP_SETTINGS))
+	print("[playtest] scenario=%s result=%s" % [scenario, "PASS" if ok else "FAIL"])
+	get_tree().quit(0 if ok else 1)
+
+
+func frame() -> void:
+	await get_tree().process_frame
+
+
+func wait(s: float) -> void:
+	await get_tree().create_timer(s, true, false, true).timeout
+
+
+func wait_until(cond: Callable, timeout: float) -> bool:
+	var end := Time.get_ticks_msec() + int(timeout * 1000.0)
+	while not cond.call():
+		if Time.get_ticks_msec() > end:
+			return false
+		await get_tree().process_frame
+	return true
+
+
+func cur() -> Node:
+	return get_tree().current_scene
+
+
+func goto(path: String) -> bool:
+	get_tree().change_scene_to_file(path)
+	var ok: bool = await wait_until(func() -> bool:
+		return cur() != null and cur().scene_file_path == path, 5.0)
+	await frame()
+	return ok
+
+
+func scene_is(path: String) -> bool:
+	return cur() != null and cur().scene_file_path == path
+
+
+func shot(label: String) -> String:
+	await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	var path := ProjectSettings.globalize_path("%s/%s_%02d_%s.png" % [OUT_DIR, scenario, shots.size() + 1, label])
+	img.save_png(path)
+	shots.append(path)
+	print("[shot] " + path)
+	return path
+
+
+func focus_owner() -> Control:
+	return get_viewport().gui_get_focus_owner()
+
+
+# --- synthetic input ----------------------------------------------------------------------------
+
+
+func key(code: int, pressed: bool) -> void:
+	var e := InputEventKey.new()
+	e.physical_keycode = code as Key
+	e.keycode = code as Key
+	e.pressed = pressed
+	Input.parse_input_event(e)
+
+
+## Full key press + release across frames (menus).
+func press_key(code: int, hold: float = 0.0) -> void:
+	key(code, true)
+	if hold > 0.0:
+		await wait(hold)
+	else:
+		await frame()
+	key(code, false)
+	await frame()
+	await frame()
+
+
+func pad_button(idx: int, pressed: bool) -> void:
+	var e := InputEventJoypadButton.new()
+	e.device = 0
+	e.button_index = idx as JoyButton
+	e.pressed = pressed
+	e.pressure = 1.0 if pressed else 0.0
+	Input.parse_input_event(e)
+
+
+func pad_axis(axis: int, v: float) -> void:
+	var e := InputEventJoypadMotion.new()
+	e.device = 0
+	e.axis = axis as JoyAxis
+	e.axis_value = v
+	Input.parse_input_event(e)
+
+
+## Runs callables at exact song times. schedule: Array of {t, o (order), fn}. Spin-waits inside the
+## frame so the event is dispatched when song_time_at(now) >= t (sub-ms). Stops when stop() is true.
+func run_schedule(conductor: Conductor, schedule: Array, stop: Callable) -> void:
+	schedule.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if is_equal_approx(float(a["t"]), float(b["t"])):
+			return int(a["o"]) < int(b["o"])
+		return float(a["t"]) < float(b["t"]))
+	var i := 0
+	var last := Time.get_ticks_usec()
+	while i < schedule.size():
+		await get_tree().process_frame
+		if stop.call() or not is_instance_valid(conductor):
+			return
+		var now := Time.get_ticks_usec()
+		var frame_s := clampf((now - last) / 1000000.0, 0.004, 0.034)
+		last = now
+		if conductor.is_paused():
+			continue
+		var horizon := conductor.song_time_at(now) + frame_s + 0.002
+		while i < schedule.size() and float(schedule[i]["t"]) <= horizon:
+			var target := float(schedule[i]["t"])
+			while conductor.song_time_at(Time.get_ticks_usec()) < target and not conductor.is_paused():
+				pass
+			(schedule[i]["fn"] as Callable).call()
+			i += 1
+
+
+## Keyboard schedule that plays notes at note.time + offsets[k] (null skips the note).
+func keyboard_schedule(notes: Array, offsets: Array, start_t: float = -INF) -> Array:
+	var sched: Array = []
+	for k in range(notes.size()):
+		var n: Dictionary = notes[k]
+		if float(n["time"]) < start_t:
+			continue
+		var off: Variant = offsets[k % offsets.size()]
+		if off == null:
+			continue
+		var lane: int = n["lane"]
+		var tp: float = float(n["time"]) + float(off)
+		var tr: float = tp + 0.06
+		if float(n["duration"]) > 0.0:
+			tr = maxf(tr, float(n["time"]) + float(n["duration"]))
+		var code: int = LANE_KEYS[lane]
+		sched.append({"t": tp, "o": 1, "k": k, "fn": func() -> void: key(code, true)})
+		sched.append({"t": tr, "o": 0, "k": k, "fn": func() -> void: key(code, false)})
+	return sched
+
+
+## Stop condition for bots that must not keep a strong capture on a Gameplay that may be freed.
+func _gone_or_stopped(gw: WeakRef) -> bool:
+	var g := gw.get_ref() as Gameplay
+	return g == null or g.state != Gameplay.State.RUNNING
+
+
+func start_dive_from_menu(autoplay: bool) -> Gameplay:
+	if not scene_is(MENU):
+		await goto(MENU)
+	await wait(0.3)
+	var m := cur() as MainMenu
+	if m == null:
+		check("main menu shown", false, cur())
+		return null
+	m.start_button.grab_focus()
+	if autoplay:
+		await press_key(KEY_DOWN)
+	check("menu focus on %s" % ("Autoplay Dive (test)" if autoplay else "Start Dive"),
+		focus_owner() == (m.autoplay_button if autoplay else m.start_button), focus_owner())
+	await press_key(KEY_ENTER)
+	var ok: bool = await wait_until(func() -> bool: return cur() is Gameplay, 5.0)
+	check("gameplay scene loaded", ok)
+	return cur() as Gameplay
+
+
+func stats(arr: Array) -> Dictionary:
+	if arr.is_empty():
+		return {"n": 0}
+	var s := 0.0
+	var mx := -INF
+	var mn := INF
+	var amax := 0.0
+	for v in arr:
+		s += float(v)
+		mx = maxf(mx, float(v))
+		mn = minf(mn, float(v))
+		amax = maxf(amax, absf(float(v)))
+	var mean := s / arr.size()
+	var ss := 0.0
+	for v in arr:
+		ss += (float(v) - mean) * (float(v) - mean)
+	var sorted := arr.duplicate()
+	sorted.sort()
+	var abs_sorted: Array = []
+	for v in arr:
+		abs_sorted.append(absf(float(v)))
+	abs_sorted.sort()
+	return {"n": arr.size(), "mean": mean, "std": sqrt(ss / arr.size()), "min": mn, "max": mx,
+		"max_abs": amax, "p50": sorted[sorted.size() / 2],
+		"p99_abs": abs_sorted[mini(int(abs_sorted.size() * 0.99), abs_sorted.size() - 1)]}
+
+
+## Least squares y = a + b x. Returns {a, b, resid_std, resid_max_abs}.
+func linfit(xs: Array, ys: Array) -> Dictionary:
+	var n := xs.size()
+	if n < 2:
+		return {}
+	var sx := 0.0
+	var sy := 0.0
+	var sxx := 0.0
+	var sxy := 0.0
+	for i in range(n):
+		sx += float(xs[i])
+		sy += float(ys[i])
+		sxx += float(xs[i]) * float(xs[i])
+		sxy += float(xs[i]) * float(ys[i])
+	var b := (n * sxy - sx * sy) / (n * sxx - sx * sx)
+	var a := (sy - b * sx) / n
+	var res: Array = []
+	for i in range(n):
+		res.append(float(ys[i]) - (a + b * float(xs[i])))
+	var st := stats(res)
+	return {"a": a, "b": b, "resid_std": st["std"], "resid_max_abs": st["max_abs"]}
+
+
+## Frame-to-frame clock analysis over probe rows in [t_from, t_to] song time (playing, unpaused).
+func clock_analysis(rows: Array, t_from: float, t_to: float) -> Dictionary:
+	var devs: Array = []
+	var dts: Array = []
+	var track: Array = []
+	var backwards := 0
+	var snaps := 0
+	var prev: Array = []
+	var xs: Array = []
+	var raw_minus_sys: Array = []
+	var t0_ticks := -1
+	for r in rows:
+		var st: float = r[1]
+		if bool(r[5]) or st < t_from or st > t_to:
+			prev = []
+			continue
+		if bool(r[2]):
+			var e: float = (st - float(r[3])) * 1000.0
+			track.append(e)
+			if absf(e) > 50.0:
+				snaps += 1
+			if t0_ticks < 0:
+				t0_ticks = int(r[0])
+			xs.append((int(r[0]) - t0_ticks) / 1000000.0)
+			raw_minus_sys.append(float(r[3]))
+		if not prev.is_empty():
+			var dsys := (int(r[0]) - int(prev[0])) / 1000000.0
+			var dsong := st - float(prev[1])
+			if dsong < 0.0:
+				backwards += 1
+			dts.append(dsys * 1000.0)
+			devs.append((dsong - dsys) * 1000.0)
+		prev = r
+	var out := {"frame_dt_ms": stats(dts), "dsong_minus_dsys_ms": stats(devs),
+		"song_minus_audio_target_ms": stats(track), "backwards_steps": backwards,
+		"tracking_err_gt_50ms_frames": snaps}
+	# Raw audio clock vs system clock: fit audio_target(t_sys); slope - 1 = rate difference.
+	var fit := linfit(xs, raw_minus_sys)
+	if not fit.is_empty():
+		out["audio_vs_system_rate_ppm"] = (float(fit["b"]) - 1.0) * 1000000.0
+		out["audio_target_jitter_resid_std_ms"] = float(fit["resid_std"]) * 1000.0
+		out["audio_target_jitter_resid_max_ms"] = float(fit["resid_max_abs"]) * 1000.0
+	return out
+
+
+# ------------------------------------------------------------------------------------------------
+# a. first launch + calibration wizard
+# ------------------------------------------------------------------------------------------------
+
+
+func sc_a() -> void:
+	isolate_settings(false)
+	MainMenu.boot_handled = false
+	await goto(MENU)
+	var ok: bool = await wait_until(func() -> bool: return cur() is CalibrationWizard, 5.0)
+	if not check("first launch (no settings) routes main menu -> calibration wizard", ok, cur()):
+		return
+	await wait(0.5)
+	var w := cur() as CalibrationWizard
+	var info: String = w.get("_info_label").text
+	metrics["wizard_readout"] = info
+	check("readout shows latency, buffer and device",
+		info.contains("Output latency:") and info.contains("Buffer:") and info.contains("Output device:"), info)
+	metrics["bluetooth_warning_visible"] = w.bluetooth_warning_visible()
+	await shot("wizard_intro")
+	check("Begin button focused", focus_owner() == w.begin_button, focus_owner())
+	await press_key(KEY_ENTER)
+	check("Enter on Begin -> audio step", w.step == CalibrationWizard.Step.AUDIO, w.step)
+
+	var lag := 0.040
+	var r1: float = await _calibration_run(w, lag, "run1")
+	metrics["run1_measured_ms"] = r1 * 1000.0
+	check("run 1: taps at heard click +40 ms -> measured +40 ms (+-5)", absf(r1 - lag) <= 0.005,
+		"%.2f ms" % (r1 * 1000.0))
+	await shot("wizard_audio_result")
+
+	# Accept -> visual step
+	check("Accept focused after result", focus_owner() == w.accept_button, focus_owner())
+	await press_key(KEY_ENTER)
+	check("Accept -> visual step", w.step == CalibrationWizard.Step.VISUAL, w.step)
+	await frame()
+	var s := w.visual_slider
+	check("visual slider focused", focus_owner() == s, focus_owner())
+	var v0 := s.value
+	await press_key(KEY_RIGHT)
+	var v1 := s.value
+	await press_key(KEY_LEFT)
+	var v2 := s.value
+	check("visual slider: Right tap +1 ms, Left tap -1 ms", is_equal_approx(v1 - v0, 1.0) and is_equal_approx(v2, v0),
+		"%s -> %s -> %s" % [v0, v1, v2])
+	await press_key(KEY_RIGHT, 1.0)
+	var v3 := s.value
+	var rep := v3 - v2 - 1.0
+	metrics["visual_hold_1s_delta_ms"] = v3 - v2
+	check("visual slider: hold Right 1 s -> 1 ms then +10 ms repeats", rep >= 10.0 and is_equal_approx(fmod(rep, 10.0), 0.0),
+		"delta %.0f ms (1 + %d x 10)" % [v3 - v2, int(rep / 10.0)])
+	check("pending visual offset follows slider", is_equal_approx(w.pending_visual * 1000.0, v3),
+		"%.1f ms" % (w.pending_visual * 1000.0))
+	await shot("wizard_visual")
+	# Retry Test resets the slider to 0 (Right moves focus? use the button directly via focus+Enter)
+	w.retry_button.grab_focus()
+	await press_key(KEY_ENTER)
+	check("visual Retry Test resets slider to 0", is_equal_approx(s.value, 0.0), s.value)
+	w.accept_button.grab_focus()
+	await press_key(KEY_ENTER)
+	check("Accept -> summary step", w.step == CalibrationWizard.Step.SUMMARY, w.step)
+	await shot("wizard_summary")
+	check("Save and Continue focused", focus_owner() == w.save_button, focus_owner())
+	await press_key(KEY_ENTER)
+	ok = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
+	check("Save and Continue -> main menu", ok, cur())
+	check("calibration saved: audio_offset ~ +40 ms, done=true, device recorded",
+		absf(Settings.audio_offset - lag) <= 0.005 and Settings.calibration_done and Settings.output_device_name == AudioServer.output_device,
+		"audio %.2f ms, visual %.1f ms, device '%s'" % [Settings.audio_offset * 1000.0, Settings.visual_offset * 1000.0, Settings.output_device_name])
+	check("saved to the redirected temp settings file", FileAccess.file_exists(TEMP_SETTINGS))
+	await wait(0.3)
+	var m := cur() as MainMenu
+	check("menu: empty state hidden after calibration", not m.empty_state_visible())
+	await shot("menu_after_calibration")
+
+	# Re-run from the menu with the offset applied. Same simulated player (40 ms behind heard audio).
+	m.start_button.grab_focus()
+	await press_key(KEY_DOWN)
+	await press_key(KEY_DOWN)
+	check("menu focus on Calibrate Sonar", focus_owner() == m.calibrate_button, focus_owner())
+	await press_key(KEY_ENTER)
+	ok = await wait_until(func() -> bool: return cur() is CalibrationWizard, 5.0)
+	check("Calibrate Sonar opens wizard", ok)
+	await wait(0.3)
+	w = cur() as CalibrationWizard
+	await press_key(KEY_ENTER)
+	var r2: float = await _calibration_run(w, lag, "run2")
+	metrics["run2_measured_ms"] = r2 * 1000.0
+	metrics["run2_residual_vs_applied_ms"] = (r2 - Settings.audio_offset) * 1000.0
+	check("run 2 (offset applied): wizard reports the absolute offset again (~+40 ms)", absf(r2 - lag) <= 0.005,
+		"%.2f ms" % (r2 * 1000.0))
+	check("run 2 residual vs applied offset ~ 0 ms (+-5)", absf(r2 - Settings.audio_offset) <= 0.005,
+		"%.2f ms" % ((r2 - Settings.audio_offset) * 1000.0))
+	note("Plan task 3 step 1 says a re-run 'should be near 0'. The wizard shows the ABSOLUTE offset by design (01-07 decision), so a correct re-run shows ~+40 MS, and the residual is ~0. The checklist wording and the implementation disagree.")
+	# A tap-perfect player (0 ms lag) on a calibrated (+40) profile should measure 0.
+	await press_key(KEY_ESCAPE)
+	ok = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
+	check("Esc in wizard = Skip, back to menu, offset unchanged", ok and absf(Settings.audio_offset - lag) <= 0.005,
+		"%.2f ms" % (Settings.audio_offset * 1000.0))
+
+
+## Plays one 16-click audio test. The simulated player taps `lag` seconds after the click is HEARD,
+## which in Conductor song time is click - audio_offset + lag.
+func _calibration_run(w: CalibrationWizard, lag: float, label: String) -> float:
+	check("%s: audio test running" % label, w.audio_phase == CalibrationWizard.AudioPhase.RUNNING, w.audio_phase)
+	var sched: Array = []
+	for c in w.click_times():
+		var t: float = float(c) - Settings.audio_offset + lag
+		sched.append({"t": t, "o": 1, "fn": func() -> void: key(KEY_SPACE, true)})
+		sched.append({"t": t + 0.05, "o": 0, "fn": func() -> void: key(KEY_SPACE, false)})
+	await run_schedule(w.conductor, sched, func() -> bool: return w.audio_phase != CalibrationWizard.AudioPhase.RUNNING)
+	var ok: bool = await wait_until(func() -> bool: return w.audio_phase == CalibrationWizard.AudioPhase.RESULT, 5.0)
+	check("%s: all 16 taps recorded and evaluated" % label, ok and w.taps_recorded == 16, "taps %d" % w.taps_recorded)
+	var raw: Array = []
+	for t in w.tap_times:
+		raw.append(snappedf(float(t) * 1000.0, 0.01))
+	metrics["%s_tap_song_times_ms" % label] = raw
+	metrics["%s_result_label" % label] = w.result_label.text
+	return w.audio_result
+
+
+# ------------------------------------------------------------------------------------------------
+# b. keyboard bot with mixed offsets on the hand chart
+# ------------------------------------------------------------------------------------------------
+
+
+func sc_b() -> void:
+	isolate_settings(true)
+	var g: Gameplay = await start_dive_from_menu(false)
+	if g == null:
+		return
+	var c := g.conductor
+	var j := g.judge
+	var notes: Array = g.chart.notes
+	var judged := {}
+	var strays := [0]
+	var ticks := [0]
+	var press_err := {}
+	var pending := [-1]
+	j.judged.connect(func(_l: int, idx: int, jj: int, err: float) -> void: judged[idx] = [jj, err])
+	j.stray.connect(func(_l: int) -> void: strays[0] += 1)
+	j.sustain_tick.connect(func(_l: int) -> void: ticks[0] += 1)
+	g.lane_input.lane_pressed.connect(func(_l: int, tk: int) -> void:
+		if pending[0] >= 0:
+			press_err[pending[0]] = c.song_time_at(tk) - float(notes[pending[0]]["time"]))
+	var sched := keyboard_schedule(notes, B_CYCLE)
+	for e in sched:
+		if int(e["o"]) == 1:
+			var k: int = e["k"]
+			var f: Callable = e["fn"]
+			e["fn"] = func() -> void:
+				pending[0] = k
+				f.call()
+				pending[0] = -1
+	var hud_samples: Array = []
+	var hud_mismatch: Array = []
+	var sampler := func() -> void:
+		while is_instance_valid(g) and g.state == Gameplay.State.RUNNING:
+			await wait(1.0)
+			if not is_instance_valid(g) or g.state != Gameplay.State.RUNNING:
+				break
+			var sc := g.score
+			var h := g.hud
+			hud_samples.append({"t": snappedf(c.song_time(), 0.01), "hull": h.hull_value.text,
+				"combo": h.combo_value.text, "depth": h.depth_value.text, "mult": h.mult_value.text})
+			var exp_hull := "%d%%" % int(round(sc.hull / 100.0 * 100.0))
+			if h.combo_value.text != str(sc.combo) or h.depth_value.text != h.depth_text(sc.depth()) \
+					or h.hull_value.text != exp_hull or h.mult_value.text != "x%d" % sc.multiplier():
+				hud_mismatch.append(hud_samples.back())
+	sampler.call()
+	var shooter := func() -> void:
+		await wait_until(func() -> bool: return c.song_time() > 21.3, 60.0)
+		await shot("midsong_hud_notes_feedback")
+	shooter.call()
+	await run_schedule(c, sched, func() -> bool: return g.state != Gameplay.State.RUNNING)
+	var ok: bool = await wait_until(func() -> bool: return g.state != Gameplay.State.RUNNING, 15.0)
+	check("run ends", ok and g.state == Gameplay.State.DONE, g.state)
+	await wait(0.6)
+	await shot("results")
+
+	# Judgment validation against JudgeConfig windows using the ACTUAL press error.
+	var cfg := JudgeConfig.new()
+	var mismatches: Array = []
+	var timing_dev: Array = []
+	var counts := {"P": 0, "G": 0, "M": 0}
+	for k in range(notes.size()):
+		var off: Variant = B_CYCLE[k % B_CYCLE.size()]
+		if not judged.has(k):
+			mismatches.append({"k": k, "why": "never judged"})
+			continue
+		var jj: int = judged[k][0]
+		var err: float = judged[k][1]
+		counts[["P", "G", "M"][jj]] += 1
+		var expect: int
+		if off == null:
+			expect = InputJudge.Judgment.MISS
+		else:
+			if not press_err.has(k):
+				mismatches.append({"k": k, "why": "press not captured"})
+				continue
+			var e: float = press_err[k]
+			timing_dev.append((e - float(off)) * 1000.0)
+			if absf(e) <= cfg.perfect_window:
+				expect = InputJudge.Judgment.PERFECT
+			elif absf(e) <= cfg.good_window:
+				expect = InputJudge.Judgment.GOOD
+			else:
+				expect = InputJudge.Judgment.MISS
+			if jj != InputJudge.Judgment.MISS and absf(err - e) > 1e-6:
+				mismatches.append({"k": k, "why": "judged err %.4f != press err %.4f" % [err, e]})
+		if jj != expect:
+			mismatches.append({"k": k, "off": off, "got": jj, "expect": expect, "err": err})
+	metrics["notes"] = notes.size()
+	metrics["judged"] = judged.size()
+	metrics["counts"] = counts
+	metrics["strays"] = strays[0]
+	metrics["sustain_ticks"] = ticks[0]
+	metrics["bot_press_error_vs_intended_ms"] = stats(timing_dev)
+	metrics["hud_samples"] = hud_samples
+	metrics["judgment_mismatches"] = mismatches
+	check("every note judged exactly once", judged.size() == notes.size(), "%d / %d" % [judged.size(), notes.size()])
+	check("bot hit intended offsets (max |actual - intended| < 2 ms)",
+		float(stats(timing_dev).get("max_abs", 99.0)) < 2.0, stats(timing_dev))
+	check("all judgments match JudgeConfig windows (35/70/100 ms)", mismatches.is_empty(), mismatches.slice(0, 8))
+	var late_miss := 0
+	var early_miss := 0
+	for k in range(notes.size()):
+		var off: Variant = B_CYCLE[k % B_CYCLE.size()]
+		if off != null and float(off) > 0.07:
+			late_miss += 1
+		elif off != null and float(off) < -0.07:
+			early_miss += 1
+	check("late presses beyond window (+90 ms) produce strays", strays[0] == late_miss, "strays %d, +90 presses %d" % [strays[0], late_miss])
+	var chords := 0
+	var chord_ok := true
+	var times := {}
+	for k in range(notes.size()):
+		var key_t := snappedf(float(notes[k]["time"]), 0.0001)
+		times[key_t] = times.get(key_t, []) + [k]
+	for t in times:
+		if (times[t] as Array).size() >= 2:
+			chords += 1
+			for k in times[t]:
+				var off: Variant = B_CYCLE[int(k) % B_CYCLE.size()]
+				if off != null and absf(float(off)) <= 0.035 and int(judged.get(k, [9])[0]) != InputJudge.Judgment.PERFECT:
+					chord_ok = false
+	metrics["chords"] = chords
+	check("chords present and each chord note judged independently", chords > 0 and chord_ok, "%d chords" % chords)
+	var sustains := 0
+	for n in notes:
+		if float(n["duration"]) > 0.0:
+			sustains += 1
+	metrics["sustains"] = sustains
+	check("sustains present and award ticks when held", sustains > 0 and ticks[0] > 0 and g.score.sustain_ticks == ticks[0],
+		"%d sustains, %d ticks" % [sustains, ticks[0]])
+	var sc := g.score
+	check("score counters match judged tallies", sc.perfect_count == counts["P"] and sc.good_count == counts["G"] and sc.miss_count == counts["M"],
+		"P%d G%d M%d" % [sc.perfect_count, sc.good_count, sc.miss_count])
+	var min_hull := 100.0
+	for s in hud_samples:
+		min_hull = minf(min_hull, float(String(s["hull"]).trim_suffix("%")))
+	check("HUD hull/combo/depth/multiplier match score every second", hud_mismatch.is_empty() and hud_samples.size() > 30,
+		"%d samples, %d mismatches, min hull %s%%" % [hud_samples.size(), hud_mismatch.size(), min_hull])
+	check("hull dropped on misses", min_hull < 100.0, min_hull)
+	if g.results != null:
+		metrics["results_rows"] = g.results.rows
+		check("results: no flags on a clean manual run", g.results.flags.is_empty(), g.results.flags)
+
+
+# ------------------------------------------------------------------------------------------------
+# c. F3 overlay + per-frame clock smoothness from real audio
+# ------------------------------------------------------------------------------------------------
+
+
+func sc_c() -> void:
+	isolate_settings(true)
+	var g: Gameplay = await start_dive_from_menu(false)
+	if g == null:
+		return
+	var c := g.conductor
+	probe.conductor = c
+	probe.enabled = true
+	var offs: Array = []
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for i in range(64):
+		offs.append(rng.randf_range(-0.015, 0.015))
+	var sched := keyboard_schedule(g.chart.notes, offs)
+	var stop_at := 22.5
+	var bot := func() -> void:
+		await run_schedule(c, sched, func() -> bool: return c.song_time() > stop_at)
+	bot.call()
+	await wait_until(func() -> bool: return c.song_time() > 1.0, 10.0)
+	check("F3 overlay hidden by default", not g.debug_overlay.visible)
+	await press_key(KEY_F3)
+	check("F3 shows overlay (debug build)", g.debug_overlay.visible)
+	await wait_until(func() -> bool: return c.song_time() > 14.0, 30.0)
+	await shot("f3_overlay")
+	await wait_until(func() -> bool: return c.song_time() > stop_at, 30.0)
+	probe.enabled = false
+	var errs: Array = g.debug_overlay.recent_errors()
+	metrics["overlay_recent_errors_ms"] = errs
+	check("overlay lists recent hit errors", errs.size() > 0, "%d listed" % errs.size())
+	var a := clock_analysis(probe.rows, 1.5, 21.5)
+	metrics["clock"] = a
+	var dev: Dictionary = a["dsong_minus_dsys_ms"]
+	check("song_time monotonic over ~20 s (no backwards steps)", int(a["backwards_steps"]) == 0, a["backwards_steps"])
+	check("per-frame song_time delta tracks system delta (|dev| max < 4 ms)", float(dev["max_abs"]) < 4.0,
+		"mean %.3f std %.3f max %.3f ms" % [dev["mean"], dev["std"], dev["max_abs"]])
+	check("no clock snaps (> 50 ms error) during play", int(a["tracking_err_gt_50ms_frames"]) == 0, a["tracking_err_gt_50ms_frames"])
+	_save_probe_csv("c_probe.csv")
+
+
+func _save_probe_csv(fname: String) -> void:
+	var f := FileAccess.open("%s/%s" % [OUT_DIR, fname], FileAccess.WRITE)
+	f.store_line("ticks_usec,song_time,audio_valid,audio_target,raw_pos,paused,latency")
+	for r in probe.rows:
+		f.store_line("%d,%.6f,%d,%.6f,%.6f,%d,%.6f" % [r[0], r[1], int(r[2]), r[3], r[4], int(r[5]), r[6]])
+	f.close()
+
+
+# ------------------------------------------------------------------------------------------------
+# d. pause / resume / countdown / confirm dialogs
+# ------------------------------------------------------------------------------------------------
+
+
+func sc_d() -> void:
+	isolate_settings(true)
+	var g: Gameplay = await start_dive_from_menu(false)
+	if g == null:
+		return
+	var c := g.conductor
+	probe.conductor = c
+	probe.enabled = true
+	var sched := keyboard_schedule(g.chart.notes, [0.0])
+	var gw: WeakRef = weakref(g)
+	var bot := func() -> void:
+		await run_schedule(c, sched, func() -> bool: return _gone_or_stopped(gw) or not scene_is(GAMEPLAY))
+	bot.call()
+	await wait_until(func() -> bool: return c.song_time() > 10.3, 20.0)
+	var score_before := g.score.score
+	await press_key(KEY_ESCAPE)
+	var p0 := c.song_time()
+	check("Esc opens pause menu and freezes conductor", g.pause_menu.is_open() and c.is_paused())
+	check("pause menu focus on Resume Dive", focus_owner() == g.pause_menu.resume_button, focus_owner())
+	var frozen: Array = []
+	var t_end := Time.get_ticks_msec() + 3000
+	while Time.get_ticks_msec() < t_end:
+		frozen.append(c.song_time())
+		await frame()
+	var max_dev := 0.0
+	for v in frozen:
+		max_dev = maxf(max_dev, absf(float(v) - p0))
+	metrics["pause_song_time"] = p0
+	metrics["pause_frozen_frames"] = frozen.size()
+	check("song_time frozen for 3 s of real time while paused", max_dev == 0.0, "max change %.6f s over %d frames" % [max_dev, frozen.size()])
+	check("audio stopped while paused", not (c.get("_player") as AudioStreamPlayer).playing)
+	await shot("pause_menu")
+	var cd_ticks: Array = []
+	var cd_cb := func(n: int) -> void: cd_ticks.append([n, Time.get_ticks_usec()])
+	c.countdown_tick.connect(cd_cb)
+	var resumed_at := [-1, 0.0]
+	c.resumed.connect(func() -> void: resumed_at[0] = Time.get_ticks_usec(); resumed_at[1] = c.song_time(), CONNECT_ONE_SHOT)
+	var t_resume := Time.get_ticks_usec()
+	await press_key(KEY_ESCAPE)
+	check("Esc on open pause menu starts countdown", g.pause_menu.is_counting_down())
+	await wait(0.25)
+	await shot("countdown")
+	var ok: bool = await wait_until(func() -> bool: return int(resumed_at[0]) > 0, 6.0)
+	check("countdown completes and run resumes", ok)
+	var seq: Array = []
+	for e in cd_ticks:
+		seq.append(e[0])
+	var expected_cd := 3.0 * 60.0 / c.bpm_at(p0)
+	var cd_len := (int(resumed_at[0]) - t_resume) / 1000000.0
+	metrics["countdown_sequence"] = seq
+	metrics["countdown_seconds"] = cd_len
+	metrics["countdown_expected_seconds"] = expected_cd
+	check("countdown ticks 3-2-1", seq == [3, 2, 1], seq)
+	check("countdown lasts 3 beats at chart BPM (+-50 ms incl. frame quantisation)", absf(cd_len - expected_cd) < 0.05,
+		"%.3f s vs %.3f s" % [cd_len, expected_cd])
+	var jump := float(resumed_at[1]) - p0
+	metrics["resume_song_time_minus_paused_ms"] = jump * 1000.0
+	check("song_time continues from paused position (+-20 ms)", absf(jump) <= 0.020, "%.2f ms" % (jump * 1000.0))
+	await wait(1.5)
+	# audio restarted at the right place: compare audio target with song_time over the last 0.5 s
+	var errs: Array = []
+	var now_t := Time.get_ticks_usec()
+	for r in probe.rows:
+		if bool(r[2]) and int(r[0]) > now_t - 500000:
+			errs.append((float(r[1]) - float(r[3])) * 1000.0)
+	var es := stats(errs)
+	metrics["post_resume_song_minus_audio_ms"] = es
+	check("audio resumed from the paused position (|song_time - audio clock| < 20 ms)", errs.size() > 0 and float(es["max_abs"]) < 20.0, es)
+	check("score kept across pause", g.score.score >= score_before, "%d -> %d" % [score_before, g.score.score])
+
+	# Restart confirm
+	await press_key(KEY_ESCAPE)
+	check("pause again", g.pause_menu.is_open())
+	await press_key(KEY_DOWN)
+	check("focus Restart Dive", focus_owner() == g.pause_menu.restart_button, focus_owner())
+	await press_key(KEY_ENTER)
+	var dlg: ConfirmDialog = g.pause_menu.get("_dialog")
+	check("Restart (score > 0) shows confirm dialog", dlg != null)
+	if dlg != null:
+		check("restart dialog initial focus on SAFE 'Keep Playing'", focus_owner() == dlg.safe_button and dlg.safe_button.text == "Keep Playing", focus_owner())
+		await shot("restart_confirm")
+		await press_key(KEY_ESCAPE)
+		check("Esc in dialog = safe choice, focus back on Restart Dive", g.pause_menu.get("_dialog") == null and focus_owner() == g.pause_menu.restart_button and g.pause_menu.is_open())
+	await press_key(KEY_DOWN)
+	await press_key(KEY_DOWN)
+	check("focus Back to Menu", focus_owner() == g.pause_menu.menu_button, focus_owner())
+	await press_key(KEY_ENTER)
+	dlg = g.pause_menu.get("_dialog")
+	check("Back to Menu shows confirm dialog", dlg != null)
+	if dlg != null:
+		check("menu dialog initial focus on SAFE 'Stay'", focus_owner() == dlg.safe_button and dlg.safe_button.text == "Stay", focus_owner())
+		await shot("menu_confirm")
+		await press_key(KEY_LEFT)
+		check("Left moves focus to 'Leave Dive'", focus_owner() == dlg.confirm_button, focus_owner())
+		await press_key(KEY_ENTER)
+		ok = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
+		check("Leave Dive -> main menu", ok)
+	probe.enabled = false
+
+
+# ------------------------------------------------------------------------------------------------
+# e. fail -> IMPLOSION, then No-Fail
+# ------------------------------------------------------------------------------------------------
+
+
+func sc_e() -> void:
+	isolate_settings(true)
+	var g: Gameplay = await start_dive_from_menu(false)
+	if g == null:
+		return
+	var ok: bool = await wait_until(func() -> bool: return g.state == Gameplay.State.FAILED, 30.0)
+	check("no input -> hull reaches 0 -> FAILED", ok and g.score.hull <= 0.0, "hull %.1f at song_time %.2f, misses %d" % [g.score.hull, g.conductor.song_time() if g.conductor else -1.0, g.score.miss_count])
+	metrics["fail_song_time"] = g.conductor.song_time() if g.conductor else -1.0
+	metrics["fail_misses"] = g.score.miss_count
+	check("audio stopped on fail", not (g.conductor.get("_player") as AudioStreamPlayer).playing)
+	await wait(1.2)
+	var fs := g.fail_screen
+	check("IMPLOSION screen", fs != null and fs.title_label.text == "IMPLOSION" and fs.modulate.a > 0.99, fs.title_label.text if fs else null)
+	if fs != null:
+		metrics["fail_body"] = fs.body_label.text
+		check("fail screen focus on Retry Dive", focus_owner() == fs.retry_button, focus_owner())
+	await shot("implosion")
+	# Enable No-Fail (as the Settings toggle does) and retry via the focused Retry button.
+	Settings.no_fail = true
+	Settings.save_to(Settings.save_path)
+	await press_key(KEY_ENTER)
+	await wait_until(func() -> bool: return g.state == Gameplay.State.RUNNING and g.score != null and g.score.miss_count == 0, 5.0)
+	check("Retry restarts the run", g.state == Gameplay.State.RUNNING)
+	check("No-Fail applied to the new run", g.score.no_fail)
+	await wait_until(func() -> bool: return g.score.hull <= 0.0, 30.0)
+	await wait(0.5)
+	await shot("nofail_hull_zero_still_running")
+	check("hull 0 with No-Fail: play continues", g.state == Gameplay.State.RUNNING and g.score.hull <= 0.0 and g.conductor.song_time() > 0.0,
+		"song_time %.2f" % g.conductor.song_time())
+	ok = await wait_until(func() -> bool: return g.state == Gameplay.State.DONE, 75.0)
+	check("No-Fail run reaches results", ok)
+	await wait(0.6)
+	if g.results != null:
+		check("results show NO-FAIL USED", g.results.flags.has("NO-FAIL USED"), g.results.flags)
+		metrics["nofail_results_rows"] = g.results.rows
+	await shot("nofail_results")
+
+
+# ------------------------------------------------------------------------------------------------
+# f. gamepad: LB / LT / RT / RB, Start pauses
+# ------------------------------------------------------------------------------------------------
+
+
+func sc_f() -> void:
+	isolate_settings(true)
+	metrics["physical_joypads"] = Input.get_connected_joypads()
+	var g: Gameplay = await start_dive_from_menu(false)
+	if g == null:
+		return
+	var c := g.conductor
+	var presses := [0, 0, 0, 0]
+	var releases := [0, 0, 0, 0]
+	g.lane_input.lane_pressed.connect(func(l: int, _t: int) -> void: presses[l] += 1)
+	g.lane_input.lane_released.connect(func(l: int, _t: int) -> void: releases[l] += 1)
+	var judged := {}
+	g.judge.judged.connect(func(_l: int, idx: int, jj: int, err: float) -> void: judged[idx] = [jj, err])
+	# Notes in [1.0, 15.0) s; each lane uses its pad control.
+	var notes: Array = g.chart.notes
+	var sched: Array = []
+	var expect_press := [0, 0, 0, 0]
+	var used: Array = []
+	for k in range(notes.size()):
+		var n: Dictionary = notes[k]
+		var t: float = n["time"]
+		if t < 1.0 or t >= 15.0:
+			continue
+		var lane: int = n["lane"]
+		var tail: float = t + maxf(float(n["duration"]), 0.08)
+		expect_press[lane] += 1
+		used.append(k)
+		match lane:
+			0, 3:
+				var btn: int = JOY_BUTTON_LEFT_SHOULDER if lane == 0 else JOY_BUTTON_RIGHT_SHOULDER
+				sched.append({"t": t, "o": 1, "fn": func() -> void: pad_button(btn, true)})
+				# duplicate down (driver re-report) must not re-press
+				sched.append({"t": t + 0.02, "o": 1, "fn": func() -> void: pad_button(btn, true)})
+				sched.append({"t": tail, "o": 0, "fn": func() -> void: pad_button(btn, false)})
+			1, 2:
+				var ax: int = JOY_AXIS_TRIGGER_LEFT if lane == 1 else JOY_AXIS_TRIGGER_RIGHT
+				# analog ramp; the first value >= 0.5 lands exactly on the note time
+				var ramp_pre := [0.1, 0.25, 0.45]
+				for i in range(ramp_pre.size()):
+					var v: float = ramp_pre[i]
+					sched.append({"t": t - 0.012 * (ramp_pre.size() - i), "o": 1, "fn": func() -> void: pad_axis(ax, v)})
+				var after := [0.55, 0.8, 1.0, 1.0, 0.49, 0.52, 0.47, 0.51, 0.45]  # noise around 0.5 while held
+				sched.append({"t": t, "o": 1, "fn": func() -> void: pad_axis(ax, 0.55)})
+				for i in range(1, after.size()):
+					var v2: float = after[i]
+					sched.append({"t": t + 0.008 * i, "o": 1, "fn": func() -> void: pad_axis(ax, v2)})
+				var rel := [0.42, 0.38, 0.2, 0.0]
+				for i in range(rel.size()):
+					var v3: float = rel[i]
+					sched.append({"t": tail + 0.008 * i, "o": 0, "fn": func() -> void: pad_axis(ax, v3)})
+	await run_schedule(c, sched, func() -> bool: return g.state != Gameplay.State.RUNNING)
+	await wait(0.2)
+	metrics["pad_presses_per_lane"] = presses
+	metrics["pad_releases_per_lane"] = releases
+	metrics["pad_expected_per_lane"] = expect_press
+	check("LB/LT/RT/RB: exactly one press and one release per note (with trigger noise + duplicate downs)",
+		presses == expect_press and releases == expect_press, "pressed %s released %s expected %s" % [presses, releases, expect_press])
+	var perf := 0
+	for k in used:
+		if judged.has(k) and int(judged[k][0]) == InputJudge.Judgment.PERFECT:
+			perf += 1
+	check("all pad-played notes judged PERFECT", perf == used.size(), "%d / %d" % [perf, used.size()])
+	check("no strays from pad input", g.score.stray_count == 0, g.score.stray_count)
+	pad_button(JOY_BUTTON_START, true)
+	await frame()
+	pad_button(JOY_BUTTON_START, false)
+	await frame()
+	check("Start button pauses", g.pause_menu.is_open() and c.is_paused())
+	await shot("pad_start_pause")
+
+
+# ------------------------------------------------------------------------------------------------
+# g. settings: rebind, duplicate, Tab, scroll, volumes, reset
+# ------------------------------------------------------------------------------------------------
+
+
+func sc_g() -> void:
+	isolate_settings(true)
+	await goto(MENU)
+	await wait(0.3)
+	var m := cur() as MainMenu
+	m.start_button.grab_focus()
+	for i in range(3):
+		await press_key(KEY_DOWN)
+	check("menu focus on Settings", focus_owner() == m.settings_button, focus_owner())
+	await press_key(KEY_ENTER)
+	var ok: bool = await wait_until(func() -> bool: return cur() is SettingsScreen, 5.0)
+	if not check("Settings scene opens", ok):
+		return
+	await wait(0.3)
+	var s := cur() as SettingsScreen
+	await shot("settings")
+	var cell: RebindCell = s.cells["lane_1:keyboard"]
+	check("initial focus on Lane 1 keyboard cell", focus_owner() == cell, focus_owner())
+	await press_key(KEY_ENTER)
+	check("Enter starts listening ('PRESS A KEY...')", cell.listening and cell.text == "PRESS A KEY...", cell.text)
+	await shot("rebind_listening")
+	await press_key(KEY_Q)
+	check("Lane 1 rebound to Q", not cell.listening and cell.text == "Q" and _action_has_key(&"lane_1", KEY_Q) and not _action_has_key(&"lane_1", KEY_D), cell.text)
+	var cfg := ConfigFile.new()
+	cfg.load(TEMP_SETTINGS)
+	metrics["saved_lane_1_key"] = cfg.get_value("bindings", "lane_1_key", null)
+	check("rebind persisted", int(cfg.get_value("bindings", "lane_1_key", 0)) == KEY_Q, metrics["saved_lane_1_key"])
+	# duplicate
+	await press_key(KEY_ENTER)
+	await press_key(KEY_F)
+	var msg := s.message_text(&"lane_1")
+	check("duplicate (F = Lane 2) rejected with inline message", msg.contains("F is already used for Lane 2") and cell.text == "Q" and _action_has_key(&"lane_2", KEY_F), msg)
+	await shot("rebind_duplicate_rejected")
+	# Tab
+	await press_key(KEY_ENTER)
+	await press_key(KEY_TAB)
+	msg = s.message_text(&"lane_1")
+	check("Tab rejected with inline message", msg.contains("Tab can't be used") and cell.text == "Q", msg)
+	await shot("rebind_tab_rejected")
+	# Esc cancels listening
+	await press_key(KEY_ENTER)
+	await press_key(KEY_ESCAPE)
+	check("Esc cancels listening with no change", not cell.listening and cell.text == "Q" and scene_is(SETTINGS_SCENE))
+
+	# scroll speed
+	s.scroll_slider.grab_focus()
+	for i in range(6):
+		await press_key(KEY_LEFT)
+	check("scroll speed min 0.5x (clamped)", is_equal_approx(Settings.scroll_speed, 0.5), Settings.scroll_speed)
+	await press_key(KEY_RIGHT, 3.2)
+	check("scroll speed max 3.0x (hold Right)", is_equal_approx(Settings.scroll_speed, 3.0), Settings.scroll_speed)
+	await shot("scroll_3x")
+	for i in range(20):
+		await press_key(KEY_LEFT)
+	check("scroll back to 1.0x", is_equal_approx(Settings.scroll_speed, 1.0), Settings.scroll_speed)
+
+	# volumes
+	s.master_slider.grab_focus()
+	for i in range(4):
+		await press_key(KEY_LEFT)
+	s.music_slider.grab_focus()
+	for i in range(2):
+		await press_key(KEY_LEFT)
+	s.sfx_slider.grab_focus()
+	await press_key(KEY_RIGHT)
+	var mdb := AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Master"))
+	var mudb := AudioServer.get_bus_volume_db(AudioServer.get_bus_index("Music"))
+	var sdb := AudioServer.get_bus_volume_db(AudioServer.get_bus_index("SFX"))
+	metrics["bus_db"] = {"Master": mdb, "Music": mudb, "SFX": sdb}
+	check("volumes: Master 80%, Music 70%, SFX 85% applied to buses",
+		is_equal_approx(Settings.volume_master, 0.8) and is_equal_approx(Settings.volume_music, 0.7) and is_equal_approx(Settings.volume_sfx, 0.85)
+		and absf(mdb - linear_to_db(0.8)) < 0.01 and absf(mudb - linear_to_db(0.7)) < 0.01 and absf(sdb - linear_to_db(0.85)) < 0.01,
+		"%.0f/%.0f/%.0f%%  %.2f/%.2f/%.2f dB" % [Settings.volume_master * 100, Settings.volume_music * 100, Settings.volume_sfx * 100, mdb, mudb, sdb])
+	cfg.load(TEMP_SETTINGS)
+	check("volumes persisted", is_equal_approx(float(cfg.get_value("audio", "master", 0)), 0.8) and is_equal_approx(float(cfg.get_value("audio", "music", 0)), 0.7))
+
+	# Reset controls
+	s.reset_button.grab_focus()
+	await press_key(KEY_ENTER)
+	check("Reset Controls shows confirm with SAFE focus", s.dialog != null and focus_owner() == s.dialog.safe_button, focus_owner())
+	await shot("reset_controls_confirm")
+	await press_key(KEY_LEFT)
+	await press_key(KEY_ENTER)
+	check("Reset Controls restores Lane 1 = D", s.dialog == null and cell.text == "D" and _action_has_key(&"lane_1", KEY_D), cell.text)
+	await press_key(KEY_ESCAPE)
+	ok = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
+	check("Esc in Settings -> back to main menu", ok)
+
+
+func _action_has_key(action: StringName, code: int) -> bool:
+	for e in InputMap.action_get_events(action):
+		if e is InputEventKey and (e as InputEventKey).physical_keycode == code:
+			return true
+	return false
+
+
+# ------------------------------------------------------------------------------------------------
+# h. autoplay from menu; F4 mid-run
+# ------------------------------------------------------------------------------------------------
+
+
+func sc_h() -> void:
+	isolate_settings(true)
+	var g: Gameplay = await start_dive_from_menu(true)
+	if g == null:
+		return
+	check("autoplay run, lane input disabled, AUTOPLAY badge", g.autoplay and not g.lane_input.enabled and g.hud.is_autoplay_shown())
+	var judged: Array = []
+	g.judge.judged.connect(func(_l: int, _i: int, jj: int, err: float) -> void: judged.append([jj, err]))
+	await wait_until(func() -> bool: return g.conductor.song_time() > 30.0, 40.0)
+	await shot("autoplay_midsong")
+	var ok: bool = await wait_until(func() -> bool: return g.state == Gameplay.State.DONE, 45.0)
+	check("autoplay run reaches results", ok)
+	await wait(0.6)
+	await shot("autoplay_results")
+	var sc := g.score
+	var n := g.chart.notes.size()
+	check("all notes PERFECT", sc.perfect_count == n and sc.good_count == 0 and sc.miss_count == 0,
+		"P%d G%d M%d of %d" % [sc.perfect_count, sc.good_count, sc.miss_count, n])
+	var max_err := 0.0
+	for e in judged:
+		max_err = maxf(max_err, absf(float(e[1])))
+	metrics["autoplay_max_abs_err_ms"] = max_err * 1000.0
+	check("autoplay errors are exactly 0", max_err == 0.0, max_err)
+	check("results show AUTOPLAY USED", g.results != null and g.results.flags.has("AUTOPLAY USED"), g.results.flags if g.results else null)
+	# Back to menu via results
+	await press_key(KEY_DOWN)
+	check("results focus Back to Menu", focus_owner() == g.results.menu_button, focus_owner())
+	await press_key(KEY_ENTER)
+	ok = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
+	check("results Back to Menu -> menu", ok)
+	await wait(0.3)
+	# F4 mid normal run
+	g = await start_dive_from_menu(false)
+	check("normal run starts without autoplay", not g.autoplay and g.lane_input.enabled and not g.hud.is_autoplay_shown())
+	await wait_until(func() -> bool: return g.conductor.song_time() > 5.0, 10.0)
+	var old_cond := g.conductor
+	await press_key(KEY_F4)
+	await frame()
+	var st := g.conductor.song_time()
+	check("F4 restarts the run with autoplay on", g.autoplay and g.autoplay_used and g.conductor != old_cond and st < 1.0 and g.hud.is_autoplay_shown(),
+		"autoplay=%s song_time after F4=%.3f" % [g.autoplay, st])
+	var j2: Array = [0, 0]
+	g.judge.judged.connect(func(_l: int, _i: int, jj: int, _e: float) -> void:
+		j2[0] += 1
+		if jj == InputJudge.Judgment.PERFECT:
+			j2[1] += 1)
+	await wait_until(func() -> bool: return g.conductor.song_time() > 6.0, 10.0)
+	await shot("f4_autoplay_restart")
+	check("F4 autoplay run judges PERFECT", j2[0] > 5 and j2[0] == j2[1], "%d/%d" % [j2[1], j2[0]])
+
+
+# ------------------------------------------------------------------------------------------------
+# i. settings overlay from pause
+# ------------------------------------------------------------------------------------------------
+
+
+func sc_i() -> void:
+	isolate_settings(true)
+	var g: Gameplay = await start_dive_from_menu(false)
+	if g == null:
+		return
+	var c := g.conductor
+	var sched := keyboard_schedule(g.chart.notes, [0.0])
+	var gw: WeakRef = weakref(g)
+	var bot := func() -> void:
+		await run_schedule(c, sched, func() -> bool: return _gone_or_stopped(gw) or c.song_time() > 25.0)
+	bot.call()
+	await wait_until(func() -> bool: return c.song_time() > 12.2, 20.0)
+	await press_key(KEY_ESCAPE)
+	var p0 := c.song_time()
+	var score0 := g.score.score
+	var combo0 := g.score.combo
+	await press_key(KEY_DOWN)
+	await press_key(KEY_DOWN)
+	check("focus Settings in pause menu", focus_owner() == g.pause_menu.settings_button, focus_owner())
+	await press_key(KEY_ENTER)
+	await wait(0.3)
+	check("Settings opens as overlay over the paused run", g.pause_menu.has_settings_overlay() and scene_is(GAMEPLAY) and c.is_paused())
+	var ss: SettingsScreen = null
+	var ov: CanvasLayer = g.pause_menu.get("_overlay")
+	if ov != null and ov.get_child_count() > 0:
+		ss = ov.get_child(0) as SettingsScreen
+	check("overlay is SettingsScreen in overlay mode with Re-run Calibration disabled", ss != null and ss.overlay and ss.recalibrate_button.disabled)
+	await shot("settings_overlay_over_pause")
+	await wait(1.0)
+	check("song_time frozen under overlay", c.song_time() == p0)
+	await press_key(KEY_ESCAPE)
+	await frame()
+	check("closing overlay returns to pause menu, focus on Settings", not g.pause_menu.has_settings_overlay() and g.pause_menu.is_open() and focus_owner() == g.pause_menu.settings_button, focus_owner())
+	await press_key(KEY_UP)
+	await press_key(KEY_UP)
+	check("focus Resume Dive", focus_owner() == g.pause_menu.resume_button, focus_owner())
+	var res := [0.0]
+	c.resumed.connect(func() -> void: res[0] = c.song_time(), CONNECT_ONE_SHOT)
+	await press_key(KEY_ENTER)
+	var ok: bool = await wait_until(func() -> bool: return float(res[0]) > 0.0, 6.0)
+	check("Resume Dive -> countdown -> resumed", ok)
+	metrics["resume_jump_ms"] = (float(res[0]) - p0) * 1000.0
+	check("resumes from the same place (+-20 ms)", absf(float(res[0]) - p0) <= 0.02, "%.2f ms" % ((float(res[0]) - p0) * 1000.0))
+	check("score and combo intact after overlay", g.score.score == score0 and g.score.combo == combo0, "%d/%d -> %d/%d" % [score0, combo0, g.score.score, g.score.combo])
+	await wait_until(func() -> bool: return c.song_time() > p0 + 4.0, 10.0)
+	check("run continues and scores after resume", g.score.score > score0 and g.score.miss_count == 0, "score %d misses %d" % [g.score.score, g.score.miss_count])
+
+
+# ------------------------------------------------------------------------------------------------
+# drift: shipped drift harness, full 5 minutes, instrumented by the frame probe
+# ------------------------------------------------------------------------------------------------
+
+
+func sc_drift() -> void:
+	isolate_settings(true)
+	if not await goto(DRIFT):
+		check("drift harness scene loads", false)
+		return
+	var h := cur()
+	probe.conductor = h.get("conductor")
+	probe.enabled = true
+	await wait_until(func() -> bool: return bool(h.get("_finished")), 320.0)
+	probe.enabled = false
+	check("drift harness ran to completion (300 s)", bool(h.get("_finished")))
+	# Keep a copy: the gdUnit suite (test_gameplay_smoke) rewrites user://drift_log.csv.
+	DirAccess.copy_absolute(ProjectSettings.globalize_path(DriftHarness.LOG_PATH),
+		ProjectSettings.globalize_path(OUT_DIR + "/drift_log_copy.csv"))
+	await shot("drift_harness_done")
+	_save_probe_csv("drift_probe.csv")
+	var a := clock_analysis(probe.rows, 1.0, 299.5)
+	metrics["probe"] = a
+	# CSV written by the game
+	var f := FileAccess.open(DriftHarness.LOG_PATH, FileAccess.READ)
+	var xs: Array = []
+	var ds: Array = []
+	if f != null:
+		f.get_line()
+		while not f.eof_reached():
+			var line := f.get_line()
+			if line.strip_edges() == "":
+				continue
+			var p := line.split(",")
+			xs.append(float(p[0]))
+			ds.append(float(p[2]))
+	var steady_x: Array = []
+	var steady_d: Array = []
+	for i in range(xs.size()):
+		if float(xs[i]) >= 1.0:
+			steady_x.append(xs[i])
+			steady_d.append(ds[i])
+	var dst := stats(steady_d)
+	var fit := linfit(steady_x, steady_d)
+	metrics["csv_rows"] = xs.size()
+	metrics["csv_drift_ms_t_ge_1s"] = dst
+	metrics["csv_drift_fit"] = fit
+	metrics["csv_drift_trend_ms_per_min"] = float(fit.get("b", 0.0)) * 60.0
+	if not steady_d.is_empty():
+		metrics["csv_drift_first_last_ms"] = [steady_d[0], steady_d[steady_d.size() - 1]]
+	check("drift_log.csv covers 300 s", xs.size() >= 300, xs.size())
+	var tr: Dictionary = a["song_minus_audio_target_ms"]
+	check("D-30: song_time within +-2 ms of the audio clock model (p99)", float(tr["p99_abs"]) <= 2.0,
+		"mean %.3f std %.3f p99 %.3f max %.3f ms" % [tr["mean"], tr["std"], tr["p99_abs"], tr["max_abs"]])
+	check("D-30 strict: max |song_time - audio clock| <= 2 ms every frame", float(tr["max_abs"]) <= 2.0, "max %.3f ms" % tr["max_abs"])
+	check("song_time monotonic for 5 min", int(a["backwards_steps"]) == 0, a["backwards_steps"])
+	check("no clock snaps in 5 min", int(a["tracking_err_gt_50ms_frames"]) == 0, a["tracking_err_gt_50ms_frames"])
+	var spread := float(dst.get("max", 0.0)) - float(dst.get("min", 0.0))
+	metrics["csv_drift_spread_ms"] = spread
+	note("Raw audio clock vs system clock rate: %.1f ppm (%.2f ms over 300 s). song_time follows the audio clock by design, so song_time - system elapsed tracks this." % [
+		float(a.get("audio_vs_system_rate_ppm", 0.0)), float(a.get("audio_vs_system_rate_ppm", 0.0)) * 300.0 / 1000.0])
+
+
+# ------------------------------------------------------------------------------------------------
+# layout: rects of the in-run overlays (evidence for the top-left overlay finding)
+# ------------------------------------------------------------------------------------------------
+
+
+func _rect(c: Control) -> String:
+	return str(c.get_global_rect()) if c != null and is_instance_valid(c) else "null"
+
+
+func sc_layout() -> void:
+	isolate_settings(true)
+	var g: Gameplay = await start_dive_from_menu(false)
+	if g == null:
+		return
+	await wait(1.0)
+	var vp := get_viewport().get_visible_rect().size
+	var run_root: Control = g.get("_run_root")
+	metrics["viewport"] = str(vp)
+	metrics["gameplay_rect"] = _rect(g)
+	metrics["run_root_rect"] = _rect(run_root)
+	await press_key(KEY_ESCAPE)
+	var panel: Control = g.pause_menu.get("_panel_root")
+	metrics["pause_menu_rect"] = _rect(g.pause_menu)
+	metrics["pause_panel_rect"] = _rect(panel)
+	check("gameplay root fills the viewport", g.size.is_equal_approx(vp), metrics["gameplay_rect"])
+	check("run root fills the viewport", run_root.size.is_equal_approx(vp), metrics["run_root_rect"])
+	check("pause menu (and its dim + CenterContainer) fills the viewport", g.pause_menu.size.is_equal_approx(vp), metrics["pause_menu_rect"])
+	await shot("pause_layout")
+	await press_key(KEY_ESCAPE)
+	await wait_until(func() -> bool: return g.state == Gameplay.State.FAILED, 30.0)
+	await wait(1.0)
+	metrics["fail_screen_rect"] = _rect(g.fail_screen)
+	check("fail screen fills the viewport (IMPLOSION centered)", g.fail_screen != null and g.fail_screen.size.is_equal_approx(vp), metrics["fail_screen_rect"])
