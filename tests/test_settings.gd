@@ -1,0 +1,144 @@
+extends GdUnitTestSuite
+## CAL-02/03/04: scroll speed, volumes, toggles, bindings persistence through Settings.
+
+const SettingsScript := preload("res://src/autoload/settings.gd")
+const PATH := "user://test_settings_04.cfg"
+
+
+func before_test() -> void:
+	_cleanup()
+
+
+func after_test() -> void:
+	_cleanup()
+	BindingStore.new().reset_defaults()
+
+
+func _cleanup() -> void:
+	for p in [PATH, PATH + ".bak"]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+
+
+func _settings() -> Node:
+	var s: Node = auto_free(SettingsScript.new())
+	s.save_path = PATH
+	return s
+
+
+func _write(text: String) -> void:
+	var f := FileAccess.open(PATH, FileAccess.WRITE)
+	f.store_string(text)
+	f.close()
+
+
+func test_scroll_speed_clamps_and_snaps() -> void:
+	var s := _settings()
+	s.set_scroll_speed(3.14)
+	assert_float(s.scroll_speed).is_equal(3.0)
+	s.set_scroll_speed(0.2)
+	assert_float(s.scroll_speed).is_equal(0.5)
+	s.set_scroll_speed(1.23)
+	assert_float(s.scroll_speed).is_equal_approx(1.2, 0.0001)
+	s.set_scroll_speed(1.26)
+	assert_float(s.scroll_speed).is_equal_approx(1.3, 0.0001)
+
+
+func test_scroll_speed_snapped_on_load() -> void:
+	_write("[gameplay]\nscroll_speed=1.27\n")
+	var s := _settings()
+	s.load_from(PATH)
+	assert_float(s.scroll_speed).is_equal_approx(1.3, 0.0001)
+
+
+func test_volume_defaults() -> void:
+	var s := _settings()
+	s.reset_defaults()
+	assert_float(s.volume_master).is_equal(1.0)
+	assert_float(s.volume_music).is_equal(0.8)
+	assert_float(s.volume_sfx).is_equal(0.8)
+
+
+func test_volume_clamps_applies_and_persists() -> void:
+	var s := _settings()
+	s.set_volume("Music", 0.5)
+	var idx := AudioServer.get_bus_index("Music")
+	assert_int(idx).is_greater_equal(0)
+	assert_float(AudioServer.get_bus_volume_db(idx)).is_equal_approx(linear_to_db(0.5), 0.01)
+	s.set_volume("SFX", 7.0)
+	assert_float(s.volume_sfx).is_equal(1.0)
+	s.set_volume("Master", -3.0)
+	assert_float(s.volume_master).is_equal(0.0)
+	var s2 := _settings()
+	s2.load_from(PATH)
+	assert_float(s2.volume_music).is_equal_approx(0.5, 0.0001)
+	assert_float(s2.volume_sfx).is_equal(1.0)
+	assert_float(s2.volume_master).is_equal(0.0)
+	# Restore live bus levels so other suites are unaffected.
+	s2.set_volume("Master", 1.0)
+	s2.set_volume("Music", 0.8)
+	s2.set_volume("SFX", 0.8)
+
+
+func test_hostile_volumes_fall_back() -> void:
+	_write("[audio]\nmaster=\"loud\"\nmusic=9.0\nsfx=-1.0\n")
+	var s := _settings()
+	s.load_from(PATH)
+	assert_float(s.volume_master).is_equal(1.0)
+	assert_float(s.volume_music).is_equal(1.0)
+	assert_float(s.volume_sfx).is_equal(0.0)
+	s.set_volume("Master", 1.0)
+	s.set_volume("Music", 0.8)
+	s.set_volume("SFX", 0.8)
+
+
+func test_unknown_bus_ignored() -> void:
+	var s := _settings()
+	s.set_volume("Nope", 0.3)
+	assert_float(s.volume_master).is_equal(1.0)
+
+
+func test_toggle_defaults_and_persist() -> void:
+	var s := _settings()
+	s.reset_defaults()
+	assert_bool(s.early_late_indicator).is_true()
+	assert_bool(s.no_fail).is_false()
+	assert_bool(s.reduce_motion).is_false()
+	s.early_late_indicator = false
+	s.no_fail = true
+	s.reduce_motion = true
+	assert_int(s.save_to(PATH)).is_equal(OK)
+	var s2 := _settings()
+	s2.load_from(PATH)
+	assert_bool(s2.early_late_indicator).is_false()
+	assert_bool(s2.no_fail).is_true()
+	assert_bool(s2.reduce_motion).is_true()
+
+
+func test_non_bool_toggle_falls_back() -> void:
+	_write("[gameplay]\nearly_late_indicator=5\nno_fail=\"yes\"\n")
+	var s := _settings()
+	s.load_from(PATH)
+	assert_bool(s.early_late_indicator).is_true()
+	assert_bool(s.no_fail).is_false()
+
+
+func test_bindings_persist_via_settings() -> void:
+	var s := _settings()
+	s.bindings.bind_key(&"lane_1", KEY_A)
+	assert_int(s.save_to(PATH)).is_equal(OK)
+	s.bindings.reset_defaults()
+	s.load_from(PATH)
+	var found := 0
+	for ev in InputMap.action_get_events(&"lane_1"):
+		if ev is InputEventKey:
+			found = (ev as InputEventKey).physical_keycode
+	assert_int(found).is_equal(KEY_A)
+
+
+func test_settings_changed_signal() -> void:
+	var s := _settings()
+	var count := [0]
+	s.settings_changed.connect(func() -> void: count[0] += 1)
+	s.set_scroll_speed(2.0)
+	assert_int(count[0]).is_greater_equal(1)
