@@ -68,3 +68,24 @@ func test_f4_restarts_with_autoplay_and_shows_badge() -> void:
 	await _wait_done(gp)
 	assert_int(gp.score.miss_count).is_equal(0)
 	assert_bool(gp.results.flags.has("AUTOPLAY USED")).is_true()
+
+
+func test_debug_overlay_hidden_by_default_and_records_errors() -> void:
+	var gp := _launch(true)
+	await get_tree().process_frame
+	assert_object(gp.debug_overlay).is_not_null()
+	assert_bool(gp.debug_overlay.visible).is_false()
+	gp.judge.judged.emit(0, 0, InputJudge.Judgment.PERFECT, 0.012)
+	for i in range(25):
+		gp.judge.judged.emit(0, 0, InputJudge.Judgment.GOOD, -0.02)
+	assert_int(gp.debug_overlay.recent_errors().size()).is_equal(20)
+
+
+func test_drift_harness_scene_boots_and_logs() -> void:
+	var h: Node = (load("res://scenes/drift_harness.tscn") as PackedScene).instantiate()
+	add_child(h)
+	auto_free(h)
+	for i in range(10):
+		await get_tree().process_frame
+	assert_object(h.get("conductor")).is_not_null()
+	assert_bool(FileAccess.file_exists("user://drift_log.csv")).is_true()

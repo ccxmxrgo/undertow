@@ -32,6 +32,7 @@ var feedback: Feedback
 var fail_screen: FailScreen
 var results: ResultsScreen
 var pause_menu: PauseMenu
+var debug_overlay: DebugOverlay
 
 var _run_root: Control
 var _autoplay_player: Autoplay
@@ -106,6 +107,9 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 
 
 func _on_run_built() -> void:
+	debug_overlay = DebugOverlay.new()
+	_run_root.add_child(debug_overlay)
+	debug_overlay.setup(conductor, judge)
 	pause_menu = PauseMenu.new()
 	_run_root.add_child(pause_menu)
 	pause_menu.setup(conductor, lane_input, score)
@@ -125,6 +129,7 @@ func _teardown() -> void:
 	conductor = null
 	lane_input = null
 	pause_menu = null
+	debug_overlay = null
 
 
 func is_done() -> bool:
