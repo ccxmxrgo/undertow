@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-10-07T16:26:13.667Z"
+last_updated: "2026-10-07T16:32:34.277Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 7
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -52,6 +52,7 @@ Progress: [..........] 0%
 - Trend: -
 
 | Phase 01 P01 | 15min | 2 tasks | 7 files |
+| Phase 01 P02 | ~40min (tasks 1-4) | 4 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,7 @@ Recent decisions affecting current work:
 - Transport for v1: ENet over Tailscale/ZeroTier; GodotSteam is an optional later swap
 - Godot 4.7.2 standard build, GDScript, version pinned for all friends
 - [Phase 01]: [01-01] gdUnit4 6.2.1 runs headless on 4.7.2 only with --ignoreHeadlessMode (in tools/run_tests.ps1)
+- [Phase 01-02]: Conductor schedules play() at song_time -(next_mix+latency)-audio_offset; Settings uses ConfigFile.parse on file text
 
 ### Pending Todos
 
@@ -80,6 +82,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-07T16:26:09.689Z
+Last session: 2026-10-07T16:32:30.697Z
 Stopped at: Phase 1 UI-SPEC approved
 Resume file: None
