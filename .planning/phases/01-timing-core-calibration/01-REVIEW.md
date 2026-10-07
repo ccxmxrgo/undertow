@@ -44,157 +44,78 @@ files_reviewed_list:
   - tools/export.ps1
   - tools/run_tests.ps1
 findings:
-  critical: 1
-  warning: 9
-  info: 4
-  total: 14
-status: issues_found
+  critical: 0
+  warning: 0
+  info: 6
+  total: 6
+status: clean
 ---
 
-# Phase 01: Code Review Report
+# Phase 01: Code Review Report (re-review after fixes)
 
 **Reviewed:** 2026-10-07
 **Depth:** standard
-**Files Reviewed:** 39 (note_shape.gd was not opened; it only draws shapes)
-**Status:** issues_found
+**Files Reviewed:** 39 (re-review focused on the fix diff plus the surrounding code it touches)
+**Status:** clean (no Critical or Warning findings remain; Info items only)
 
 ## Summary
 
-The timing core (ClockModel, Conductor, InputJudge, CalibrationMath) is mostly sound. The audio offset sign convention is consistent end to end. The `user://settings.cfg` parsing is type-checked and clamped throughout. One real timing bug exists in the pause/resume path when pausing during the lead-in. There are several robustness problems around modal focus, the clock's stall behaviour, and calibration domain mixing.
+I traced each previous Critical and Warning finding through the fix diff and the current source. I found no new defects at Critical or Warning level. Nothing was run, as instructed, so the timing fixes are verified by reading only.
 
-Focus question (Restart confirm dialog): initial focus is still grabbed after the 01-08 layout change. `ConfirmDialog.setup()` calls `safe_button.grab_focus()` when `is_inside_tree()`. `PauseMenu._show_dialog` adds the dialog to the tree before `setup`, so that branch runs. `PauseMenu` then calls `grab_focus()` again, and `_ready()` has a third call. `UiLayout.fill_rect` only sets anchors and offsets and cannot affect focus. `tests/test_pause_overlay.gd:90` asserts `safe_button.has_focus()`. So the missing highlight in the screenshot is not a lost grab. See WR-05 for what the code can and cannot explain. I could not run the game to confirm the visual cause.
+Verification of the earlier findings:
 
-## Critical Issues
-
-### CR-01: Pausing during the lead-in resumes audio from a negative position and desyncs the clock
-
-**File:** `src/core/conductor.gd:82-95` (also 168-170, 152)
-**Issue:** `pause()` during PREROLL freezes `song_time` at a negative value, for example -0.6. `resume()` then sets `_start_pos = clock.paused_position()`, which is negative. `_process` fires `_start_audio()` at `resume_ticks - lead`, calling `_player.play(-0.6)`. Godot clamps or misbehaves on a negative `from_position`, so the stream most likely starts at 0. Song_time at that moment is still about -0.6, so the audio is roughly 0.6 s ahead of the clock. The `_audio_valid` test (`position > _start_pos`) is true immediately, because any position is greater than -0.6. The clock then hits the snap branch in `ClockModel.update` and song_time jumps forward by about 0.6 s. Notes skip and are judged as missed or mis-timed. The same hazard applies to a pause in the first moments before the audio has started. The player can reach this by pressing Esc during the 2-beat lead-in.
-**Fix:** In `resume()`, if `_start_pos < 0`, do not start the audio by the countdown. Treat the remainder as pre-roll, schedule the audio so position 0 is heard at song_time 0, and clamp the seek position:
-```gdscript
-# resume(): after computing _start_pos
-var seek_pos := maxf(_start_pos, 0.0)
-# _play_at (song_time at which play() must fire) = seek_pos - delay - audio_offset
-# when _start_pos < 0, start audio only once clock.song_time() >= _play_at (as in _start),
-# and call _player.play(seek_pos), never a negative value.
-```
-Also change the `_audio_valid` guard to compare against `maxf(_start_pos, 0.0)`.
-
-## Warnings
-
-### WR-01: Monotonic clamp turns "audio is behind" into a clock freeze instead of a slew
-
-**File:** `src/core/clock_model.gd:92-99`
-**Issue:** When `|audio_target - predicted| > snap_s` and the target is behind the prediction, `predicted = audio_target`. The line `_song_time = maxf(_song_time, predicted)` then discards that correction. Next frame `predicted = _song_time + dt` is again ahead of the target by more than the snap, so the same branch runs. The result is that `song_time` is frozen until the audio catches up, so notes visibly stop. Typical triggers are audio that started later than scheduled (Bluetooth, wrong `get_output_latency`) or a mix thread stall. A freeze of 50 ms or more also lands inside the judgment window.
-**Fix:** When the error is negative and larger than the snap, advance at a reduced rate instead of holding. For example, cap the backward correction by running `dt * 0.5` that frame:
-```gdscript
-if absf(err) > snap_s:
-    predicted = audio_target if err > 0.0 else _song_time + dt * 0.5
-```
-
-### WR-02: Visual calibration is measured against the old saved audio offset, not the accepted one
-
-**File:** `src/ui/calibration_wizard.gd:265-286, 392-396` (conductor offset in `src/core/conductor.gd:57,155`)
-**Issue:** `Conductor` always applies `Settings.audio_offset`. After "Accept Offset" the wizard stores the new value only in `pending_audio`. Settings is unchanged until Save. The visual step therefore plays the click with the previous audio offset, and the user aligns the flash to that. When the new audio offset is saved, gameplay's audio/visual alignment differs from what was calibrated by `pending_audio - Settings.audio_offset`. The audio step is handled correctly (`remove_applied_offset`); the visual step is not.
-**Fix:** Let the Conductor take an explicit offset override, for example `conductor.offset_override: float = NAN`, and set it to `pending_audio` before `_start_loop()` in `_build_visual_step`. Alternatively, apply `pending_audio - Settings.audio_offset` to `vt` in `_draw_stage`.
-
-### WR-03: A new hold can overwrite an active hold without emitting `sustain_end`
-
-**File:** `src/core/input_judge.gd:122-134`
-**Issue:** `_resolve` assigns `_holds[lane] = {...}` unconditionally. If a second sustain head in the same lane is judged while an earlier hold is still active, the first hold vanishes silently. `sustain_end` is never emitted. `Highway._holding[lane]` and the note state stay `S_HOLDING` forever. The first hold's remaining ticks are lost. The authored charts avoid overlap, but `ChartData.finalize()` does not validate it. Imported charts (the roadmap's next input) can contain a note starting before the previous tail in the same lane. Autoplay also hits this: its press is not preceded by a release when a note head is earlier than the previous tail.
-**Fix:** In `_resolve`, if `_holds[lane] != null`, end it first:
-```gdscript
-if _holds[lane] != null:
-    _emit_ticks(lane, _holds[lane], _holds[lane]["tail"])
-    _end_hold(lane, true)
-```
-Alternatively, validate and trim overlaps in `ChartData.finalize()`.
-
-### WR-04: One `_held` flag is shared by a lane's keyboard key and its trigger axis
-
-**File:** `src/input/lane_input.gd:64-75`
-**Issue:** By default lane_2 and lane_3 are mapped to both a key (F, J) and a trigger axis. `_handle_motion` releases the lane whenever `_held[lane]` is true and a motion event for that axis reports `strength <= 0.4`. While the player holds F, any idle-trigger motion event, such as jitter or a light touch, calls `_release(lane)`. This ends a sustain early for a key that is still held. It also lets a later trigger press re-trigger a lane the key already holds. Events from multiple joypads share the same state.
-**Fix:** Track the source separately, for example `_held_key[lane]` and `_held_axis[lane]`. Only release when no source remains held. Emit press on the 0 to 1 transition of the union, and release on the 1 to 0 transition.
-
-### WR-05: Modal dialogs leave the screen behind them focusable; the Restart dialog's focus highlight is unexplained
-
-**File:** `src/ui/confirm_dialog.gd:66-69`, `src/ui/pause_menu.gd:170-183`, `src/ui/settings_screen.gd:291-310`
-**Issue:** (a) Only `confirm_button.focus_neighbor_right` and `safe_button.focus_neighbor_left` are set. Up and down are unset, so Godot picks the geometrically nearest focusable control in the whole viewport. The pause panel buttons (and the Settings rows or rebind cells) remain visible and focusable behind the dim. Pressing Up or Down on "Keep Playing" can move focus behind the dialog. A following Enter or Space activates a hidden control, for example "Back to Menu" or a rebind cell, while the dialog is still open. The mouse is blocked by `MOUSE_FILTER_STOP`, but the keyboard is not.
-(b) On the focus-highlight question, the code path grabs focus on `safe_button` and `Style_focus` exists in the theme (`ui/undertow_theme.tres:84`, 4 px accent border). Nothing in the layout change removes it. Likely causes to verify at runtime:
-  - The screenshot may have been taken before the next draw.
-  - The focus was moved by (a), or the pointer-hover state was masking it.
-  - The Godot 4.7 behaviour of hiding focus rings after a mouse-originated interaction. The Restart button was probably clicked, and I could not verify this.
-**Fix:** Make the dialog a real modal. Set all four neighbors on both buttons (for example top and bottom point to themselves, and left and right point to each other, wrapping). Better, add `focus_mode = Control.FOCUS_NONE` to the covered content, or toggle `_panel_root.visible` and `process_mode` while the dialog is open. Call `grab_focus` once, deferred, from `ConfirmDialog` only:
-```gdscript
-safe_button.focus_neighbor_top = safe_button.get_path_to(safe_button)
-safe_button.focus_neighbor_bottom = safe_button.get_path_to(safe_button)
-safe_button.focus_neighbor_right = safe_button.get_path_to(confirm_button)
-confirm_button.focus_neighbor_left = confirm_button.get_path_to(safe_button)
-# ... same for confirm_button top/bottom, then:
-safe_button.grab_focus.call_deferred()
-```
-Add a screenshot or test step that asserts `get_viewport().gui_get_focus_owner() == dialog.safe_button` after one frame.
-
-### WR-06: Fail screen buttons are active while the panel is still invisible
-
-**File:** `src/ui/fail_screen.gd:61-69`, `src/ui/gameplay.gd:183-192`
-**Issue:** `play()` sets `modulate.a = 0`, grabs focus on Retry immediately, and fades in after the 0.4 s squash. For about 0.7 s the panel is transparent but fully interactive. Space is both the default `fire` key and `ui_accept`, and the player is still mashing when the hull breaks. A single press retriggers Retry and instantly restarts the dive with no fail screen. The restart also leaves a running tween that targets the freed `highway` and `feedback` nodes.
-**Fix:** Keep the buttons disabled until the fade completes:
-```gdscript
-retry_button.disabled = true; menu_button.disabled = true
-tw.tween_callback(func() -> void:
-    retry_button.disabled = false; menu_button.disabled = false; retry_button.grab_focus())
-```
-Also kill the fail tween in `Gameplay._teardown`.
-
-### WR-07: `export.ps1` can report success for a failed export
-
-**File:** `tools/export.ps1:21-27`
-**Issue:** Success is judged only by `Test-Path build/undertow-debug.exe`. A stale exe from a previous build satisfies it, so a failed export (missing templates, script error) still prints "Export OK" and exits 0. A friend can then be sent an out-of-date build.
-**Fix:** Delete the artifact before exporting, and check the exit code as well:
-```powershell
-Remove-Item build/undertow-debug.exe, build/undertow-debug.pck -ErrorAction SilentlyContinue
-& $godot --headless --path . --export-debug "Windows Desktop" build/undertow-debug.exe
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path build/undertow-debug.exe)) { ... exit 1 }
-```
-
-### WR-08: Settings are saved non-atomically and save failures are ignored
-
-**File:** `src/autoload/settings.gd:121-136` and callers (`save_calibration`, `set_scroll_speed`, `set_volume`, `settings_screen.gd:213,259,305,337`)
-**Issue:** `ConfigFile.save(path)` writes in place, so a crash or power loss mid-write leaves a truncated file. The next launch fails `parse`, backs the file up, and resets everything, including the calibration and `calibration_done`. The player is then forced back through the wizard. `save_to` returns an error code that no caller checks. After a failed save (full disk, read-only profile) the UI still shows the change as applied and it is lost on restart.
-**Fix:** Write to `path + ".tmp"` and then `DirAccess.rename_absolute` over the target. Check the returned code and `push_warning` on failure.
-
-### WR-09: SettingsScreen builds its layout with `set_anchors_preset(PRESET_FULL_RECT)`, the pattern 01-08 fixed elsewhere
-
-**File:** `src/ui/settings_screen.gd:44,55,58`
-**Issue:** `UiLayout.fill_rect` exists because `set_anchors_preset(FULL_RECT)` computes offsets from the node's current 0x0 rect before first layout, and it collapsed the overlays. `PauseMenu`, `ConfirmDialog`, `ResultsScreen` and `FailScreen` were converted. `SettingsScreen` is instantiated as an overlay inside a `CanvasLayer` by the pause menu and still uses the old call on itself, the background and the margin container. It is at risk of the same collapsed-overlay bug when opened over a paused run. The same pattern also remains in `calibration_wizard.gd:61,77,81`, `main_menu.gd:32,52,56` and `hud.gd:39`.
-**Fix:** Use `UiLayout.fill_rect(self)`, `UiLayout.fill_rect(bg)` and `UiLayout.fill_rect(margin)`. Run the pause to Settings flow in a real window to confirm.
+- **CR-01 fixed.** `resume()` clamps `_start_pos` to >= 0 and sets `_deferred_start` when the paused position was negative. It recomputes `_play_at` for the pre-roll. `_process` skips the countdown-lead `_start_audio()` while `_deferred_start` is set. When the countdown ends it sets `_preroll = true`, and the existing pre-roll branch then fires `play(0)` at `song_time >= _play_at`. `_audio_valid` compares against the clamped `_start_pos`. `pause()` and `stop()` clear the flag. The `lead_ticks` and `_play_at` sign conventions agree with each other. The case of pausing again during the deferred countdown re-enters `resume()` and recomputes everything.
+- **WR-01 fixed.** For `err < -snap_s`, `predicted = _song_time + dt * 0.5`, so the monotonic clamp no longer freezes the clock. The error shrinks at 0.5 s/s, so it converges. The new test covers it.
+- **WR-02 fixed.** `Conductor.audio_offset()` is used at all four sites (`_start`, `resume`, the lead calculation and the target calculation). The wizard sets `offset_override = pending_audio` only for the visual step and resets it to NAN in `show_step`, so the audio step still uses `Settings.audio_offset` and `remove_applied_offset` stays consistent. The wizard owns its own Conductor, so the override does not leak into gameplay.
+- **WR-03 fixed.** `_resolve` closes the earlier hold, emitting its ticks up to `min(head, tail)` and `sustain_end`, before the new hold starts. `completed` is true only when the new head is at or past the old tail minus the forgive window.
+- **WR-04 fixed.** Key and axis sources are tracked separately. `_set_source` calls `_press`, which is guarded by the union `_held`, and releases only when neither source is held. `_release_all` clears both sources.
+- **WR-05 (a) fixed.** All four directions plus `focus_next` and `focus_previous` stay inside the dialog. Part (b), the missing Restart highlight, is still unexplained (see IN-05).
+- **WR-06 fixed.** Buttons are disabled until the fade finishes, and Retry then takes focus. `_fail_tween` is killed in `_teardown` before the `_run_root == null` early return.
+- **WR-07 fixed.** Stale artifacts are removed, and the check now also requires exit code 0. `Remove-Item -ErrorAction SilentlyContinue` is safe under `$ErrorActionPreference = "Stop"`.
+- **WR-08 fixed.** The save goes to `path.tmp`, then `rename_absolute`. Failures call `push_warning` and the temp file is removed. See IN-04 for the residual window.
+- **WR-09 fixed.** A grep finds no `PRESET_FULL_RECT` left in `src/`. The only remaining `set_anchors_preset` is `PRESET_CENTER` on a label in `gameplay.gd:221`, which is a different case. `fill_rect` is safe to call before `add_child`.
 
 ## Info
 
-### IN-01: F4 autoplay restart is not gated on a debug build
+### IN-01: F4 autoplay restart is not gated on a debug build (carried forward)
 
-**File:** `src/ui/gameplay.gd:159-161`
-**Issue:** F3 (`DebugOverlay`) checks `OS.is_debug_build()`, but F4 (`debug_autoplay`) restarts the run with autoplay in any build. The results screen does flag "AUTOPLAY USED", so scores are not misrepresented, but it contradicts the "debug only" intent of D-28.
-**Fix:** Add `and OS.is_debug_build()` to the check, or document that it is intentional.
+**File:** `src/ui/gameplay.gd:163-165`
+**Issue:** F3 (`DebugOverlay`) checks `OS.is_debug_build()`, but F4 restarts the run with autoplay in any build. The results screen flags "AUTOPLAY USED", so scores are not misrepresented. It still contradicts the "debug only" intent of D-28.
+**Fix:** Add `and OS.is_debug_build()`, or document the behaviour as intentional.
 
-### IN-02: Line continuations are flattened into tab runs
+### IN-02: Line continuations are flattened into tab runs (carried forward)
 
-**File:** `src/core/conductor.gd:155,163`, `src/ui/gameplay.gd:155`, `src/ui/calibration_wizard.gd:386`
-**Issue:** Expressions such as `... get_time_since_last_mix() 			- _latency_cache - ...` and `while _cd_emitted < _cd_beats 			and ...` are single lines with embedded tab runs. They parse correctly because tabs are whitespace, but they look like backslash continuations that lost their `\` and newline. They are hard to read and the timing formula in particular is easy to misread. The same tool artifact may exist elsewhere.
-**Fix:** Reformat with real line breaks (parenthesised expression) or a `\` continuation.
+**File:** `src/core/conductor.gd:171,182`, `src/ui/gameplay.gd:159`, `src/ui/calibration_wizard.gd:389`
+**Issue:** Expressions such as `... get_time_since_last_mix() 			- _latency_cache - audio_offset()` are single lines with embedded tab runs. They parse correctly but read like lost continuations. The timing formula at `conductor.gd:171` is easy to misread.
+**Fix:** Reformat with a parenthesised multi-line expression.
 
-### IN-03: Focus is grabbed through up to three redundant paths per dialog
+### IN-03: Focus is grabbed through several redundant paths per dialog (carried forward)
 
-**File:** `src/ui/confirm_dialog.gd:68-74`, `src/ui/pause_menu.gd:177`, `src/ui/settings_screen.gd:298`
-**Issue:** `setup()`, `_ready()` and the callers all call `grab_focus`. This hides real focus-ordering bugs, because one of the calls will always win.
-**Fix:** Keep a single deferred call inside `ConfirmDialog` (see WR-05) and delete the caller copies.
+**File:** `src/ui/confirm_dialog.gd:81-82`, `src/ui/pause_menu.gd:177`, `src/ui/settings_screen.gd:298`
+**Issue:** `setup()`, `_ready()` and the callers each call `grab_focus`. This hides real focus-ordering bugs.
+**Fix:** Keep a single deferred call inside `ConfirmDialog` and delete the caller copies.
 
-### IN-04: Settings are written on every slider step, and untrusted `Object()` values are instantiated by `ConfigFile.parse`
+### IN-04: Settings persistence has residual gaps (carried forward and extended)
 
-**File:** `src/autoload/settings.gd:79-99,145-147`
-**Issue:** `set_scroll_speed` and `set_volume` write the whole file for every step. A held key repeats 10 times per second. This is not a correctness bug, but combined with WR-08 it widens the window for a corrupted file. Separately, the `_num`, `_bool` and string checks protect every consumed value. `ConfigFile.parse` itself still accepts `Object(...)` and other Variant literals from a user-editable file, and the code relies on never using them rather than rejecting them.
-**Fix:** Debounce saves (save on slider release or on screen close; `back_pressed` already saves). Optionally pre-scan the text for `Object(` and treat it as a bad file.
+**File:** `src/autoload/settings.gd:79-99,133-146` and the callers
+**Issue:**
+- On Windows, Godot's `rename_absolute` removes an existing target before renaming. The save is therefore not truly atomic. A crash between the remove and the rename leaves only `settings.cfg.tmp`, and `load_from` ignores it, so the player is reset to defaults.
+- `set_scroll_speed` and `set_volume` still write the file on every slider step.
+- Callers still ignore the returned error code. The central `push_warning` is the only signal, and the UI shows the change as applied.
+- `ConfigFile.parse` still accepts `Object(...)` literals from a user-editable file. Safety rests on every consumed value being type-checked.
+**Fix:** In `load_from`, fall back to `path + ".tmp"` when the main file is missing. Debounce saves to slider release or screen close. Optionally pre-scan the text for `Object(`.
+
+### IN-05: Restart dialog's missing focus highlight is still unexplained (carried forward from WR-05b)
+
+**File:** `src/ui/confirm_dialog.gd:66-85`
+**Issue:** The fix makes the keyboard focus modal, but the earlier screenshot symptom (no visible highlight on "Keep Playing") is not explained by the code. One possibility is Godot hiding focus rings after a mouse-originated interaction. Another is that the screenshot was taken before the next draw. This needs a runtime check. The new test asserts `has_focus()` but not visibility of the style.
+**Fix:** Verify in a real window with the keyboard. If the ring is hidden after a mouse click, consider a custom pressed or hover style, or an explicit focus style on the dialog buttons.
+
+### IN-06: Fail screen still accepts a fresh Space or Enter press immediately after fade-in
+
+**File:** `src/ui/fail_screen.gd:70-73`
+**Issue:** The buttons are now inert while invisible, which fixes the original bug. Retry takes focus the instant the fade finishes (about 0.7 s after the hull breaks). A player still mashing Space, which is also `ui_accept`, can trigger Retry on the first press after that. This is a UX risk, not a correctness bug.
+**Fix:** Optionally add a short grace period (for example 0.25 s) between enabling the buttons and `grab_focus`, or ignore `ui_accept` presses for that interval.
 
 ---
 
