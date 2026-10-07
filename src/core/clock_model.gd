@@ -92,7 +92,9 @@ func update(now_ticks: int, audio_target: float, audio_valid: bool) -> float:
 	if audio_valid:
 		var err := audio_target - predicted
 		if absf(err) > snap_s:
-			predicted = audio_target
+			# Audio ahead: snap. Audio behind: the monotonic clamp would discard a snap back and
+			# freeze the clock, so run at half rate until the audio catches up (WR-01).
+			predicted = audio_target if err > 0.0 else _song_time + dt * 0.5
 		else:
 			var alpha := 1.0 if slew_tau_s <= 0.0 else 1.0 - exp(-maxf(dt, 0.0) / slew_tau_s)
 			predicted += err * alpha
