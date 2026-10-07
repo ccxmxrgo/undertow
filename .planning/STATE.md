@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-10-07T16:40:51.656Z"
+last_updated: "2026-10-07T16:40:57.789Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 5
@@ -53,6 +53,7 @@ Progress: [..........] 0%
 
 | Phase 01 P01 | 15min | 2 tasks | 7 files |
 | Phase 01 P02 | ~40min (tasks 1-4) | 4 tasks | 21 files |
+| Phase 01 P03 | 45min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,7 @@ Recent decisions affecting current work:
 - Godot 4.7.2 standard build, GDScript, version pinned for all friends
 - [Phase 01]: [01-01] gdUnit4 6.2.1 runs headless on 4.7.2 only with --ignoreHeadlessMode (in tools/run_tests.ps1)
 - [Phase 01-02]: Conductor schedules play() at song_time -(next_mix+latency)-audio_offset; Settings uses ConfigFile.parse on file text
+- [Phase 01]: 01-03: sustain ticks frame-rate independent; hit score uses pre-hit multiplier; resume restarts audio via play(paused_position) launched early by output delay
 
 ### Pending Todos
 
