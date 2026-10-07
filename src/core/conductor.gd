@@ -24,6 +24,7 @@ var _start_pos: float = 0.0  # stream position the current/next audio start play
 ## {time, bpm} entries (sorted); lets resume() compute the countdown from the chart BPM.
 var tempo_map: Array[Dictionary] = []
 var _resume_pending: bool = false
+var _deferred_start: bool = false  # resumed from a negative (pre-roll) position: audio starts later
 var _cd_beats: int = 0
 var _cd_spb: float = 0.5
 var _cd_start_ticks: int = 0
@@ -74,6 +75,7 @@ func pause() -> void:
 	_audio_valid = false
 	_preroll = false
 	_resume_pending = false
+	_deferred_start = false
 	paused.emit()
 
 
@@ -84,9 +86,15 @@ func resume(beats: int = 3) -> void:
 		return
 	var now := Time.get_ticks_usec()
 	_refresh_latency_if_due(now)
-	_start_pos = clock.paused_position()
+	var paused_pos := clock.paused_position()
+	# Never seek the stream to a negative position (CR-01): a pause during the lead-in resumes
+	# as pre-roll and the audio is scheduled so stream position 0 is heard at song_time 0.
+	_start_pos = maxf(paused_pos, 0.0)
+	_deferred_start = paused_pos < 0.0
+	if _deferred_start:
+		_play_at = -(AudioServer.get_time_to_next_mix() + _latency_cache) - Settings.audio_offset
 	_cd_beats = beats
-	_cd_spb = 60.0 / bpm_at(_start_pos)
+	_cd_spb = 60.0 / bpm_at(paused_pos)
 	_cd_start_ticks = now
 	_cd_emitted = 0
 	clock.resume(now, beats * _cd_spb)
@@ -113,6 +121,7 @@ func stop() -> void:
 	_playing_requested = false
 	_audio_valid = false
 	_resume_pending = false
+	_deferred_start = false
 	clock.state = ClockModel.State.IDLE
 
 
@@ -145,7 +154,7 @@ func _process(_delta: float) -> void:
 	if _resume_pending:
 		_emit_countdown_ticks(now)
 		var lead_ticks := int((AudioServer.get_time_to_next_mix() + _latency_cache + Settings.audio_offset) * 1000000.0)
-		if not _playing_requested and now >= clock.resume_ticks() - lead_ticks:
+		if not _deferred_start and not _playing_requested and now >= clock.resume_ticks() - lead_ticks:
 			_start_audio()
 	elif _preroll and not _playing_requested and clock.song_time() >= _play_at:
 		_start_audio()
@@ -156,6 +165,9 @@ func _process(_delta: float) -> void:
 	clock.update(now, target, _audio_valid)
 	if _resume_pending and not clock.is_paused():
 		_resume_pending = false
+		if _deferred_start:
+			_deferred_start = false
+			_preroll = true
 		resumed.emit()
 
 
