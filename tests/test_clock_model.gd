@@ -11,22 +11,33 @@ func test_extrapolates_from_system_ticks_when_audio_invalid() -> void:
 
 
 func test_small_error_slews_toward_audio_target() -> void:
-	var c := ClockModel.new(0.050, 0.15)
+	var tau := 0.2
+	var c := ClockModel.new(0.050, tau)
 	c.reset(0, 1.0)
-	# predicted = 1.016667, target = 1.026667 -> err 0.01 -> +0.0015
+	# predicted = 1.016667, target = 1.026667 -> err 0.01 -> alpha = 1 - exp(-dt / tau)
 	var t := c.update(16667, 1.026667, true)
-	assert_float(t).is_equal_approx(1.016667 + 0.01 * 0.15, 1e-6)
+	var alpha := 1.0 - exp(-0.016667 / tau)
+	assert_float(t).is_equal_approx(1.016667 + 0.01 * alpha, 1e-6)
+
+
+func test_zero_tau_follows_target_immediately() -> void:
+	var c := ClockModel.new(0.050, 0.0)
+	c.reset(0, 1.0)
+	# tau <= 0 disables smoothing only through the explicit 0 argument path (alpha = 1)
+	c.slew_tau_s = 0.0
+	var t := c.update(16667, 1.026667, true)
+	assert_float(t).is_equal_approx(1.026667, 1e-9)
 
 
 func test_large_error_snaps_to_audio_target() -> void:
-	var c := ClockModel.new(0.050, 0.15)
+	var c := ClockModel.new(0.050, 0.2)
 	c.reset(0, 1.0)
 	var t := c.update(16667, 1.5, true)
 	assert_float(t).is_equal_approx(1.5, 1e-9)
 
 
 func test_never_returns_less_than_prior_value() -> void:
-	var c := ClockModel.new(0.050, 0.15)
+	var c := ClockModel.new(0.050, 0.2)
 	c.reset(0, 10.0)
 	var prev := 10.0
 	var now := 0
@@ -51,4 +62,4 @@ func test_defaults_come_from_judge_config() -> void:
 	var cfg := JudgeConfig.new()
 	var c := ClockModel.new()
 	assert_float(c.snap_s).is_equal(cfg.clock_snap_s)
-	assert_float(c.slew).is_equal(cfg.clock_slew)
+	assert_float(c.slew_tau_s).is_equal(cfg.clock_slew_tau_s)

@@ -25,4 +25,8 @@ extends Resource
 
 ## Clock discipline tuning (ClockModel): snap above this error, else slew.
 @export var clock_snap_s: float = 0.050
-@export var clock_slew: float = 0.15
+## Time constant of the audio-target smoothing (seconds). Replaces the per-frame 0.15 fraction,
+## which gave p99 3.84 ms of jitter at 240 Hz (playtest 01-07) and varied with frame rate.
+## Chosen by tools/playtest/replay_clock.py --sweep on the 240 Hz capture (p99 < 1.7 ms at 0.15 s
+## but 0.4 s was needed so the synthetic white-noise test (3.2 ms std at 30 fps) stays under 2 ms).
+@export var clock_slew_tau_s: float = 0.4

@@ -58,3 +58,22 @@ func test_five_minute_drift_with_hitches_stays_within_2ms() -> void:
 		worst = maxf(worst, absf(e))
 	assert_float(worst).is_less(MAX_ERR)
 	assert_int(perfect[0]).is_equal(chart.notes.size())
+
+
+## Steady tracking bias of the time-constant filter for a 400 ppm rate mismatch (~ rate * tau).
+func test_steady_tracking_bias_for_400ppm_mismatch_is_below_half_ms() -> void:
+	var clock := ClockModel.new()
+	clock.reset(0, 0.0)
+	var now := 0
+	var truth := 0.0
+	var st := 0.0
+	var worst := 0.0
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	while now < 120 * 1000000:
+		now += int(round((1.0 / 60.0) * rng.randf_range(0.7, 1.3) * 1000000.0))
+		truth = now / 1000000.0 * (1.0 + DRIFT)
+		st = clock.update(now, truth, true)
+		if now > 10 * 1000000:
+			worst = maxf(worst, absf(st - truth))
+	assert_float(worst).is_less(0.0005)
