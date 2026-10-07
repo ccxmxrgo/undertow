@@ -12,7 +12,7 @@ const FLASH_USEC := {Kind.PERFECT: 120000, Kind.GOOD: 120000, Kind.MISS: 160000,
 const RING_USEC := 200000
 const FLOAT_USEC := 500000
 const FLOAT_RISE := 48.0
-const FLOAT_START_OFFSET := 48.0
+const FLOAT_START_OFFSET := 64.0
 const FLASH_H := 160.0
 const NUDGE_PX := 8.0
 const NUDGE_USEC := 100000
@@ -148,22 +148,23 @@ func _draw() -> void:
 func _draw_flash(lane: int, kind: int, age: int) -> void:
 	var life: int = FLASH_USEC[kind]
 	var cx := Highway.lane_center_x(lane)
+	var lane_col := Palette.lane_color(lane)
 	var rect := Rect2(Highway.lane_left() + lane * Highway.LANE_W, Highway.HULL_Y - FLASH_H, Highway.LANE_W, FLASH_H)
 	if age < life:
 		var fade := 1.0 - float(age) / life
 		match kind:
 			Kind.PERFECT:
-				draw_rect(rect, Palette.alpha(Palette.ACCENT, 0.4 * fade))
+				draw_rect(rect, Palette.alpha(lane_col, 0.4 * fade))
 			Kind.GOOD:
-				draw_rect(rect, Palette.alpha(Palette.ACCENT, 0.2 * fade))
+				draw_rect(rect, Palette.alpha(lane_col, 0.2 * fade))
 			Kind.MISS:
 				draw_rect(rect, Palette.alpha(Palette.DESTRUCTIVE, 0.4 * fade))
 			_:
-				draw_rect(rect, Palette.alpha(Palette.ACCENT, 0.25 * fade))
+				draw_rect(rect, Palette.alpha(lane_col, 0.25 * fade))
 	if kind == Kind.PERFECT and age < RING_USEC:
 		var t := float(age) / RING_USEC
 		var r := lerpf(NoteShape.SIZE * 0.5, NoteShape.SIZE, t)  # 80 px to 160 px diameter
-		draw_arc(Vector2(cx, Highway.HULL_Y), r, 0.0, TAU, 48, Palette.alpha(Palette.ACCENT, 1.0 - t), 3.0, true)
+		draw_arc(Vector2(cx, Highway.HULL_Y), r, 0.0, TAU, 48, Palette.alpha(lane_col, 1.0 - t), 3.0, true)
 	elif kind == Kind.MISS and age < life:
 		var c := Vector2(cx, Highway.HULL_Y)
 		var h := 20.0

@@ -184,3 +184,14 @@ func test_feedback_with_sfx_pool_plays_without_error() -> void:
 	fb.on_judged(1, 1, G, 0.04)
 	fb.on_judged(2, 2, M, 0.2)
 	await get_tree().process_frame
+
+
+func test_feedback_flash_state_per_lane_and_spawn_offset() -> void:
+	var fb: Feedback = auto_free(Feedback.new())
+	fb.audio_enabled = false
+	add_child(fb)
+	fb.on_judged(2, 0, P, 0.0)
+	assert_object(fb._flashes[2]).is_not_null()
+	assert_object(fb._flashes[0]).is_null()
+	assert_int(fb.floating_count()).is_equal(1)
+	assert_float(Highway.HULL_Y - Feedback.FLOAT_START_OFFSET).is_equal(816.0)
