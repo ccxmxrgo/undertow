@@ -89,7 +89,8 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	UiLayout.fill_rect(highway)
 	highway.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_run_root.add_child(highway)
-	highway.setup(chart, conductor)
+	highway.setup(chart, conductor, cfg)
+	lane_input.lane_pressed.connect(highway.on_lane_pressed)
 	judge.judged.connect(highway.on_judged)
 	judge.stray.connect(highway.on_stray)
 	judge.sustain_end.connect(highway.on_sustain_end)

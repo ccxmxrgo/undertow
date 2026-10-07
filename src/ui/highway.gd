@@ -8,7 +8,9 @@ extends Control
 const LANE_W := 128.0
 const LANES := 4
 const HULL_Y := 880.0
-const LABEL_Y := 904.0
+const LABEL_Y := 936.0
+const RECEPTOR_PULSE_USEC := 120000
+const INDICATOR_Y := 780.0
 const PX_PER_SEC := 700.0
 const SCREEN_W := 1920.0
 const SCREEN_H := 1080.0
@@ -35,6 +37,23 @@ var _last_ticks: int = -INDICATOR_FADE_USEC
 var _show_indicator: bool = false
 var _graph := PackedFloat32Array()  # song_time delta per frame, ms
 var _prev_song_time: float = 0.0
+var _good_window: float = 0.070
+var _press_ticks: Array[int] = [-1, -1, -1, -1]
+
+
+## True while a note is inside the Good window (inclusive); NaN/inf are never ready.
+static func note_is_ready(dt: float, good_window: float) -> bool:
+	return is_finite(dt) and absf(dt) <= good_window
+
+
+## Receptor pulse on lane press: 120 ms ease-out, scale 1.0 -> 1.2 -> 1.0.
+static func receptor_pulse(age_usec: int, reduce_motion: bool) -> Dictionary:
+	var pulsing := age_usec >= 0 and age_usec < RECEPTOR_PULSE_USEC
+	var scale := 1.0
+	if pulsing and not reduce_motion:
+		var t := float(age_usec) / RECEPTOR_PULSE_USEC
+		scale = 1.0 + 0.2 * sin(PI * pow(t, 0.5))
+	return {"scale": scale, "fill_alpha": 0.40 if pulsing else 0.0, "outline_alpha": 1.0 if pulsing else 0.70}
 
 
 ## X of the highway's left edge in screen space.
@@ -46,9 +65,11 @@ static func lane_center_x(lane: int) -> float:
 	return lane_left() + (lane + 0.5) * LANE_W
 
 
-func setup(p_chart: ChartData, p_conductor: Conductor) -> void:
+func setup(p_chart: ChartData, p_conductor: Conductor, p_cfg: JudgeConfig = null) -> void:
 	chart = p_chart
 	conductor = p_conductor
+	_good_window = (p_cfg if p_cfg != null else JudgeConfig.new()).good_window
+	_press_ticks = [-1, -1, -1, -1]
 	_state.resize(chart.notes.size())
 	_state.fill(S_PENDING)
 	_holding = [-1, -1, -1, -1]
@@ -76,6 +97,13 @@ func on_judged(lane: int, note_index: int, judgment: int, error_s: float) -> voi
 
 func on_stray(_lane: int) -> void:
 	pass
+
+
+## Connect to LaneInput.lane_pressed; starts the receptor pulse for that lane.
+func on_lane_pressed(lane: int, _ticks: int) -> void:
+	if lane < 0 or lane >= LANES:
+		return
+	_press_ticks[lane] = Time.get_ticks_usec()
 
 
 ## Connect to InputJudge.sustain_end. Early release dims the tail; completion consumes it.
@@ -110,8 +138,9 @@ func _draw() -> void:
 
 	_draw_lanes(left)
 	_draw_preroll(st)
-	_draw_notes(left, vt, pps)
+	_draw_notes(left, vt, pps, st)
 	_draw_hull_line(left, width)
+	_draw_receptors(left)
 	_draw_indicator(left)
 	if show_spike_readout:
 		_draw_spike_readout()
@@ -124,7 +153,7 @@ func _draw_lanes(left: float) -> void:
 		draw_line(Vector2(x, 0), Vector2(x, SCREEN_H), Palette.ACCENT if edge else Palette.DIM, 2.0)
 	for lane in range(LANES):
 		var label := Settings.bindings.display_name(LaneInput.ACTIONS[lane], &"keyboard")
-		draw_string(Palette.font(), Vector2(left + lane * LANE_W, LABEL_Y + 20.0), label, HORIZONTAL_ALIGNMENT_CENTER, LANE_W, Palette.SIZE_LABEL, Palette.TEXT)
+		draw_string(Palette.font(), Vector2(left + lane * LANE_W, LABEL_Y + 20.0), label, HORIZONTAL_ALIGNMENT_CENTER, LANE_W, Palette.SIZE_LABEL, Palette.lane_color(lane))
 
 
 ## Two beat pips above the highway center during the lead-in (no numerals).
@@ -142,7 +171,7 @@ func _draw_preroll(st: float) -> void:
 			draw_arc(p, 11.0, 0.0, TAU, 24, Palette.DIM, 2.0, true)
 
 
-func _draw_notes(left: float, vt: float, pps: float) -> void:
+func _draw_notes(left: float, vt: float, pps: float, st: float) -> void:
 	var notes := chart.notes
 	# Moving window: skip notes whose head AND tail are already below the screen.
 	var below_time := vt - (SCREEN_H + NoteShape.SIZE - HULL_Y) / pps
@@ -159,33 +188,43 @@ func _draw_notes(left: float, vt: float, pps: float) -> void:
 			var lane: int = n["lane"]
 			var cx := left + (lane + 0.5) * LANE_W
 			var dur: float = n["duration"]
+			var lane_col := Palette.lane_color(lane)
+			var ready := state == S_PENDING and note_is_ready(float(n["time"]) - st, _good_window)
 			if dur > 0.0:
-				_draw_sustain(cx, y, y - dur * pps, state)
+				_draw_sustain(cx, y, y - dur * pps, state, lane_col, ready)
 			if state == S_PENDING or state == S_MISSED:
-				var col := Palette.ACCENT if state == S_PENDING else Palette.alpha(Palette.ACCENT, 0.25)
-				NoteShape.draw(self, NoteShape.kind_for_lane(lane), Vector2(cx, y), NoteShape.SIZE, col)
+				var kind := NoteShape.kind_for_lane(lane)
+				var col := lane_col
+				if state == S_MISSED:
+					col = Palette.alpha(lane_col, 0.25)
+				elif not ready:
+					col = Palette.dim(lane_col)
+				else:
+					NoteShape.draw_outline(self, kind, Vector2(cx, y), NoteShape.SIZE + 12.0, Palette.alpha(lane_col, 0.35), 6.0)
+				NoteShape.draw(self, kind, Vector2(cx, y), NoteShape.SIZE, col)
 				if state == S_MISSED:
 					_draw_x(Vector2(cx, y), Palette.DESTRUCTIVE)
 		i += 1
 
 
-func _draw_sustain(cx: float, head_y: float, tail_y: float, state: int) -> void:
+func _draw_sustain(cx: float, head_y: float, tail_y: float, state: int, lane_col: Color, ready: bool) -> void:
 	var bottom := head_y
 	if state == S_HOLDING:
 		bottom = minf(head_y, HULL_Y)  # consumed below the hull line
 	var top := maxf(tail_y, -NoteShape.SIZE)
 	if bottom <= top:
 		return
+	var base := lane_col if (ready or state == S_HOLDING) else Palette.dim(lane_col)
 	var fill_a := 0.5
 	var edge_a := 1.0
 	if state == S_HOLDING:
-		fill_a = 0.9
+		fill_a = 1.0
 	elif state == S_MISSED or state == S_EARLY_RELEASE:
 		fill_a = 0.25
 		edge_a = 0.25
 	var r := Rect2(cx - SUSTAIN_W * 0.5, top, SUSTAIN_W, bottom - top)
-	draw_rect(r, Palette.alpha(Palette.ACCENT, fill_a))
-	draw_rect(r, Palette.alpha(Palette.ACCENT, edge_a), false, 2.0)  # flat cap = top edge
+	draw_rect(r, Palette.alpha(base, fill_a))
+	draw_rect(r, Palette.alpha(base, edge_a), false, 2.0)  # flat cap = top edge
 
 
 func _draw_x(c: Vector2, col: Color) -> void:
@@ -202,6 +241,29 @@ func _draw_hull_line(left: float, width: float) -> void:
 			draw_rect(Rect2(left + lane * LANE_W, HULL_Y - 6.0, LANE_W, 12.0), Palette.alpha(Palette.ACCENT, 0.5))
 
 
+## Outline-only receptor per lane at the exact hit position; pulses on key press.
+func _draw_receptors(left: float) -> void:
+	var now := Time.get_ticks_usec()
+	for lane in range(LANES):
+		var col := Palette.lane_color(lane)
+		var cx := left + (lane + 0.5) * LANE_W
+		var kind := NoteShape.kind_for_lane(lane)
+		var center := Vector2(cx, HULL_Y)
+		var tick := _press_ticks[lane]
+		var p := receptor_pulse(now - tick if tick >= 0 else RECEPTOR_PULSE_USEC, Settings.reduce_motion)
+		var size := NoteShape.SIZE * float(p["scale"])
+		var pulse_fill: float = p["fill_alpha"]
+		var fill_a := pulse_fill
+		if _holding[lane] >= 0:
+			fill_a = maxf(fill_a, 0.25)
+		if fill_a > 0.0:
+			# NoteShape.draw fills at 25% of the color alpha, so scale up to reach fill_a.
+			NoteShape.draw(self, kind, center, size, Palette.alpha(col, fill_a * 4.0))
+		if pulse_fill > 0.0:
+			NoteShape.draw_outline(self, kind, center, size + 12.0, Palette.alpha(col, 0.35), 6.0)
+		NoteShape.draw_outline(self, kind, center, size, Palette.alpha(col, float(p["outline_alpha"])))
+
+
 ## "EARLY 12 MS" / "LATE 8 MS" with a left/right arrow glyph, fading over 400 ms.
 func _draw_indicator(left: float) -> void:
 	if not Settings.early_late_indicator or not _show_indicator:
@@ -216,7 +278,7 @@ func _draw_indicator(left: float) -> void:
 	var font := Palette.font()
 	var sz := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL)
 	var cx := left + LANE_W * LANES * 0.5
-	var base_y := HULL_Y - 24.0
+	var base_y := INDICATOR_Y
 	var gap := 12.0
 	var arrow_w := 14.0
 	var x0 := cx - (arrow_w + gap + sz.x) * 0.5
