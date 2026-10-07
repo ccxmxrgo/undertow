@@ -412,13 +412,18 @@ Set trigger action deadzone to 0.5 via `InputMap.action_set_deadzone(a, 0.5)` (m
 | A11 | OGG seek is not sample-accurate | Pattern 2 | Only matters if OGG track used with resume |
 | A12 | `audio/driver/output_latency` default ~15 ms and settable | Pitfall 6 / planning | Latency tuning advice off |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Does the disciplined-clock slew produce a visually smooth ramp on the dev machine?** Unknown until the F3 overlay runs on real audio. Recommendation: make the spike (Conductor + click track + F3 graph) the first non-test deliverable, with SLEW/SNAP constants exposed in a config.
+   RESOLVED: Plan 01-02 task 3 adds a song_time readout/graph to the skeleton, judged by the human in the 01-02 checkpoint; constants live in JudgeConfig (clock_snap_s, clock_slew).
 2. **Sustain tick cadence (D-14 gives 10 per tick but not the interval).** Recommendation: one tick per 1/8 beat... or fixed 0.1 s; planner picks and puts it in `JudgeConfig`.
+   RESOLVED: fixed 0.1 s, `JudgeConfig.sustain_tick_interval` (plans 01-02, 01-03).
 3. **Tempo change in the test chart and beat visuals.** `ChartData` should carry a small tempo map (time, bpm) for beat lines and countdown length even though note times are seconds.
+   RESOLVED: `ChartData.tempo_map` (plan 01-02), hand_chart includes a tempo change (plan 01-03); countdown uses it (01-03/01-06).
 4. **Does gdUnit4 6.2.1 CLI run fully headless on 4.7.2 including scene tests?** Wave 0 smoke; logic tests do not need scenes.
+   RESOLVED: gdUnit4 smoke test in plan 01-01 task 2; scene-runner tests first appear in 01-02 (test_boot_smoke) and stop-and-report if they fail.
 5. **Visual calibration method:** D-16 allows slider or silent tap test. Recommend slider (simplest) plus optional tap test; planner decides.
+   RESOLVED: slider-only visual calibration (plan 01-07 task 2); no tap test in Phase 1.
 
 ## Environment Availability
 

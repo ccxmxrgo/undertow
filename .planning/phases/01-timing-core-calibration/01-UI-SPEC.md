@@ -251,6 +251,8 @@ Diegetic sonar/submarine language per PROJECT.md. Sentence-case body, UPPERCASE 
 | Rebind listening | "PRESS A KEY..." / "PRESS A BUTTON..." |
 | Not-yet-active actions | "(Not active yet)" |
 | No-Fail badge | "NO-FAIL" ; results flag: "NO-FAIL USED" |
+| Autoplay badge / results flag | "AUTOPLAY" ; "AUTOPLAY USED" |
+| Main menu autoplay entry | "Autoplay Dive (test)" |
 | Destructive: Back to Menu (mid-song) | "Back to Menu: Leave this dive? Your progress will be lost." Buttons: "Leave Dive" (destructive), "Stay" (initial focus) |
 | Destructive: Restart (score above 0) | "Restart: Restart this dive from the beginning? Your progress will be lost." Buttons: "Restart Dive" (destructive), "Keep Playing" (initial focus) |
 | Destructive: Reset Controls | "Reset Controls: Restore the default keyboard and gamepad bindings?" Buttons: "Reset Controls" (destructive), "Keep Bindings" (initial focus) |
