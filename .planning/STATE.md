@@ -1,0 +1,64 @@
+# Project State
+
+## Project Reference
+
+See: .planning/PROJECT.md (updated 2026-10-07)
+
+**Core value:** Hitting notes must feel tight and fair on each player's own machine, while torpedoes reach rivals over the network fast enough that a friend's perfect streak is felt inside the same song.
+**Current focus:** Phase 1: Timing Core & Calibration
+
+## Current Position
+
+Phase: 1 of 5 (Timing Core & Calibration)
+Plan: 0 of TBD in current phase
+Status: Ready to plan
+Last activity: 2026-10-07 - Roadmap created
+
+Progress: [..........] 0%
+
+## Performance Metrics
+
+**Velocity:**
+- Total plans completed: 0
+- Average duration: -
+- Total execution time: 0 hours
+
+**By Phase:**
+
+| Phase | Plans | Total | Avg/Plan |
+|-------|-------|-------|----------|
+| - | - | - | - |
+
+**Recent Trend:**
+- Last 5 plans: -
+- Trend: -
+
+## Accumulated Context
+
+### Decisions
+
+Decisions are logged in PROJECT.md Key Decisions table.
+Recent decisions affecting current work:
+
+- Local hit judgment, networked events only (ping never affects timing)
+- Gameplay goes through an EventChannel seam (Loopback, Bot, Net) so versus is built offline first
+- Transport for v1: ENet over Tailscale/ZeroTier; GodotSteam is an optional later swap
+- Godot 4.7.2 standard build, GDScript, version pinned for all friends
+
+### Pending Todos
+
+None yet.
+
+### Blockers/Concerns
+
+- Godot is not installed on the dev PATH; Phase 1 setup must install it
+- Windows audio output latency and Bluetooth devices (Phase 1 spike)
+- Timing window values are tunable in JudgeConfig (about 50 ms constraint)
+- 5-to-4 lane mapping rule must be fixed in Phase 2, before payload generation
+- Steam peer support on Godot 4.7 is unverified (not blocking)
+
+## Session Continuity
+
+Last session: 2026-10-07
+Stopped at: Roadmap created, ready to plan Phase 1
+Resume file: None

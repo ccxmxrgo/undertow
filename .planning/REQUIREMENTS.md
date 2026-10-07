@@ -123,13 +123,62 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (filled by roadmap) | | |
+| TIME-01 | Phase 1 | Pending |
+| TIME-02 | Phase 1 | Pending |
+| TIME-03 | Phase 1 | Pending |
+| TIME-04 | Phase 1 | Pending |
+| TIME-05 | Phase 1 | Pending |
+| CAL-01 | Phase 1 | Pending |
+| HULL-01 | Phase 1 | Pending |
+| CAL-02 | Phase 1 | Pending |
+| HULL-02 | Phase 1 | Pending |
+| CAL-03 | Phase 1 | Pending |
+| HULL-03 | Phase 1 | Pending |
+| CAL-04 | Phase 1 | Pending |
+| HULL-04 | Phase 1 | Pending |
+| SONG-01 | Phase 2 | Pending |
+| TORP-01 | Phase 3 | Pending |
+| PAY-01 | Phase 3 | Pending |
+| MATCH-01 | Phase 3 | Pending |
+| SONG-02 | Phase 2 | Pending |
+| TORP-02 | Phase 3 | Pending |
+| PAY-02 | Phase 3 | Pending |
+| MATCH-02 | Phase 3 | Pending |
+| SONG-03 | Phase 2 | Pending |
+| TORP-03 | Phase 3 | Pending |
+| PAY-03 | Phase 3 | Pending |
+| MATCH-03 | Phase 3 | Pending |
+| SONG-04 | Phase 2 | Pending |
+| TORP-04 | Phase 3 | Pending |
+| PAY-04 | Phase 3 | Pending |
+| MATCH-04 | Phase 3 | Pending |
+| SONG-05 | Phase 2 | Pending |
+| TORP-05 | Phase 3 | Pending |
+| PAY-05 | Phase 3 | Pending |
+| MATCH-05 | Phase 3 | Pending |
+| SONG-06 | Phase 2 | Pending |
+| TORP-06 | Phase 3 | Pending |
+| PAY-06 | Phase 3 | Pending |
+| MATCH-06 | Phase 3 | Pending |
+| NET-01 | Phase 4 | Pending |
+| NET-02 | Phase 4 | Pending |
+| NET-03 | Phase 4 | Pending |
+| NET-04 | Phase 4 | Pending |
+| NET-05 | Phase 4 | Pending |
+| NET-06 | Phase 4 | Pending |
+| NET-07 | Phase 4 | Pending |
+| AV-01 | Phase 5 | Pending |
+| AV-02 | Phase 5 | Pending |
+| AV-03 | Phase 5 | Pending |
+| AV-04 | Phase 5 | Pending |
+| AV-05 | Phase 5 | Pending |
+| DIST-01 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 50 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 50 ⚠️
+- Mapped to phases: 50
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-10-07*
-*Last updated: 2026-10-07 after initial definition*
+*Last updated: 2026-10-07 after roadmap creation*
