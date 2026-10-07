@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-10-07T16:26:09.693Z"
+last_updated: "2026-10-07T16:26:13.667Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 5
@@ -51,6 +51,8 @@ Progress: [..........] 0%
 - Last 5 plans: -
 - Trend: -
 
+| Phase 01 P01 | 15min | 2 tasks | 7 files |
+
 ## Accumulated Context
 
 ### Decisions
@@ -62,6 +64,7 @@ Recent decisions affecting current work:
 - Gameplay goes through an EventChannel seam (Loopback, Bot, Net) so versus is built offline first
 - Transport for v1: ENet over Tailscale/ZeroTier; GodotSteam is an optional later swap
 - Godot 4.7.2 standard build, GDScript, version pinned for all friends
+- [Phase 01]: [01-01] gdUnit4 6.2.1 runs headless on 4.7.2 only with --ignoreHeadlessMode (in tools/run_tests.ps1)
 
 ### Pending Todos
 
