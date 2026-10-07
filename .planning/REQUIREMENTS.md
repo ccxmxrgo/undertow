@@ -7,7 +7,7 @@
 
 ### Timing Core
 
-- [ ] **TIME-01**: Notes scroll in sync with the song, driven by the audio clock (no visible drift across a full 5-minute song)
+- [x] **TIME-01**: Notes scroll in sync with the song, driven by the audio clock (no visible drift across a full 5-minute song)
 - [ ] **TIME-02**: Player's key/button presses are judged against song time, independent of frame rate
 - [ ] **TIME-03**: Each hit is graded into one of three tiers (Perfect / Good / Miss) using tunable timing windows
 - [x] **TIME-04**: Player can play sustained (held) notes and chords
@@ -123,7 +123,7 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TIME-01 | Phase 1 | Pending |
+| TIME-01 | Phase 1 | Complete |
 | TIME-02 | Phase 1 | Pending |
 | TIME-03 | Phase 1 | Pending |
 | TIME-04 | Phase 1 | Complete |

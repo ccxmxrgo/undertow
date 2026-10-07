@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-10-07T16:56:39.026Z"
+stopped_at: Completed 01-06-PLAN.md
+last_updated: "2026-10-07T17:04:30.631Z"
 last_activity: 2026-10-07
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 7
-  completed_plans: 5
-  percent: 71
+  completed_plans: 6
+  percent: 86
 ---
 
 # Project State
@@ -26,17 +26,17 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 1 (Timing Core & Calibration) — EXECUTING
-Plan: 6 of 7 (01-05 complete)
+Plan: 7 of 7 (01-06 complete)
 Status: Ready to execute
 Last activity: 2026-10-07
 
-Progress: [#######...] 71%
+Progress: [#########.] 86%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: -
 - Total execution time: 0 hours
 
@@ -56,12 +56,15 @@ Progress: [#######...] 71%
 | Phase 01 P03 | 45min | 3 tasks | 14 files |
 | Phase 01 P04 | 35min | 2 tasks | 11 files |
 | Phase 01 P05 | 45min | 1 tasks | 10 files |
+| Phase 01 P06 | 50min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
 ### Decisions
 
 Decisions are logged in PROJECT.md Key Decisions table.
+
+- 01-06: per-run _run_root rebuilt on restart; autoplay disables LaneInput; pause menu emits restart/menu signals and Gameplay owns scene changes; Back to Menu falls back to skeleton until plan 07 menu exists.
 Recent decisions affecting current work:
 
 - Local hit judgment, networked events only (ping never affects timing)
@@ -88,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-07T16:56:35.511Z
+Last session: 2026-10-07T17:04:26.670Z
 Stopped at: Completed 01-05-PLAN.md
 Resume file: None
