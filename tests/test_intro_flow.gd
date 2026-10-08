@@ -189,3 +189,18 @@ func test_intro_source_has_no_goggles_drawing() -> void:
 	f.close()
 	for token in ["_frame_sb", "strap", "draw_circle(vector2(0, -70)", "_draw_goggles"]:
 		assert_bool(src.contains(token)).is_false()
+
+
+## 01.2-09 regression: the room's soft light was 12 stacked draw_circle discs, which showed as
+## visible concentric bands behind the lens mask. It must be one smooth radial gradient.
+func test_room_glow_is_one_smooth_radial_gradient() -> void:
+	var tex := GogglesIntro.room_glow_texture()
+	assert_object(tex).is_not_null()
+	assert_int(tex.fill).is_equal(GradientTexture2D.FILL_RADIAL)
+	assert_float(tex.gradient.colors[0].a).is_greater(0.2)
+	assert_float(tex.gradient.colors[tex.gradient.colors.size() - 1].a).is_equal(0.0)
+	assert_object(GogglesIntro.room_glow_texture()).is_same(tex)  # cached, built once
+	var f := FileAccess.open("res://src/ui/goggles_intro.gd", FileAccess.READ)
+	var src := f.get_as_text()
+	f.close()
+	assert_bool(src.contains("draw_circle(glow_c")).is_false()

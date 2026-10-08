@@ -26,6 +26,9 @@ const HUD_FADE_SEC := 0.3
 const MASK_W := 480
 const MASK_H := 270
 const MASK_FAR_SCALE := 7.5
+const ROOM_GLOW_R := 624.0
+
+static var _room_glow_tex: GradientTexture2D
 
 var mode: int = IntroTimeline.Mode.FULL
 var _state: State = State.PRE
@@ -298,9 +301,8 @@ func _draw_room_blur(t: float, focus: float) -> void:
 
 func _draw_room_props(t: float, am: float) -> void:
 	var glow_c := Vector2(1380, 504)
-	for i in range(12):
-		var r := 624.0 * (1.0 - float(i) / 12.0)
-		draw_circle(glow_c, r, Color(60.0 / 255.0, 90.0 / 255.0, 140.0 / 255.0, 0.35 / 12.0 * am))
+	draw_texture_rect(room_glow_texture(), Rect2(glow_c - Vector2(ROOM_GLOW_R, ROOM_GLOW_R),
+		Vector2(2.0 * ROOM_GLOW_R, 2.0 * ROOM_GLOW_R)), false, Color(1, 1, 1, am))
 	draw_rect(Rect2(0, 768, 1920, 312), Color(Color("0F1118"), am))
 	draw_rect(Rect2(1200, 360, 360, 228), Color(Color("161A26"), am))
 	draw_rect(Rect2(1214, 374, 331, 199), Color(80.0 / 255.0, 140.0 / 255.0, 200.0 / 255.0, 0.25 * am))
@@ -312,6 +314,26 @@ func _draw_room_props(t: float, am: float) -> void:
 	var rec_on := Settings.reduce_motion or fmod(t, 1.0) < 0.5
 	if rec_on:
 		draw_circle(Vector2(1216, 474), 5.0, Color(HOT_RED, am))
+
+
+## Soft light behind the rig monitor: one smooth radial gradient (was 12 stacked discs, which
+## banded visibly). Same peak (~0.30 alpha at the centre) and 624 px reach as before.
+static func room_glow_texture() -> GradientTexture2D:
+	if _room_glow_tex != null:
+		return _room_glow_tex
+	var g := Gradient.new()
+	var c := Color(60.0 / 255.0, 90.0 / 255.0, 140.0 / 255.0)
+	g.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
+	g.colors = PackedColorArray([Color(c, 0.30), Color(c, 0.16), Color(c, 0.0)])
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	tex.width = 256
+	tex.height = 256
+	_room_glow_tex = tex
+	return tex
 
 
 ## Soft round-lens mask: two overlapping circular openings, a dark bridge between them and a
