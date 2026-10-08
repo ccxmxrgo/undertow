@@ -59,6 +59,27 @@ Plans:
 
 - [ ] TBD (run /gsd:plan-phase 01.1 to break down)
 
+### Phase 01.2: Goggles Immersion (INSERTED)
+
+**Goal:** Putting on the goggles takes you somewhere else. Each dive opens with the goggles sliding on and a "TV turning on" blink, and drops you into a neon abyss arena where you play like a rockstar, on a curved 3D board that feels like UNDERTOW rather than Guitar Hero. Ship playtest v0.2 at the end.
+**Mode:** mvp
+**Requirements**: IMM-01, IMM-02, IMM-03, IMM-04, IMM-05, IMM-06
+**Success Criteria** (what must be TRUE):
+
+  1. Starting a dive plays the goggles-on sequence (goggles slide in, a CRT-style blink "turns on" the world, then the song starts). Any key skips it, and Retry uses a quick version.
+  2. The board is a 3D road diving toward a glowing horizon, with curved neon edges that react to the music. Players describe it as its own look, not "Guitar Hero".
+  3. The screen edges are clean: no frame lines or clutter around the screen. Any HUD floats near or on the board and stays minimal.
+  4. The world around the board (neon abyss arena with a pulsing bioluminescent "crowd") reacts to the beat and to playing well.
+  5. Timing stays fair: notes reach the hit line exactly on the beat in the new 3D view, autoplay is still all-Perfect, and 60+ fps holds on the dev PC.
+  6. Playtest v0.2 is exported and zipped for friends with the Phase 1.1 polish plus the new feel.
+**UI hint**: yes
+**Depends on:** Phase 1.1
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 1.2 to break down)
+
 ### Phase 2: Chart Import & Songs
 
 **Goal**: Players can bring their own Clone Hero songs, browse them, and play bundled songs out of the box.

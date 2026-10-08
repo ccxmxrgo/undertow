@@ -45,6 +45,15 @@
 - [ ] **STEM-04**: Player can generate an "instrument lanes" chart where each lane follows a different instrument
 - [ ] **STEM-05**: Extracted songs are saved to the library, synced to the original audio, and playable like any other song
 
+### Goggles Immersion (user direction 2026-10-08)
+
+- [ ] **IMM-01**: Each dive starts with a skippable goggles-on sequence: goggles slide in, a CRT-style blink turns the world on, then the song starts (quick version on Retry)
+- [ ] **IMM-02**: The note board is a 3D road diving toward a glowing horizon, with curved neon edges reacting to the music, in a distinct UNDERTOW look (not Guitar Hero)
+- [ ] **IMM-03**: The screen edges are free of frame chrome; the HUD is minimal and sits near or on the board
+- [ ] **IMM-04**: The world around the board is a neon abyss arena with bioluminescent life pulsing to the beat and reacting to good play
+- [ ] **IMM-05**: The 3D board keeps timing fair: notes hit the line exactly on the beat, autoplay stays all-Perfect, readable at all scroll speeds
+- [ ] **IMM-06**: Playtest v0.2 (Phase 1.1 polish + immersion) is exported and zipped for friends
+
 ### Playtest Polish (from friend feedback v0.1)
 
 - [x] **POL-01**: Default lane keys are 1 2 3 4 so the game can be played with one hand

@@ -48,6 +48,8 @@ Hitting notes must feel tight and fair on each player's own machine, while torpe
 
 ### Look & Sound
 
+- **Core fantasy (user, 2026-10-08):** *put on the goggles and you're a rockstar in another world* (like Ready Player One). The goggles jack you into a virtual world, and "diving" means diving into it: a neon abyss arena where you perform. Torpedoes, hull and depth are that world's rules. Each dive opens with the goggles sliding on and a CRT-style blink as the world turns on.
+- **Braindance means the FEEL** (the immersive, sensory "you're inside it" quality), not a cluttered UI. Keep the screen edges clean and put the style on the board itself (curved neon lines on a 3D road into a glowing horizon). It must NOT feel like Guitar Hero.
 - **Art direction (user, 2026-10-07/08):** cyberpunk, "like you're inside the goggles", **inspired by the Braindance aesthetic from Cyberpunk 2077**: a recording-overlay frame with a red-accented, glitchy lens, a timeline scrubber (real song progress), layer tags and chromatic split. Inspiration only, with no CDPR assets or names. The sonar highway is seen through a diver's visor HUD, with neon lane colors (cyan, amber, magenta, lime) over sonar-green chrome.
 
 - **Visual:** CRT phosphor sonar UI (scanlines, bloom, sweep-arm afterglow), black water background with bioluminescent creatures pulsing on the beat, small "periscope" panels showing rivals' highways and hull states.
