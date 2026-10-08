@@ -59,7 +59,7 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
 
    | Buff | Effect |
    |---|---|
-   | **Decoy Flare** | Arms immediately. The next disruptor that would land on the player is absorbed instead (no telegraph-to-impact effect, no immunity window spent). It expires unused after 8 bars. It doesn't block Return-to-Sender reflections. Those are disruptors too, so it does absorb a reflection. |
+   | **Decoy Flare** | Arms immediately. The next disruptor that would land on the player is absorbed instead (no telegraph-to-impact effect, no immunity window spent). It expires unused after 8 bars. A disruptor reflected back by Return to Sender counts as incoming, so the flare absorbs it. |
    | **Ballast Patch** | Instantly restores 25% of max hull, capped at max. It can't revive an eliminated player. |
    | **Overclock** | For 4 bars, Good judgments count as Perfect for the reward meter and for score. Misses still reset. |
 
