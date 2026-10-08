@@ -20,8 +20,8 @@ func test_lead_in_beats() -> void:
 
 
 func test_full_phase_boundaries() -> void:
-	assert_int(IntroTimeline.phase_at(0.0, M.FULL)["phase"]).is_equal(P.ROOM_GOGGLES)
-	assert_int(IntroTimeline.phase_at(1.09, M.FULL)["phase"]).is_equal(P.ROOM_GOGGLES)
+	assert_int(IntroTimeline.phase_at(0.0, M.FULL)["phase"]).is_equal(P.ROOM_LENS)
+	assert_int(IntroTimeline.phase_at(1.09, M.FULL)["phase"]).is_equal(P.ROOM_LENS)
 	assert_int(IntroTimeline.phase_at(1.10, M.FULL)["phase"]).is_equal(P.BLACK)
 	assert_int(IntroTimeline.phase_at(1.25, M.FULL)["phase"]).is_equal(P.CRT)
 	assert_int(IntroTimeline.phase_at(1.65, M.FULL)["phase"]).is_equal(P.ARENA)
@@ -41,7 +41,7 @@ func test_quick_phase_boundaries() -> void:
 
 
 func test_reduce_motion_phases() -> void:
-	assert_int(IntroTimeline.phase_at(0.5, M.FULL, true)["phase"]).is_equal(P.ROOM_GOGGLES)
+	assert_int(IntroTimeline.phase_at(0.5, M.FULL, true)["phase"]).is_equal(P.ROOM_LENS)
 	assert_int(IntroTimeline.phase_at(0.85, M.FULL, true)["phase"]).is_equal(P.BLACK)
 	assert_int(IntroTimeline.phase_at(1.0, M.FULL, true)["phase"]).is_equal(P.ARENA)
 	assert_int(IntroTimeline.phase_at(1.6, M.FULL, true)["phase"]).is_equal(P.COUNT)
@@ -72,14 +72,61 @@ func test_dive_progress() -> void:
 	assert_float(IntroTimeline.dive_progress(0.5, true)).is_equal(-1.0)
 
 
-func test_ease_and_goggles() -> void:
+func test_ease_and_lens() -> void:
 	assert_float(IntroTimeline.ease_out(-1.0)).is_equal(0.0)
 	assert_float(IntroTimeline.ease_out(2.0)).is_equal(1.0)
 	assert_float(IntroTimeline.ease_out(0.5)).is_equal_approx(0.875, 0.0001)
-	assert_float(IntroTimeline.goggles_scale(0.0)).is_equal_approx(0.42, 0.0001)
-	assert_float(IntroTimeline.goggles_scale(1.10)).is_equal_approx(4.26, 0.0001)
-	assert_float(IntroTimeline.goggles_y(0.0)).is_equal_approx(-360.0, 0.0001)
-	assert_float(IntroTimeline.goggles_y(1.10)).is_equal_approx(540.0, 0.0001)
+
+
+func test_lens_close_full() -> void:
+	assert_float(IntroTimeline.lens_close(0.0, M.FULL)).is_equal(0.0)
+	assert_float(IntroTimeline.lens_close(0.6, M.FULL)).is_equal(1.0)
+	assert_float(IntroTimeline.lens_close(5.0, M.FULL)).is_equal(1.0)
+	assert_float(IntroTimeline.lens_close(-1.0, M.FULL)).is_equal(0.0)
+	var prev := -1.0
+	for i in range(0, 61):
+		var v := IntroTimeline.lens_close(float(i) * 0.01, M.FULL)
+		assert_bool(v >= prev and v >= 0.0 and v <= 1.0).is_true()
+		prev = v
+
+
+func test_lens_focus_full() -> void:
+	assert_float(IntroTimeline.lens_focus(0.0, M.FULL)).is_equal(0.0)
+	assert_float(IntroTimeline.lens_focus(0.6, M.FULL)).is_equal(0.0)
+	assert_float(IntroTimeline.lens_focus(IntroTimeline.FULL_LENS_END, M.FULL)).is_equal(1.0)
+	var prev := -1.0
+	for i in range(0, 130):
+		var v := IntroTimeline.lens_focus(float(i) * 0.01, M.FULL)
+		assert_bool(v >= prev and v >= 0.0 and v <= 1.0).is_true()
+		prev = v
+
+
+func test_lens_open_full() -> void:
+	assert_float(IntroTimeline.lens_open(0.0, M.FULL)).is_equal(0.0)
+	assert_float(IntroTimeline.lens_open(IntroTimeline.FULL_CRT_END, M.FULL)).is_equal(0.0)
+	assert_float(IntroTimeline.lens_open(IntroTimeline.FULL_ARENA_END, M.FULL)).is_equal(1.0)
+	var mid := IntroTimeline.lens_open(2.125, M.FULL)
+	assert_bool(mid > 0.0 and mid < 1.0).is_true()
+
+
+func test_lens_quick_none() -> void:
+	for t in [0.0, 0.3, 0.5, 0.7]:
+		assert_float(IntroTimeline.lens_close(t, M.QUICK)).is_equal(0.0)
+		assert_float(IntroTimeline.lens_focus(t, M.QUICK)).is_equal(0.0)
+		assert_float(IntroTimeline.lens_open(t, M.QUICK)).is_equal(0.0)
+		assert_float(IntroTimeline.lens_close(t, M.NONE)).is_equal(0.0)
+
+
+func test_lens_reduce_motion() -> void:
+	assert_float(IntroTimeline.lens_close(0.0, M.FULL, true)).is_equal(0.0)
+	assert_float(IntroTimeline.lens_close(0.4, M.FULL, true)).is_equal(1.0)
+	assert_float(IntroTimeline.lens_close(0.8, M.FULL, true)).is_equal(1.0)
+	assert_float(IntroTimeline.lens_focus(0.39, M.FULL, true)).is_equal(0.0)
+	assert_float(IntroTimeline.lens_focus(0.4, M.FULL, true)).is_equal(1.0)
+	assert_float(IntroTimeline.lens_open(0.9, M.FULL, true)).is_equal(0.0)
+	assert_float(IntroTimeline.lens_open(1.6, M.FULL, true)).is_equal(1.0)
+	var mid := IntroTimeline.lens_open(1.25, M.FULL, true)
+	assert_bool(mid > 0.0 and mid < 1.0).is_true()
 
 
 func test_guarded_spb_is_finite() -> void:

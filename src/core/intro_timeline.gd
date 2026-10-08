@@ -1,20 +1,20 @@
 class_name IntroTimeline
 extends RefCounted
-## Pure goggles-on intro schedule (D-10..D-12). No nodes, no Settings access: reduce_motion is a
+## Pure goggles-on intro schedule (D-10..D-12, D-17 lens mask). No nodes, no Settings access: reduce_motion is a
 ## parameter. Times are seconds of PRE-COUNT wall clock; the count-in itself is the Conductor
 ## lead-in, so numerals derive from song_time.
 
 enum Mode { FULL, QUICK, NONE }
-enum Phase { ROOM_GOGGLES, BLACK, CRT, ARENA, COUNT }
+enum Phase { ROOM_LENS, BLACK, CRT, ARENA, COUNT }
 
-const FULL_GOGGLES_END := 1.10
+const FULL_LENS_END := 1.10
 const FULL_BLACK_END := 1.25
 const FULL_CRT_END := 1.65
 const FULL_ARENA_END := 2.60
 const QUICK_BLACK_END := 0.05
 const QUICK_CRT_END := 0.40
 const QUICK_ARENA_END := 0.60
-const RM_GOGGLES_END := 0.8
+const RM_LENS_END := 0.8
 const RM_BLACK_END := 0.9
 const RM_ARENA_END := 1.6
 const DIVE_SEC := 0.6
@@ -60,15 +60,15 @@ static func phase_at(t: float, mode: int, reduce_motion: bool = false) -> Dictio
 			return {"phase": Phase.CRT, "progress": _seg(t, QUICK_BLACK_END, QUICK_CRT_END)}
 		return {"phase": Phase.ARENA, "progress": _seg(t, QUICK_CRT_END, QUICK_ARENA_END)}
 	if reduce_motion:
-		if t < RM_GOGGLES_END:
-			return {"phase": Phase.ROOM_GOGGLES, "progress": _seg(t, 0.0, RM_GOGGLES_END)}
+		if t < RM_LENS_END:
+			return {"phase": Phase.ROOM_LENS, "progress": _seg(t, 0.0, RM_LENS_END)}
 		if t < RM_BLACK_END:
-			return {"phase": Phase.BLACK, "progress": _seg(t, RM_GOGGLES_END, RM_BLACK_END)}
+			return {"phase": Phase.BLACK, "progress": _seg(t, RM_LENS_END, RM_BLACK_END)}
 		return {"phase": Phase.ARENA, "progress": _seg(t, RM_BLACK_END, RM_ARENA_END)}
-	if t < FULL_GOGGLES_END:
-		return {"phase": Phase.ROOM_GOGGLES, "progress": _seg(t, 0.0, FULL_GOGGLES_END)}
+	if t < FULL_LENS_END:
+		return {"phase": Phase.ROOM_LENS, "progress": _seg(t, 0.0, FULL_LENS_END)}
 	if t < FULL_BLACK_END:
-		return {"phase": Phase.BLACK, "progress": _seg(t, FULL_GOGGLES_END, FULL_BLACK_END)}
+		return {"phase": Phase.BLACK, "progress": _seg(t, FULL_LENS_END, FULL_BLACK_END)}
 	if t < FULL_CRT_END:
 		return {"phase": Phase.CRT, "progress": _seg(t, FULL_BLACK_END, FULL_CRT_END)}
 	return {"phase": Phase.ARENA, "progress": _seg(t, FULL_CRT_END, FULL_ARENA_END)}
@@ -98,9 +98,32 @@ static func dive_progress(song_time: float, quick: bool = false) -> float:
 	return song_time / d
 
 
-static func goggles_scale(t: float) -> float:
-	return 1.2 * (0.35 + 3.2 * ease_out(t / FULL_GOGGLES_END))
+const FULL_LENS_CLOSE_END := 0.6
+const RM_LENS_FOCUS_AT := 0.4
 
 
-static func goggles_y(t: float) -> float:
-	return 1.2 * (-300.0 + 750.0 * ease_out(t / FULL_GOGGLES_END))
+## First-person lens mask closing in (0 = open/invisible, 1 = fully closed). No lens in QUICK/NONE.
+static func lens_close(t: float, mode: int, reduce_motion: bool = false) -> float:
+	if mode != Mode.FULL:
+		return 0.0
+	if reduce_motion:
+		return ease_out(t / RM_LENS_FOCUS_AT)
+	return ease_out(t / FULL_LENS_CLOSE_END)
+
+
+## Room behind the lenses: 0 = blurred/dim, 1 = in focus.
+static func lens_focus(t: float, mode: int, reduce_motion: bool = false) -> float:
+	if mode != Mode.FULL:
+		return 0.0
+	if reduce_motion:
+		return 1.0 if t >= RM_LENS_FOCUS_AT else 0.0
+	return ease_out(_seg(t, FULL_LENS_CLOSE_END, FULL_LENS_END))
+
+
+## Mask opening and dissolving over the arena phase (0 closed, 1 gone).
+static func lens_open(t: float, mode: int, reduce_motion: bool = false) -> float:
+	if mode != Mode.FULL:
+		return 0.0
+	if reduce_motion:
+		return ease_out(_seg(t, RM_BLACK_END, RM_ARENA_END))
+	return ease_out(_seg(t, FULL_CRT_END, FULL_ARENA_END))
