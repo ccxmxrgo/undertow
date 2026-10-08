@@ -10,8 +10,8 @@ extends Node
 ## offset to well under 1 ms. This tests the clock + judge pipeline; it cannot measure the
 ## acoustic path (speaker -> ear), which needs a human or a loopback microphone.
 ##
-## Scenario "immersion" (Phase 1.2): goggles intro frames and timing, Space skip, QUICK retry,
-## curved Trench board at 0.5x/1x/3x, HUD streak / HULL CRITICAL, Low effects and reduce motion,
+## Scenario "immersion" (Phase 1.2): first-person lens-mask intro frames and timing, Space skip,
+## QUICK retry, flat-line Trench board at 0.5x/1x/3x, HUD streak / HULL CRITICAL, Low effects and reduce motion,
 ## screen-edge cleanliness and fps. Non-intro scenarios run with Gameplay.pending_intro = NONE.
 
 const OUT_DIR := "res://build/playtest"
@@ -1595,16 +1595,92 @@ func _region_max(img: Image, center: Vector2, r: float, step: float = 2.0) -> fl
 	return best
 
 
-## Median brightest-channel value along the curved hit ring (every 4th ring point, 5x5 patches).
-func _ring_median(img: Image) -> float:
+## Median brightest-channel value along the flat hit line (Trench.line_points interpolated at 41
+## points, every 4th point, 5x5 patches).
+func _line_median(img: Image) -> float:
+	var ends := Trench.line_points()
 	var vals: Array = []
-	var pts := Trench.ring_points()
 	var i := 0
-	while i < pts.size():
-		vals.append(_chan_max(_patch(img, pts[i], 2)))
+	while i < 41:
+		vals.append(_chan_max(_patch(img, ends[0].lerp(ends[1], float(i) / 40.0), 2)))
 		i += 4
 	vals.sort()
 	return float(vals[vals.size() / 2])
+
+
+func _luma(c: Color) -> float:
+	return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b
+
+
+## Largest luminance step between adjacent design pixels along row y, x0..x1 (banding detector).
+func _max_luma_step(img: Image, y: float, x0: float, x1: float) -> Dictionary:
+	var mx := 0.0
+	var at := x0
+	var prev := _luma(_img_px(img, Vector2(x0, y)))
+	var lo := prev
+	var hi := prev
+	var x := x0 + 1.0
+	while x <= x1:
+		var v := _luma(_img_px(img, Vector2(x, y)))
+		if absf(v - prev) > mx:
+			mx = absf(v - prev)
+			at = x
+		lo = minf(lo, v)
+		hi = maxf(hi, v)
+		prev = v
+		x += 1.0
+	return {"max_step": snappedf(mx, 0.0001), "at_x": at, "min": snappedf(lo, 0.0001), "max": snappedf(hi, 0.0001)}
+
+
+## Vertical centre of the bright pixels (max channel > thr) in column x, y0..y1; -1 if none.
+func _bright_mid_y(img: Image, x: float, y0: float, y1: float, thr: float) -> float:
+	var top := -1.0
+	var bot := -1.0
+	var y := y0
+	while y <= y1:
+		if _chan_max(_img_px(img, Vector2(x, y))) > thr:
+			if top < 0.0:
+				top = y
+			bot = y
+		y += 1.0
+	return -1.0 if top < 0.0 else 0.5 * (top + bot)
+
+
+## Brightest row (sum of max channel over x-2..x+2) in column x, y0..y1.
+func _brightest_row(img: Image, x: float, y0: float, y1: float) -> float:
+	var best := -1.0
+	var best_y := -1.0
+	var y := y0
+	while y <= y1:
+		var v := 0.0
+		for dx in range(-2, 3):
+			v += _chan_max(_img_px(img, Vector2(x + dx, y)))
+		if v > best:
+			best = v
+			best_y = y
+		y += 1.0
+	return best_y
+
+
+## Best colour match to `col` (cosine of RGB direction, max channel >= 0.2) within r design px of p.
+func _colour_near(img: Image, p: Vector2, col: Color, r: float) -> Dictionary:
+	var cv := Vector3(col.r, col.g, col.b).normalized()
+	var best := 0.0
+	var best_off := Vector2.ZERO
+	var y := -r
+	while y <= r:
+		var x := -r
+		while x <= r:
+			var c := _img_px(img, p + Vector2(x, y))
+			var v := Vector3(c.r, c.g, c.b)
+			if _chan_max(c) >= 0.2 and v.length() > 0.0:
+				var cs := v.normalized().dot(cv)
+				if cs > best:
+					best = cs
+					best_off = Vector2(x, y)
+			x += 1.0
+		y += 1.0
+	return {"ok": best >= 0.97, "cos": best, "offset": best_off}
 
 
 ## Mean and max abs brightest-channel difference over a grid covering the lanes (x 480..1440, y 396..1040).
@@ -1803,7 +1879,7 @@ func sc_polish() -> void:
 			lane_vals.append(snappedf(v, 0.001))
 			all_lit = all_lit and v > 0.25
 		metrics["receptor_row_brightness"] = lane_vals
-		check("receptor row is lit in all four lanes (non-black at the hit ring)", all_lit, lane_vals)
+		check("receptor row is lit in all four lanes (non-black at the hit line)", all_lit, lane_vals)
 	# Fullscreen / windowed toggle on the real window.
 	if not _gone_or_stopped(gw):
 		metrics["window_mode_start"] = DisplayServer.window_get_mode()
@@ -1923,7 +1999,7 @@ func sc_polish() -> void:
 
 
 # ------------------------------------------------------------------------------------------------
-# immersion (Phase 1.2): goggles intro, skip / quick retry timing, curved Trench board at three
+# immersion (Phase 1.2): lens-mask intro, skip / quick retry timing, flat-line Trench board at three
 # scroll speeds, HUD streak / critical, Low effects, edge cleanliness, fps, reduce motion.
 # ------------------------------------------------------------------------------------------------
 
@@ -1999,13 +2075,21 @@ func sc_immersion() -> void:
 	var t0 := Time.get_ticks_msec()
 	var spb := 60.0 / _bpm_of(g)
 	check("intro mode FULL on a normal Start Dive", g.intro_mode == IntroTimeline.Mode.FULL, g.intro_mode)
-	await _wait_elapsed(t0, 0.4)
+	await _wait_elapsed(t0, 0.1)
 	await shot("intro_room", g)
+	await _wait_elapsed(t0, 0.35)
+	await shot("intro_lens_closing", g)
 	await _wait_elapsed(t0, 0.5)
 	check("conductor not begun and lane input disabled at 0.5 s",
 		not g.is_began() and not g.lane_input.enabled, "began=%s enabled=%s" % [g.is_began(), g.lane_input.enabled])
 	await _wait_elapsed(t0, 1.0)
-	await shot("intro_goggles", g)
+	await shot("intro_lens_focus", g)
+	# Smooth falloff: a row through the left lens opening edge (opening centre x 780, r 330 at
+	# scale 1, so the soft edge spans x ~450..630) has no visible luminance band steps.
+	var band := _max_luma_step(last_img, 540.0, 300.0, 700.0)
+	metrics["lens_edge_luma"] = band
+	check("lens mask edge is smooth (adjacent luminance step < 0.08, no banding)",
+		float(band["max_step"]) < 0.08, band)
 	await _wait_elapsed(t0, 1.4)
 	await shot("intro_crt_line", g)
 	await _wait_elapsed(t0, 1.55)
@@ -2093,16 +2177,16 @@ func sc_immersion() -> void:
 		var vis := _visible_pending(g)
 		var lane: int = g.chart.notes[idx]["lane"]
 		var dt := float(g.chart.notes[idx]["time"]) - last_shot_st
-		# Readability: two notes one beat apart at the hit ring stay >= 40 px apart.
+		# Readability: two notes one beat apart at the flat hit line stay >= 40 px apart.
 		var dd := minf(spb / approach, 1.0)
 		var sep := Trench.point(Trench.lane_f(lane), 0.0).distance_to(Trench.point(Trench.lane_f(lane), dd))
 		metrics["note_sep_px_%s" % sp[1]] = sep
-		check("%sx: notes one beat apart are >= 40 px apart at the ring" % sp[0], sep >= 40.0, "%.1f px" % sep)
+		check("%sx: notes one beat apart are >= 40 px apart at the hit line" % sp[0], sep >= 40.0, "%.1f px" % sep)
 		check("%sx: pending notes visible" % sp[0], vis.size() > 0, vis.size())
 		if absf(float(sp[0]) - 1.0) < 0.01:
-			# Radius covers the whole note glyph at the ring (r ~ 42 px): its outline is the bright part.
+			# Radius covers the whole note glyph at the line (r ~ 41 px): its outline is the bright part.
 			var bright := _region_max(last_img, Trench.hit_point(lane), Trench.note_radius(Trench.scale_at(0.0)) + 8.0, 1.0)
-			check("1x: note within 5 ms of the ring is bright (>= 0.85)", absf(dt) <= 0.005 and bright >= 0.85,
+			check("1x: note within 5 ms of the hit line is bright (>= 0.85)", absf(dt) <= 0.005 and bright >= 0.85,
 				"dt %.1f ms, max %.3f" % [dt * 1000.0, bright])
 			var far := _far_note(vis)
 			if check("1x: a far note is visible alongside the ready note", not far.is_empty()):
@@ -2115,8 +2199,48 @@ func sc_immersion() -> void:
 				exact.distance_to(Trench.hit_point(lane)) < 0.5, exact)
 			var nd := Trench.depth_for(float(g.chart.notes[idx]["time"]), vt, approach)
 			var off_px := Trench.point(Trench.lane_f(lane), nd).distance_to(Trench.hit_point(lane))
-			check("nearest note offset from the ring is bounded by its time error",
-				off_px <= 3200.0 * absf(nd) + 0.5, "%.2f px for dt %.1f ms" % [off_px, dt * 1000.0])
+			# Max on-screen speed near the line in px per unit depth: numeric derivative at d = 0 for
+			# this lane (TRAVEL * (1 + PERSPECTIVE) vertically plus the lane's x drift), scaled by
+			# (1 - P|nd|)^-2 because the projection speeds up slightly past the line.
+			var hstep := 0.0005
+			var f_l := Trench.lane_f(lane)
+			var v0 := Trench.point(f_l, -hstep).distance_to(Trench.point(f_l, hstep)) / (2.0 * hstep)
+			var vmax := v0 / pow(maxf(1.0 - Trench.PERSPECTIVE * absf(nd), 0.1), 2.0)
+			metrics["line_speed_px_per_depth_lane%d" % lane] = snappedf(v0, 0.1)
+			metrics["line_speed_y_px_per_s_1x"] = snappedf(Trench.TRAVEL * (1.0 + Trench.PERSPECTIVE) / approach, 0.1)
+			check("nearest note offset from the line is bounded by its time error (max line speed)",
+				off_px <= vmax * absf(nd) + 0.5,
+				"%.2f px for dt %.1f ms (bound %.2f)" % [off_px, dt * 1000.0, vmax * absf(nd) + 0.5])
+			# Flat line: all four receptors share one y, numerically and on screen.
+			var ys: Array = []
+			var mids: Array = []
+			var rows: Array = []
+			for li in range(Highway.LANES):
+				var hp := Trench.hit_point(li)
+				ys.append(hp.y)
+				mids.append(_bright_mid_y(last_img, hp.x, hp.y - 50.0, hp.y + 44.0, 0.45))
+				rows.append(_brightest_row(last_img, hp.x + Highway.RECEPTOR_R + 22.0, hp.y - 30.0, hp.y + 30.0))
+			metrics["receptor_hit_y"] = ys
+			metrics["receptor_bright_mid_y_1x"] = mids
+			metrics["line_brightest_row_1x"] = rows
+			check("all four hit_point y equal within 0.5 px", float(ys.max()) - float(ys.min()) <= 0.5, ys)
+			check("1x: receptor rows on screen share one y within 3 px",
+				float(mids.min()) >= 0.0 and float(mids.max()) - float(mids.min()) <= 3.0, mids)
+			check("1x: the hit line is one level row beside every receptor (within 3 px of HIT_Y)",
+				float(rows.min()) >= Trench.HIT_Y - 3.0 and float(rows.max()) <= Trench.HIT_Y + 3.0, rows)
+			# Straight cables: lane 1 and lane 4 cable colour at d = 0.5 lies on the straight chord.
+			for li in [0, Highway.LANES - 1]:
+				var fl := Trench.lane_f(li)
+				var a0 := Trench.point(fl, 0.0)
+				var a1 := Trench.point(fl, 1.0)
+				var pm := Trench.point(fl, 0.5)
+				var on_chord := Geometry2D.get_closest_point_to_segment(pm, a0, a1)
+				var hit := _colour_near(last_img, on_chord, Palette.lane_color(li), 3.0)
+				var cm := {"model_off_chord_px": snappedf(pm.distance_to(on_chord), 0.01),
+					"cos": snappedf(float(hit["cos"]), 0.001), "offset": hit["offset"]}
+				metrics["cable_lane%d_mid" % (li + 1)] = cm
+				check("1x: lane %d cable colour within 3 px of the straight chord at d=0.5" % (li + 1),
+					pm.distance_to(on_chord) <= 1.0 and bool(hit["ok"]), cm)
 		_unfreeze(g)
 	Settings.set_scroll_speed(orig_speed)
 
@@ -2168,7 +2292,7 @@ func sc_immersion() -> void:
 	await wait(1.0)
 	await shot("effects_full", g)
 	var img_full := last_img
-	var ring_full := _ring_median(img_full)
+	var ring_full := _line_median(img_full)
 	var rec_full := 0.0
 	for i in range(Highway.LANES):
 		rec_full += _chan_max(_patch(img_full, Trench.hit_point(i), 3))
@@ -2189,14 +2313,14 @@ func sc_immersion() -> void:
 	Settings.settings_changed.emit()
 	await wait(0.3)
 	await shot("effects_low", g)
-	var ring_low := _ring_median(last_img)
+	var ring_low := _line_median(last_img)
 	var rec_low := 0.0
 	for i in range(Highway.LANES):
 		rec_low += _chan_max(_patch(last_img, Trench.hit_point(i), 3))
-	metrics["effects"] = {"ring_full": ring_full, "ring_low": ring_low, "receptors_full": rec_full, "receptors_low": rec_low}
-	# +-15%: the 12 px teal glow stroke under the ring is off in Low effects by spec, so the ring core
+	metrics["effects"] = {"line_full": ring_full, "line_low": ring_low, "receptors_full": rec_full, "receptors_low": rec_low}
+	# +-15%: the 12 px teal glow stroke under the line is off in Low effects by spec, so the line core
 	# sampled on the near-black abyss reads ~10% darker in Low; notes/receptor outlines are unchanged.
-	check("hit ring brightness equal full vs low effects (+-15%)",
+	check("hit line brightness equal full vs low effects (+-15%)",
 		ring_low >= 0.85 * ring_full and ring_full >= 0.85 * ring_low, "%.3f vs %.3f" % [ring_full, ring_low])
 	check("receptor brightness equal full vs low effects (+-15%)",
 		rec_low >= 0.85 * rec_full and rec_full >= 0.85 * rec_low, "%.3f vs %.3f" % [rec_full, rec_low])
