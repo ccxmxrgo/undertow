@@ -75,7 +75,7 @@ Plans:
 
 **UI hint**: yes
 **Depends on:** Phase 1.1
-**Plans:** 7/9 plans executed
+**Plans:** 8/9 plans executed
 
 Plans:
 

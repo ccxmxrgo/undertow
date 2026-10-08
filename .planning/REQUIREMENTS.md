@@ -47,8 +47,8 @@
 
 ### Goggles Immersion (user direction 2026-10-08)
 
-- [ ] **IMM-01**: Each dive starts with a skippable goggles-on sequence: a first-person lens mask closes in (no outside-view goggles drawing, user 2026-10-08), a CRT-style blink turns the world on, then the song starts (quick version on Retry)
-- [ ] **IMM-02**: The note board is a 3D trench descent toward a glowing depth, with straight cables and a flat hit line (curves were too hard to hit; user 2026-10-08), neon edges reacting to the music, in a distinct UNDERTOW look (not Guitar Hero)
+- [x] **IMM-01**: Each dive starts with a skippable goggles-on sequence: a first-person lens mask closes in (no outside-view goggles drawing, user 2026-10-08), a CRT-style blink turns the world on, then the song starts (quick version on Retry)
+- [x] **IMM-02**: The note board is a 3D trench descent toward a glowing depth, with straight cables and a flat hit line (curves were too hard to hit; user 2026-10-08), neon edges reacting to the music, in a distinct UNDERTOW look (not Guitar Hero)
 - [x] **IMM-03**: The screen edges are free of frame chrome; the HUD is minimal and sits near or on the board
 - [x] **IMM-04**: The world around the board is a neon abyss arena with bioluminescent life pulsing to the beat and reacting to good play
 - [x] **IMM-05**: The 3D board keeps timing fair: notes hit the line exactly on the beat, autoplay stays all-Perfect, readable at all scroll speeds
