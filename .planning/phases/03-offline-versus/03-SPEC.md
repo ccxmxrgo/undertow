@@ -94,7 +94,7 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
 
 12. **Killfeed**: A small live log shows what just happened between players.
    - Current: n/a
-   - Target: A feed in a screen corner that doesn't cover the highway, showing at most 4 lines. Each line fades after 4 s. Lines are written for these events: disruptor landed (`ALEX ⟶ Ink Cloud ⟶ SAM`), reflected (`SAM ↩ REFLECTED Ink Cloud`), absorbed by Decoy (`SAM 🛡 blocked`), collision (`ALEX ✕ SAM collided`), bounty claimed (`ALEX claimed the bounty on SAM`), Solo Duel won (`SAM wins the solo`), implosion (`💀 ALEX imploded`). Lines involving you are highlighted. The killfeed reads only from the EventChannel, so it works the same with bots now and over the network in Phase 4.
+   - Target: A feed in the top-right corner of the screen, away from the highway, showing at most 4 lines. Each line fades after 4 s. Lines are written for these events: disruptor landed (`ALEX ⟶ Ink Cloud ⟶ SAM`), reflected (`SAM ↩ REFLECTED Ink Cloud`), absorbed by Decoy (`SAM 🛡 blocked`), collision (`ALEX ✕ SAM collided`), bounty claimed (`ALEX claimed the bounty on SAM`), Solo Duel won (`SAM wins the solo`), implosion (`💀 ALEX imploded`). Lines involving you are highlighted. The killfeed reads only from the EventChannel, so it works the same with bots now and over the network in Phase 4.
    - Acceptance: In a bot match, each listed event type produces exactly one line with the right names. A 5th line pushes out the oldest. Lines fade after 4 s.
 
 13. **End-of-match medals**: The results screen (MATCH-05) awards fun titles.
@@ -186,7 +186,8 @@ Confirmed by the user on 2026-10-08: the 12% ratio, the one-slot hold with the m
 | 6     | Boundary Keeper | Confirm defaults | 12% threshold, 1 slot with the meter paused, Crossed Wires replaces Lane Flip, durations as proposed |
 | 7     | Researcher      | More multiplayer ideas (17 pitched) | Collision, Bounty, Solo Duel, Killfeed and Medals added. The rest are deferred (see Boundaries). |
 | 8     | Simplifier      | Details for the 5 added ideas | Claude proposed defaults (2-beat travel, 50% bounty refund, 70% / 16-note duel minimums, 4-line feed, 7 medals). |
-| 9     | Boundary Keeper | Confirm multiplayer defaults | User chose: 1-beat travel with the target alerted at launch, 25% bounty refund, 85% Solo Duel minimum, all 7 medals. The 16-note solo minimum and the 4-line / 4 s killfeed are still Claude's unconfirmed defaults. |
+| 9     | Boundary Keeper | Confirm multiplayer defaults | User chose: 1-beat travel with the target alerted at launch, 25% bounty refund, 85% Solo Duel minimum, all 7 medals. |
+| 10    | Boundary Keeper | Confirm remaining defaults | User confirmed: 16-note solo minimum, killfeed of 4 lines, 4 s fade, top-right corner. |
 
 ---
 
