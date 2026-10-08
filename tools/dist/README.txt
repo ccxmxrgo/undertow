@@ -52,11 +52,12 @@ The music is still generated test audio, not real songs yet. Real songs
 
 WHAT'S NEW IN v0.2
 ------------------
-- A whole new look. Every dive starts by putting the goggles on: your room,
-  the goggles slide down, a CRT blink, LINK ESTABLISHED, and you drop into
-  a neon abyss. Takes about 4 seconds; press Space to skip it.
-- The board is now a trench: four glowing cables run from a far horizon
-  down to a curved hit ring at the bottom. Notes travel down the cables.
+- A whole new look. Every dive starts by putting the headset on: your
+  room, the lenses close in around you, a CRT blink, LINK ESTABLISHED, and
+  you drop into a neon abyss. Takes about 4 seconds; press Space to skip it.
+- The board is now a trench: four glowing cables run straight from a far
+  horizon down to a flat hit line at the bottom. Notes travel down the
+  cables and all four lanes are hit on the same line.
 - Clean screen edges and a minimal HUD: your streak sits left of the board,
   depth on the right, and a hull arc under the board turns red with
   HULL CRITICAL when you're about to sink.
