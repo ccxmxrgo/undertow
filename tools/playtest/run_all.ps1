@@ -1,9 +1,9 @@
 # Runs every playtest scenario windowed on the real audio device and prints a summary.
 # Usage: powershell -NoProfile -File tools/playtest/run_all.ps1 [-Scenarios a,b,c] [-SkipDrift]
 # Results: build/playtest/<scenario>.json and PNG screenshots. The drift scenario takes ~5 min.
-# The player's real user://settings.cfg and user://drift_log.csv are backed up before the run and
+# The player's real user://settings.cfg, user://scores.cfg and user://drift_log.csv are backed up before the run and
 # restored afterwards (T-10-01); the drift scenario's own log is kept in build/playtest/drift_log_copy.csv.
-param([string[]]$Scenarios = @("a", "b", "c", "d", "e", "f", "g", "h", "i", "layout", "drift"), [switch]$SkipDrift)
+param([string[]]$Scenarios = @("a", "b", "c", "d", "e", "f", "g", "h", "i", "layout", "polish", "drift"), [switch]$SkipDrift)
 
 $godot = $env:GODOT_BIN
 if (-not $godot) { $godot = [Environment]::GetEnvironmentVariable("GODOT_BIN", "User") }
@@ -11,7 +11,7 @@ if (-not $godot -or -not (Test-Path $godot)) { Write-Error "GODOT_BIN is not set
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $userDir = Join-Path $env:APPDATA "Godot\app_userdata\UNDERTOW"
 $backupDir = Join-Path $root "build\playtest\userdata_backup"
-$protected = @("settings.cfg", "drift_log.csv")
+$protected = @("settings.cfg", "drift_log.csv", "scores.cfg")
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 foreach ($f in $protected) {
     $src = Join-Path $userDir $f
@@ -24,8 +24,21 @@ try {
     $failed = 0
     foreach ($s in $Scenarios) {
         if ($SkipDrift -and $s -eq "drift") { continue }
-        & $godot --path . res://tools/playtest/playtest.tscn -- $s | Select-String -Pattern "^\[(PASS|FAIL|note)\]|result="
-        if ($LASTEXITCODE -ne 0) { $failed++ }
+        # Hard external watchdog on top of the driver's own TIMEOUTS: a hung Godot is killed, not waited on.
+        $limit = if ($s -eq "drift") { 600 } else { 300 }
+        $log = Join-Path $root "build\playtest\${s}_stdout.txt"
+        $err = Join-Path $root "build\playtest\${s}_stderr.txt"
+        $p = Start-Process -FilePath $godot -ArgumentList @("--path", ".", "res://tools/playtest/playtest.tscn", "--", $s) `
+            -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError $err
+        $null = $p.Handle
+        if (-not $p.WaitForExit($limit * 1000)) {
+            Write-Host "[FAIL] scenario $s killed after $limit s (stalled)"
+            & taskkill.exe /T /F /PID $p.Id | Out-Null  # whole tree: the console exe wraps the GUI exe
+            $failed++
+            continue
+        }
+        Select-String -Path $log -Pattern "^\[(PASS|FAIL|note)\]|result=" | ForEach-Object { $_.Line }
+        if ($p.ExitCode -ne 0) { $failed++ }
     }
     Write-Host "Scenarios failed: $failed"
     exit $failed

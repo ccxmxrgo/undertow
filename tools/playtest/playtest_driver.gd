@@ -13,14 +13,18 @@ extends Node
 const OUT_DIR := "res://build/playtest"
 const TEMP_SETTINGS := "user://playtest_settings.cfg"
 const REAL_SETTINGS := "user://settings.cfg"
+## Records written by eligible bot dives go here, never to the player's user://scores.cfg (T-1.1-15).
+const REAL_SCORES := "user://scores.cfg"
+const TEMP_SCORES := "user://playtest_scores.cfg"
+const POLISH_SCORES := "user://polish_scores.cfg"
 const MENU := "res://scenes/main_menu.tscn"
 const GAMEPLAY := "res://scenes/gameplay.tscn"
 const CALIB := "res://scenes/calibration.tscn"
 const SETTINGS_SCENE := "res://scenes/settings.tscn"
 const DRIFT := "res://scenes/drift_harness.tscn"
-const LANE_KEYS := [KEY_D, KEY_F, KEY_J, KEY_K]
+const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
-	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0}
+	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 180.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note. Values stay >= 5 ms
 ## from window edges (35 / 70 / 100 ms) so frame jitter cannot flip the expected judgment.
 const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
@@ -35,6 +39,10 @@ var probe: Node
 var _start_ms: int = 0
 var _done: bool = false
 var _real_settings_existed: bool = false
+## Frame captured by the latest shot(), plus song time / highway note states when a Gameplay is passed.
+var last_img: Image
+var last_shot_st: float = 0.0
+var last_shot_state := PackedByteArray()
 
 
 func _ready() -> void:
@@ -78,6 +86,7 @@ func _run() -> void:
 		"i": await sc_i()
 		"drift": await sc_drift()
 		"layout": await sc_layout()
+		"polish": await sc_polish()
 		_: check("known scenario", false, scenario)
 	_finish()
 
@@ -88,6 +97,7 @@ func _run() -> void:
 
 
 func isolate_settings(calibrated: bool) -> void:
+	_use_temp_scores(TEMP_SCORES)
 	Settings.save_path = TEMP_SETTINGS
 	if FileAccess.file_exists(TEMP_SETTINGS):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(TEMP_SETTINGS))
@@ -95,6 +105,13 @@ func isolate_settings(calibrated: bool) -> void:
 	if calibrated:
 		Settings.save_calibration(0.0, 0.0)
 		MainMenu.boot_handled = true
+
+
+func _use_temp_scores(path: String) -> void:
+	ScoreStore.default_path = path
+	for p in [path, path + ".bak", path + ".tmp"]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 
 
 func check(name: String, ok: bool, detail: Variant = "") -> bool:
@@ -156,6 +173,9 @@ func _finish() -> void:
 	f.close()
 	if FileAccess.file_exists(TEMP_SETTINGS):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(TEMP_SETTINGS))
+	if ScoreStore.default_path != REAL_SCORES:
+		_use_temp_scores(ScoreStore.default_path)
+	ScoreStore.default_path = REAL_SCORES
 	print("[playtest] scenario=%s result=%s" % [scenario, "PASS" if ok else "FAIL"])
 	get_tree().quit(0 if ok else 1)
 
@@ -193,9 +213,13 @@ func scene_is(path: String) -> bool:
 	return cur() != null and cur().scene_file_path == path
 
 
-func shot(label: String) -> String:
+func shot(label: String, g: Gameplay = null) -> String:
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
+	last_img = img
+	if g != null and is_instance_valid(g) and g.conductor != null:
+		last_shot_st = g.conductor.song_time()
+		last_shot_state = g.highway._state.duplicate()
 	var path := ProjectSettings.globalize_path("%s/%s_%02d_%s.png" % [OUT_DIR, scenario, shots.size() + 1, label])
 	img.save_png(path)
 	shots.append(path)
@@ -311,6 +335,8 @@ func start_dive_from_menu(autoplay: bool) -> Gameplay:
 		return null
 	m.start_button.grab_focus()
 	if autoplay:
+		# Menu order since 01.1-01: Start, Practice, Autoplay, Calibrate, Settings, Quit.
+		await press_key(KEY_DOWN)
 		await press_key(KEY_DOWN)
 	check("menu focus on %s" % ("Autoplay Dive (test)" if autoplay else "Start Dive"),
 		focus_owner() == (m.autoplay_button if autoplay else m.start_button), focus_owner())
@@ -565,8 +591,8 @@ func sc_a() -> void:
 
 	# Re-run from the menu with the offset applied. Same simulated player (40 ms behind heard audio).
 	m.start_button.grab_focus()
-	await press_key(KEY_DOWN)
-	await press_key(KEY_DOWN)
+	for i in range(3):  # Start -> Practice -> Autoplay -> Calibrate (01.1-01 menu order)
+		await press_key(KEY_DOWN)
 	check("menu focus on Calibrate Sonar", focus_owner() == m.calibrate_button, focus_owner())
 	await press_key(KEY_ENTER)
 	ok = await wait_until(func() -> bool: return cur() is CalibrationWizard, 5.0)
@@ -1077,7 +1103,7 @@ func sc_g() -> void:
 	await wait(0.3)
 	var m := cur() as MainMenu
 	m.start_button.grab_focus()
-	for i in range(3):
+	for i in range(4):  # Start -> Practice -> Autoplay -> Calibrate -> Settings
 		await press_key(KEY_DOWN)
 	check("menu focus on Settings", focus_owner() == m.settings_button, focus_owner())
 	await press_key(KEY_ENTER)
@@ -1093,16 +1119,16 @@ func sc_g() -> void:
 	check("Enter starts listening ('PRESS A KEY...')", cell.listening and cell.text == "PRESS A KEY...", cell.text)
 	await shot("rebind_listening")
 	await press_key(KEY_Q)
-	check("Lane 1 rebound to Q", not cell.listening and cell.text == "Q" and _action_has_key(&"lane_1", KEY_Q) and not _action_has_key(&"lane_1", KEY_D), cell.text)
+	check("Lane 1 rebound to Q (no longer 1)", not cell.listening and cell.text == "Q" and _action_has_key(&"lane_1", KEY_Q) and not _action_has_key(&"lane_1", KEY_1), cell.text)
 	var cfg := ConfigFile.new()
 	cfg.load(TEMP_SETTINGS)
 	metrics["saved_lane_1_key"] = cfg.get_value("bindings", "lane_1_key", null)
 	check("rebind persisted", int(cfg.get_value("bindings", "lane_1_key", 0)) == KEY_Q, metrics["saved_lane_1_key"])
 	# duplicate
 	await press_key(KEY_ENTER)
-	await press_key(KEY_F)
+	await press_key(KEY_2)
 	var msg := s.message_text(&"lane_1")
-	check("duplicate (F = Lane 2) rejected with inline message", msg.contains("F is already used for Lane 2") and cell.text == "Q" and _action_has_key(&"lane_2", KEY_F), msg)
+	check("duplicate (2 = Lane 2) rejected with inline message", msg.contains("2 is already used for Lane 2") and cell.text == "Q" and _action_has_key(&"lane_2", KEY_2), msg)
 	await shot("rebind_duplicate_rejected")
 	# Tab
 	await press_key(KEY_ENTER)
@@ -1154,7 +1180,7 @@ func sc_g() -> void:
 	await shot("reset_controls_confirm")
 	await press_key(KEY_LEFT)
 	await press_key(KEY_ENTER)
-	check("Reset Controls restores Lane 1 = D", s.dialog == null and cell.text == "D" and _action_has_key(&"lane_1", KEY_D), cell.text)
+	check("Reset Controls restores Lane 1 = 1", s.dialog == null and cell.text == "1" and _action_has_key(&"lane_1", KEY_1), cell.text)
 	await press_key(KEY_ESCAPE)
 	ok = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
 	check("Esc in Settings -> back to main menu", ok)
@@ -1513,3 +1539,370 @@ func sc_layout() -> void:
 	await shot("reset_controls_confirm")
 	await press_key(KEY_ESCAPE)
 	check("Esc on Reset Controls confirm = Keep Bindings", s.get("dialog") == null)
+
+
+# ------------------------------------------------------------------------------------------------
+# polish (Phase 1.1): lane colors, receptors, ready brightening, visor, streak, fullscreen,
+# records, practice entry. Screenshots feed the human look/feel checkpoint (01.1-05 Task 4).
+# ------------------------------------------------------------------------------------------------
+
+
+## Viewport image pixel for a design-space (1920x1080) point; stretch mode is canvas_items + keep.
+func _img_px(img: Image, design: Vector2) -> Color:
+	var isz := Vector2(img.get_width(), img.get_height())
+	var sc := minf(isz.x / Highway.SCREEN_W, isz.y / Highway.SCREEN_H)
+	var off := (isz - Vector2(Highway.SCREEN_W, Highway.SCREEN_H) * sc) * 0.5
+	var p := (off + design * sc).floor()
+	return img.get_pixel(clampi(int(p.x), 0, img.get_width() - 1), clampi(int(p.y), 0, img.get_height() - 1))
+
+
+func _chan_max(c: Color) -> float:
+	return maxf(c.r, maxf(c.g, c.b))
+
+
+## Mean color of a (2r+1)^2 design-pixel patch (anti-aliasing tolerant center sample).
+func _patch(img: Image, center: Vector2, r: int = 2) -> Color:
+	var acc := Color(0, 0, 0, 0)
+	var n := 0
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			acc += _img_px(img, center + Vector2(dx, dy))
+			n += 1
+	return acc / float(n)
+
+
+## Brightest channel value anywhere in a square design-space region.
+func _region_max(img: Image, center: Vector2, r: float, step: float = 2.0) -> float:
+	var best := 0.0
+	var y := -r
+	while y <= r:
+		var x := -r
+		while x <= r:
+			best = maxf(best, _chan_max(_img_px(img, center + Vector2(x, y))))
+			x += step
+		y += step
+	return best
+
+
+## Median brightest-channel value along the hull line row across the highway.
+func _hull_row_median(img: Image) -> float:
+	var vals: Array = []
+	var x := Highway.lane_left() + 4.0
+	while x < Highway.lane_left() + Highway.LANE_W * Highway.LANES - 4.0:
+		vals.append(_chan_max(_img_px(img, Vector2(x, Highway.HULL_Y))))
+		x += 6.0
+	vals.sort()
+	return float(vals[vals.size() / 2])
+
+
+## Pending notes visible in the last captured frame: {i, lane, dt, y, ready, center}.
+func _visible_pending(g: Gameplay) -> Array:
+	var out: Array = []
+	var notes: Array = g.chart.notes
+	var vt := last_shot_st + Settings.visual_offset
+	var pps := Highway.PX_PER_SEC * Settings.scroll_speed
+	var cfg := JudgeConfig.new()
+	for i in range(notes.size()):
+		if i >= last_shot_state.size() or last_shot_state[i] != Highway.S_PENDING:
+			continue
+		var n: Dictionary = notes[i]
+		var y := Highway.HULL_Y - (float(n["time"]) - vt) * pps
+		if y < 60.0 or y > Highway.HULL_Y + 40.0:
+			continue
+		var dt := float(n["time"]) - last_shot_st
+		var lane: int = n["lane"]
+		out.append({"i": i, "lane": lane, "dt": dt, "y": y,
+			"ready": Highway.note_is_ready(dt, cfg.good_window),
+			"center": Vector2(Highway.lane_center_x(lane), y)})
+	return out
+
+
+func _far_note(vis: Array, lane: int = -1) -> Dictionary:
+	for v in vis:
+		if float(v["dt"]) > 0.30 and float(v["y"]) < 700.0 and (lane < 0 or int(v["lane"]) == lane):
+			return v
+	return {}
+
+
+func _pending_dt_within(g: Gameplay, lo: float, hi: float) -> bool:
+	var st := g.conductor.song_time()
+	var notes: Array = g.chart.notes
+	for i in range(notes.size()):
+		if g.highway._state[i] != Highway.S_PENDING:
+			continue
+		var dt := float(notes[i]["time"]) - st
+		if dt > hi:
+			return false
+		if dt >= lo:
+			return true
+	return false
+
+
+func sc_polish() -> void:
+	isolate_settings(true)
+	_use_temp_scores(POLISH_SCORES)
+	metrics["scores_path"] = ScoreStore.default_path
+	# --- main menu --------------------------------------------------------------------------
+	await goto(MENU)
+	await wait(0.4)
+	var m := cur() as MainMenu
+	if not check("main menu shown", m != null, cur()):
+		return
+	var box := m.start_button.get_parent()
+	check("Practice Dive (No-Fail) sits directly after Start Dive",
+		m.practice_button != null and m.practice_button.text == "Practice Dive (No-Fail)"
+		and m.practice_button.get_parent() == box and m.practice_button.get_index() == m.start_button.get_index() + 1,
+		"start #%d, practice #%d" % [m.start_button.get_index(), m.practice_button.get_index() if m.practice_button else -1])
+	check("menu best line shows the empty-state copy (fresh temp record book)",
+		m.best_label != null and m.best_label.text == MainMenu.NO_RECORD_COPY, m.best_label.text if m.best_label else null)
+	await shot("menu")
+
+	# --- practice entry ---------------------------------------------------------------------
+	m.start_button.grab_focus()
+	await press_key(KEY_DOWN)
+	check("Down from Start Dive focuses Practice Dive", focus_owner() == m.practice_button, focus_owner())
+	await press_key(KEY_ENTER)
+	var ok: bool = await wait_until(func() -> bool: return cur() is Gameplay, 5.0)
+	if not check("Practice Dive opens gameplay", ok, cur()):
+		return
+	var pg := cur() as Gameplay
+	await wait_until(func() -> bool: return pg.conductor.song_time() > 2.0, 10.0)
+	check("practice run: Gameplay.practice, score.no_fail on, persisted Settings.no_fail untouched",
+		pg.practice and pg.score.no_fail and not Settings.no_fail,
+		"practice=%s score.no_fail=%s Settings.no_fail=%s" % [pg.practice, pg.score.no_fail, Settings.no_fail])
+	await shot("practice_hud")
+	await goto(MENU)
+	await wait(0.3)
+
+	# --- normal dive with the keyboard bot ------------------------------------------------------
+	var g: Gameplay = await start_dive_from_menu(false)
+	if g == null:
+		return
+	var c := g.conductor
+	var gw: WeakRef = weakref(g)
+	var last_press := [-1]
+	g.lane_input.lane_pressed.connect(func(_l: int, _t: int) -> void: last_press[0] = Time.get_ticks_usec())
+	var sched := keyboard_schedule(g.chart.notes, [0.0])
+	var bot := func() -> void:
+		await run_schedule(c, sched, func() -> bool: return _gone_or_stopped(gw))
+	bot.call()
+	# Streak watcher runs alongside: popup shot the instant combo first reaches 10, big counter at 25.
+	var streak_done := [false]
+	var streak := func() -> void:
+		var hit10: bool = await wait_until(func() -> bool: return _gone_or_stopped(gw) or g.score.combo >= 10, 60.0)
+		if hit10 and not _gone_or_stopped(gw):
+			var popup := g.streak_counter.popup_text()
+			metrics["streak_at_10"] = {"combo": g.score.combo, "popup": popup, "number": g.streak_counter.number_text()}
+			check("combo 10 -> '10 STREAK' milestone popup", popup == "10 STREAK", popup)
+			check("NOTE STREAK counter visible at combo 10", g.streak_counter.is_counter_visible())
+			await shot("streak_10_popup", g)
+		var hit25: bool = await wait_until(func() -> bool: return _gone_or_stopped(gw) or g.score.combo >= 25, 60.0)
+		if hit25 and not _gone_or_stopped(gw):
+			metrics["streak_at_25"] = {"combo": g.score.combo, "popup": g.streak_counter.popup_text(),
+				"number": g.streak_counter.number_text()}
+			await shot("streak_counter_big", g)
+		else:
+			note("combo 25 not reached before the run ended")
+		streak_done[0] = true
+	streak.call()
+
+	# Far (dim) note: capture until a pending note > 0.30 s out is on screen, then save the shot.
+	var far_sample := {}
+	for attempt in range(40):
+		await wait_until(func() -> bool: return _gone_or_stopped(gw) or _pending_dt_within(g, 0.32, 1.1), 10.0)
+		if _gone_or_stopped(gw):
+			break
+		await shot("notes_far_dim", g)
+		var f := _far_note(_visible_pending(g))
+		if not f.is_empty():
+			far_sample = f
+			far_sample["color"] = _patch(last_img, f["center"])
+			break
+		DirAccess.remove_absolute(shots.pop_back())
+		await frame()
+	if check("captured a pending note more than 0.30 s from the hit line", not far_sample.is_empty(), far_sample):
+		note("far note #%d lane %d dt %.3f s: center %s" % [far_sample["i"], far_sample["lane"], far_sample["dt"],
+			(far_sample["color"] as Color).to_html(false)])
+	# In-window (bright) note.
+	var ready_sample := {}
+	var far_same := {}
+	for attempt in range(40):
+		await wait_until(func() -> bool: return _gone_or_stopped(gw) or _pending_dt_within(g, 0.0, 0.03), 10.0)
+		if _gone_or_stopped(gw):
+			break
+		await shot("note_in_window_bright", g)
+		var vis := _visible_pending(g)
+		for v in vis:
+			if bool(v["ready"]) and float(v["dt"]) > -0.02:
+				ready_sample = v
+				break
+		if not ready_sample.is_empty():
+			ready_sample["color"] = _patch(last_img, ready_sample["center"])
+			far_same = _far_note(vis, int(ready_sample["lane"]))
+			if not far_same.is_empty():
+				far_same["color"] = _patch(last_img, far_same["center"])
+			break
+		# Not usable (note judged before the frame was drawn): drop the file and retry.
+		DirAccess.remove_absolute(shots.pop_back())
+	if check("captured a pending note inside the Good window", not ready_sample.is_empty(), ready_sample):
+		var ref: Dictionary = far_same if not far_same.is_empty() else far_sample
+		var rc: Color = ready_sample["color"]
+		var fc: Color = ref.get("color", Color.BLACK)
+		var ratio := _chan_max(rc) / maxf(_chan_max(fc), 0.001)
+		metrics["ready_vs_far"] = {"ready_note": ready_sample["i"], "ready_lane": ready_sample["lane"],
+			"ready_dt_ms": float(ready_sample["dt"]) * 1000.0, "ready_center": rc.to_html(false),
+			"far_note": ref.get("i", -1), "far_lane": ref.get("lane", -1), "far_center": fc.to_html(false),
+			"same_lane_same_frame": not far_same.is_empty(), "ratio": ratio}
+		note("ready note #%d lane %d dt %.1f ms center %s vs far note lane %d center %s -> x%.2f" % [
+			ready_sample["i"], ready_sample["lane"], float(ready_sample["dt"]) * 1000.0, rc.to_html(false),
+			int(ref.get("lane", -1)), fc.to_html(false), ratio])
+		check("in-window note center is >= 20% brighter than a far note (brightest channel)", ratio >= 1.2, "x%.2f" % ratio)
+	# Receptors with a visible pulse.
+	var pulsed: bool = await wait_until(func() -> bool:
+		return _gone_or_stopped(gw) or (last_press[0] > 0 and Time.get_ticks_usec() - last_press[0] < 30000), 10.0)
+	if check("lane press observed for the receptor shot", pulsed and not _gone_or_stopped(gw)):
+		await shot("receptors_lane_colors", g)
+		var lane_vals: Array = []
+		var all_lit := true
+		for i in range(Highway.LANES):
+			var v := _region_max(last_img, Vector2(Highway.lane_center_x(i), Highway.HULL_Y), 44.0)
+			lane_vals.append(snappedf(v, 0.001))
+			all_lit = all_lit and v > 0.25
+		metrics["receptor_row_brightness"] = lane_vals
+		check("receptor row is lit in all four lanes (non-black at y=880)", all_lit, lane_vals)
+	# Visor on vs Low effects.
+	if not _gone_or_stopped(gw):
+		await shot("visor_full", g)
+		var with_visor := _hull_row_median(last_img)
+		var edge_visor := _chan_max(_patch(last_img, Vector2(24.0, 540.0), 3))
+		check("visor frame visible (Low effects off)", g.visor.visible and not Settings.low_effects)
+		Settings.low_effects = true
+		Settings.settings_changed.emit()
+		await frame()
+		await shot("visor_low_effects", g)
+		var without := _hull_row_median(last_img)
+		var edge_plain := _chan_max(_patch(last_img, Vector2(24.0, 540.0), 3))
+		check("Low effects hides the visor frame", not g.visor.visible)
+		metrics["visor"] = {"hull_row_median_visor": with_visor, "hull_row_median_low_effects": without,
+			"edge_visor": edge_visor, "edge_low_effects": edge_plain}
+		check("visor does not darken the lanes (hull row >= 90% of Low effects brightness)",
+			with_visor >= 0.9 * without, "%.3f vs %.3f" % [with_visor, without])
+		Settings.low_effects = false
+		Settings.settings_changed.emit()
+		await frame()
+	# Fullscreen / windowed toggle on the real window.
+	if not _gone_or_stopped(gw):
+		metrics["window_mode_start"] = DisplayServer.window_get_mode()
+		Settings.set_fullscreen(false)
+		await wait(0.5)
+		var mode := DisplayServer.window_get_mode()
+		var wsize := DisplayServer.window_get_size()
+		metrics["windowed"] = {"mode": mode, "size": str(wsize), "pos": str(DisplayServer.window_get_position())}
+		check("set_fullscreen(false) -> windowed", mode == DisplayServer.WINDOW_MODE_WINDOWED, mode)
+		check("windowed size is 1600x900", wsize == Vector2i(1600, 900), wsize)
+		await shot("windowed_1600x900", g)
+		Settings.set_fullscreen(true)
+		await wait(0.5)
+		check("set_fullscreen(true) -> fullscreen", DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN,
+			DisplayServer.window_get_mode())
+		await press_key(KEY_F11)
+		await wait(0.5)
+		var f11_off := not Settings.fullscreen and DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_WINDOWED
+		await press_key(KEY_F11)
+		await wait(0.5)
+		var f11_on := Settings.fullscreen and DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+		check("F11 toggles fullscreen -> windowed -> fullscreen", f11_off and f11_on, "off=%s on=%s" % [f11_off, f11_on])
+		var cfg := ConfigFile.new()
+		cfg.load(TEMP_SETTINGS)
+		check("fullscreen flag persisted to the temp settings file", bool(cfg.get_value("display", "fullscreen", false)))
+	# Let the run finish: the bot dive is eligible, so it sets the first record.
+	var done: bool = await wait_until(func() -> bool: return not is_instance_valid(g) or g.state != Gameplay.State.RUNNING, 90.0)
+	check("bot dive finishes (DONE)", done and is_instance_valid(g) and g.state == Gameplay.State.DONE,
+		g.state if is_instance_valid(g) else "freed")
+	await wait_until(func() -> bool: return streak_done[0], 5.0)
+	if not is_instance_valid(g) or g.state != Gameplay.State.DONE:
+		return
+	await wait(0.6)
+	metrics["bot_record_info"] = g.record_info
+	metrics["bot_score"] = {"depth": g.score.depth(), "max_combo": g.score.max_combo, "perfect": g.score.perfect_count,
+		"good": g.score.good_count, "miss": g.score.miss_count}
+	check("eligible bot dive set the first record (NEW RECORD, no previous)",
+		bool(g.record_info.get("new_record", false)) and float(g.record_info.get("previous_depth", 0.0)) < 0.0
+		and g.results != null and g.results.record_banner != null, g.record_info)
+	await shot("results_first_record")
+	var first_depth := g.score.depth()
+
+	# --- records / results layouts ----------------------------------------------------------------
+	await goto(MENU)
+	await wait(0.3)
+	var store := ScoreStore.new()
+	store.load()
+	var cfgj := JudgeConfig.new()
+	var hs := HullScore.new(cfgj)
+	hs.perfect_count = 61
+	hs.good_count = 9
+	hs.miss_count = 2
+	hs.max_combo = 48
+	hs.score = int((first_depth + 250.0) * cfgj.score_per_meter)
+	hs.hull = 82.0
+	var acc := ScoreStore.accuracy(hs.perfect_count, hs.good_count, hs.miss_count)
+	var res := store.submit(TestCharts.HAND_CHART_ID, hs.depth(), acc, hs.max_combo, true, "2026-10-08")
+	var prev: Dictionary = res["previous"]
+	var info := {"eligible": true, "new_record": res["new_record"],
+		"previous_depth": float(prev["depth"]) if not prev.is_empty() else -1.0,
+		"best_depth": float(store.best(TestCharts.HAND_CHART_ID)["depth"])}
+	check("second submit beats the first record (previous = bot dive depth)",
+		bool(res["new_record"]) and absf(float(info["previous_depth"]) - first_depth) < 1.0, info)
+	var rs := ResultsScreen.new()
+	get_tree().root.add_child(rs)
+	rs.setup(hs, false, info, false)
+	await wait(0.5)
+	check("results show NEW RECORD and a Previous best row",
+		rs.record_banner != null and rs.rows.any(func(r: Array) -> bool: return r[0] == "Previous best"), rs.rows)
+	await shot("results_new_record")
+	rs.queue_free()
+	await frame()
+	var ps := HullScore.new(cfgj)
+	ps.no_fail = true
+	ps.perfect_count = 40
+	ps.good_count = 12
+	ps.miss_count = 20
+	ps.max_combo = 22
+	ps.score = int(900.0 * cfgj.score_per_meter)
+	ps.hull = 0.0
+	var pres := store.submit(TestCharts.HAND_CHART_ID, ps.depth(), 50.0, ps.max_combo,
+		ScoreStore.is_eligible(false, ps.no_fail, true))
+	var pinfo := {"eligible": false, "new_record": pres["new_record"], "previous_depth": -1.0,
+		"best_depth": float(store.best(TestCharts.HAND_CHART_ID)["depth"])}
+	check("practice run is not recorded", not bool(pres["recorded"]) and not bool(pres["new_record"]), pres)
+	var prs := ResultsScreen.new()
+	get_tree().root.add_child(prs)
+	prs.setup(ps, false, pinfo, true)
+	await wait(0.4)
+	check("practice results: PRACTICE DIVE flag and 'Not recorded' note",
+		prs.flags.has("PRACTICE DIVE") and prs.note_label != null and prs.note_label.text.begins_with("Not recorded"),
+		[prs.flags, prs.note_label.text if prs.note_label else null])
+	await shot("results_practice_not_recorded")
+	prs.queue_free()
+	await frame()
+	var fs := FailScreen.new()
+	get_tree().root.add_child(fs)
+	var saved_best := float(store.best(TestCharts.HAND_CHART_ID)["depth"])
+	fs.setup(612.0, 17, saved_best)
+	fs.play(0.0)
+	await wait(0.6)
+	check("IMPLOSION shows run stats and saved best",
+		fs.stats_label.text == "Max combo: 17" and fs.best_label.text.begins_with("Saved best: "),
+		[fs.stats_label.text, fs.best_label.text])
+	await shot("implosion_stats")
+	fs.queue_free()
+	await frame()
+	await goto(MENU)
+	await wait(0.4)
+	m = cur() as MainMenu
+	var expect := "Best: %s m" % Palette.fmt_depth(int(saved_best))
+	check("menu best line shows the saved best", m != null and m.best_label.text.begins_with(expect),
+		m.best_label.text if m else null)
+	await shot("menu_best_line")
+	check("records stayed in the temp record book (real scores.cfg path unused)",
+		ScoreStore.default_path == POLISH_SCORES, ScoreStore.default_path)
