@@ -35,21 +35,44 @@ func test_note_centre_on_hit_point_at_judge_time() -> void:
 
 
 func test_hit_point_reference_values() -> void:
-	_near(Trench.hit_point(0), 645.0, 879.0, 1.0)
-	_near(Trench.hit_point(1), 855.0, 951.0, 1.0)
-	_near(Trench.hit_point(2), 1065.0, 951.0, 1.0)
-	_near(Trench.hit_point(3), 1275.0, 879.0, 1.0)
+	_near(Trench.hit_point(0), 645.0, Trench.HIT_Y, 1.0)
+	_near(Trench.hit_point(1), 855.0, Trench.HIT_Y, 1.0)
+	_near(Trench.hit_point(2), 1065.0, Trench.HIT_Y, 1.0)
+	_near(Trench.hit_point(3), 1275.0, Trench.HIT_Y, 1.0)
 
 
-func test_sample_points_and_far_convergence() -> void:
-	_near(Trench.point(1.5, 0.5), 1006.0, 496.0, 2.0)
-	_near(Trench.point(1.5, 0.2), 1068.0, 636.0, 2.0)
+func test_hit_points_share_y() -> void:
+	var y0 := Trench.hit_point(0).y
+	for lane in range(4):
+		assert_float(Trench.hit_point(lane).y).is_equal_approx(y0, 0.5)
+
+
+func test_lane_paths_are_straight() -> void:
+	for lane in range(4):
+		var f := Trench.lane_f(lane)
+		var a := Trench.point(f, 1.0)
+		var b := Trench.point(f, 0.0)
+		var chord := (b - a).normalized()
+		for i in range(0, 21):
+			var d := 1.0 - float(i) / 20.0
+			var p := Trench.point(f, d) - a
+			var perp := absf(p.x * chord.y - p.y * chord.x)
+			assert_float(perp).is_less(1.0)
+	assert_float(Trench.point(0.0, 0.5).x).is_equal_approx(960.0, 0.01)
+
+
+func test_far_convergence() -> void:
 	for lane in range(4):
 		var p := Trench.point(Trench.lane_f(lane), 1.0)
-		assert_float(p.x - Trench.VP.x).is_equal_approx(Trench.lane_f(lane) * 14.1, 0.2)  # cables converge on VP (outer lanes 21 px)
-		assert_float(p.y).is_equal_approx(396.0, 1.0)
-	_near(Trench.point(-2.6, 0.0), 414.0, 717.0, 1.0)
-	_near(Trench.point(2.6, 0.0), 1506.0, 717.0, 1.0)
+		assert_float(absf(p.x - Trench.VP.x)).is_less(20.0)
+		assert_float(p.y).is_equal_approx(Trench.VP.y, 1.0)
+
+
+func test_near_line_speed_ratio() -> void:
+	var h := 1e-4
+	var mean_speed := Trench.TRAVEL  # per unit depth
+	var dy := absf(Trench.point(0.0, h).y - Trench.point(0.0, -h).y) / (2.0 * h)
+	assert_float(dy / mean_speed).is_less_equal(3.0)
 
 
 func test_monotonic_in_depth() -> void:
@@ -90,11 +113,11 @@ func test_approach_for() -> void:
 	assert_float(Trench.approach_for(0.0)).is_greater(0.0)
 
 
-func test_ring_points() -> void:
-	var r := Trench.ring_points()
-	assert_int(r.size()).is_equal(41)
-	_near(r[0], 519.0, 801.0, 1.0)
-	_near(r[40], 1401.0, 801.0, 1.0)
+func test_line_points() -> void:
+	var r := Trench.line_points()
+	assert_int(r.size()).is_equal(2)
+	_near(r[0], 960.0 - 2.1 * 210.0, Trench.HIT_Y, 1.0)
+	_near(r[1], 960.0 + 2.1 * 210.0, Trench.HIT_Y, 1.0)
 
 
 func test_note_radius() -> void:

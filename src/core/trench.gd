@@ -5,28 +5,27 @@ extends RefCounted
 ## note whose time equals the visual time sits exactly on hit_point(lane).
 
 const VP := Vector2(960.0, 396.0)
-const HIT_Y := 960.0
+const HIT_Y := 930.0
 const LANE_SPREAD := 210.0
-const SAG := 21.6
-const RING_CURVE := 36.0
+const FAR_SPREAD := 0.045  # lane spread at the far end, as a fraction of LANE_SPREAD
 const Z_SCALE := 0.42
 const APPROACH_BASE := 1.5
 const D_MIN := -0.15
 const D_FAR := 1.0
-const PERSPECTIVE := 4.2
-const TRAVEL := 564.0  # HIT_Y - VP.y
+const PERSPECTIVE := 1.8
+const TRAVEL := HIT_Y - VP.y
 
 
 static func lane_f(lane: int) -> float:
 	return float(lane) - 1.5
 
 
-## Seconds from the far end of the cable to the hit ring. Speed is clamped (no divide by zero).
+## Seconds from the far end of the cable to the hit line. Speed is clamped (no divide by zero).
 static func approach_for(scroll_speed: float) -> float:
 	return APPROACH_BASE / maxf(scroll_speed, 0.1)
 
 
-## Linear depth: 0 at the ring, 1 at the far end, negative once past the ring. Never clamped.
+## Linear depth: 0 at the line, 1 at the far end, negative once past the line. Never clamped.
 static func depth_for(note_time: float, vt: float, approach: float) -> float:
 	return (note_time - vt) / maxf(approach, 0.001)
 
@@ -46,8 +45,8 @@ static func point(f: float, d: float) -> Vector2:
 	var s := 1.0 / (1.0 + PERSPECTIVE * dd)
 	var smin := 1.0 / (1.0 + PERSPECTIVE)
 	var n := (s - smin) / (1.0 - smin)
-	var x := VP.x + f * LANE_SPREAD * s * (0.35 + 0.65 * n)
-	var y := VP.y + TRAVEL * n + sin(dd * PI) * SAG * (1.0 - dd) - f * f * RING_CURVE * n * n
+	var x := VP.x + f * LANE_SPREAD * (FAR_SPREAD + (1.0 - FAR_SPREAD) * n)
+	var y := VP.y + TRAVEL * n
 	return Vector2(x, y)
 
 
@@ -60,15 +59,9 @@ static func hit_point(lane: int) -> Vector2:
 	return point(lane_f(lane), 0.0)
 
 
-## The curved hit ring polyline, f in [-2.1, 2.1] at d = 0.
-static func ring_points(samples: int = 41) -> PackedVector2Array:
-	var out := PackedVector2Array()
-	var count := maxi(samples, 2)
-	out.resize(count)
-	for i in range(count):
-		var f := lerpf(-2.1, 2.1, float(i) / float(count - 1))
-		out[i] = point(f, 0.0)
-	return out
+## End points of the flat hit line, f = -2.1 and +2.1 at d = 0 (same y).
+static func line_points() -> PackedVector2Array:
+	return PackedVector2Array([point(-2.1, 0.0), point(2.1, 0.0)])
 
 
 static func note_radius(s: float) -> float:
