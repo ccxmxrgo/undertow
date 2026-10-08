@@ -29,6 +29,7 @@ const MASK_FAR_SCALE := 7.5
 const ROOM_GLOW_R := 624.0
 
 static var _room_glow_tex: GradientTexture2D
+static var _mask_tex: ImageTexture
 
 var mode: int = IntroTimeline.Mode.FULL
 var _state: State = State.PRE
@@ -47,7 +48,6 @@ var _last_phase: int = -1
 var _last_number: int = 0
 var _dive_played: bool = false
 var _pad_last: bool = false
-var _mask_tex: ImageTexture
 var _sfx: AudioStreamPlayer
 var _tick: AudioStreamWAV
 var _tick_hi: AudioStreamWAV
@@ -73,6 +73,10 @@ func setup(p_mode: int, p_conductor: Conductor, chart: ChartData, p_arena: Arena
 	_spb = IntroTimeline.seconds_per_beat(bpm)
 	_build_sfx()
 	_set_board(0.0, 0.0, 1.0, 0.0, 0.0)
+	# Build the (cached) lens mask BEFORE the wall clock starts so a first-time generation
+	# hitch cannot eat the lens-close animation (WR-02).
+	if arena_draws_lens(mode):
+		lens_mask_texture()
 	_origin_usec = Time.get_ticks_usec()
 
 
@@ -344,10 +348,10 @@ static func room_glow_texture() -> GradientTexture2D:
 
 
 ## Soft round-lens mask: two overlapping circular openings, a dark bridge between them and a
-## vignette inside each opening. Generated once, only scaled per frame.
-func _ensure_mask() -> void:
+## vignette inside each opening. Generated once per process (static), only scaled per frame.
+static func lens_mask_texture() -> ImageTexture:
 	if _mask_tex != null:
-		return
+		return _mask_tex
 	var img := Image.create(MASK_W, MASK_H, false, Image.FORMAT_RGBA8)
 	var r := 82.5
 	var c1 := Vector2(195.0, 135.0)
@@ -363,11 +367,11 @@ func _ensure_mask() -> void:
 			a = maxf(a, 0.92 * bx * by)
 			img.set_pixel(x, y, Color(0.008, 0.016, 0.04, a))
 	_mask_tex = ImageTexture.create_from_image(img)
+	return _mask_tex
 
 
 ## close: 0..1 closing scale; open: 0..1 opening/dissolve. Reduce motion: no scaling, alpha only.
 func _draw_lens_mask(close: float, open: float, rm: bool) -> void:
-	_ensure_mask()
 	var scale_f := 1.0
 	var alpha := 1.0
 	if rm:
@@ -379,7 +383,7 @@ func _draw_lens_mask(close: float, open: float, rm: bool) -> void:
 		scale_f = lerpf(MASK_FAR_SCALE, 1.0, close)
 	if alpha <= 0.0:
 		return
-	draw_texture_rect(_mask_tex, Rect2(960.0 - 960.0 * scale_f, 540.0 - 540.0 * scale_f,
+	draw_texture_rect(lens_mask_texture(), Rect2(960.0 - 960.0 * scale_f, 540.0 - 540.0 * scale_f,
 		W * scale_f, H * scale_f), false, Color(1, 1, 1, alpha))
 
 

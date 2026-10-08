@@ -160,3 +160,12 @@ func test_quick_intro_draws_no_lens_mask() -> void:
 	# CR-01: QUICK has an ARENA phase but lens_open() is 0 there; the mask must not be drawn.
 	assert_bool(GogglesIntro.arena_draws_lens(IntroTimeline.Mode.QUICK)).is_false()
 	assert_bool(GogglesIntro.arena_draws_lens(IntroTimeline.Mode.FULL)).is_true()
+
+
+func test_lens_mask_texture_is_cached_across_instances() -> void:
+	# WR-02: the 129k-pixel mask is built once per process, not per intro instance.
+	var a := GogglesIntro.lens_mask_texture()
+	var b := GogglesIntro.lens_mask_texture()
+	assert_object(a).is_not_null()
+	assert_bool(a == b).is_true()
+	assert_int(a.get_width()).is_equal(GogglesIntro.MASK_W)
