@@ -53,11 +53,11 @@ UNDERTOW is built as a series of vertical slices, each playable on its own. Firs
 
 **UI hint**: yes
 **Depends on:** Phase 1
-**Plans:** 4/5 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 
-- [ ] TBD (run /gsd:plan-phase 01.1 to break down)
+- [x] TBD (run /gsd:plan-phase 01.1 to break down) (completed 2026-10-08)
 
 ### Phase 01.2: Goggles Immersion (INSERTED)
 
