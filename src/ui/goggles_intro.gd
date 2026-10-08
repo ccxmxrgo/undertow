@@ -39,6 +39,7 @@ var _highway: Highway
 var _hud: Control
 var _streak: Control
 var _spb: float = 0.5
+var _bpm: float = 120.0
 var _beats: int = 3
 var _origin_usec: int = 0
 var _emitted: bool = false
@@ -70,6 +71,7 @@ func setup(p_mode: int, p_conductor: Conductor, chart: ChartData, p_arena: Arena
 	var bpm := 120.0
 	if chart != null and not chart.tempo_map.is_empty():
 		bpm = float(chart.tempo_map[0]["bpm"])
+	_bpm = bpm
 	_spb = IntroTimeline.seconds_per_beat(bpm)
 	_build_sfx()
 	_set_board(0.0, 0.0, 1.0, 0.0, 0.0)
@@ -126,6 +128,7 @@ func on_count_started(skipped: bool) -> void:
 	if skipped and _skip_usec == 0:
 		_skip_usec = Time.get_ticks_usec()
 	_beats = IntroTimeline.lead_in_beats(mode, skipped)
+	_spb = IntroTimeline.count_beat_seconds(_beats, _bpm)  # matches the bounded lead-in
 	_state = State.COUNT
 	_last_number = 0
 	_dive_played = false

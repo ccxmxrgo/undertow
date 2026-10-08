@@ -162,7 +162,7 @@ func _begin_count_in(skipped: bool = false) -> void:
 	if _began or conductor == null:
 		return
 	var beats := IntroTimeline.lead_in_beats(intro_mode, skipped)
-	conductor.begin(chart.audio_stream, beats * IntroTimeline.seconds_per_beat(_bpm()))
+	conductor.begin(chart.audio_stream, IntroTimeline.lead_in_seconds(beats, _bpm()))
 	lane_input.enabled = not autoplay  # autoplay presses for the player
 	_began = true
 	highway.notes_enabled = true

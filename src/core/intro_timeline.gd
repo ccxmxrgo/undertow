@@ -19,10 +19,23 @@ const RM_BLACK_END := 0.9
 const RM_ARENA_END := 1.6
 const DIVE_SEC := 0.6
 const DIVE_SEC_QUICK := 0.4
+const LEAD_IN_MIN_SEC := 0.6
+const LEAD_IN_MAX_SEC := 4.0
 
 
 static func seconds_per_beat(bpm: float) -> float:
 	return 60.0 / maxf(bpm, 1.0)
+
+
+## Conductor lead-in length: beats * spb, bounded so a very fast tempo cannot start the music
+## inside the output-latency window and a very slow one cannot stall the count (WR-06).
+static func lead_in_seconds(beats: int, bpm: float) -> float:
+	return clampf(float(beats) * seconds_per_beat(bpm), LEAD_IN_MIN_SEC, LEAD_IN_MAX_SEC)
+
+
+## Seconds per displayed count beat once the lead-in is bounded (lead / beats).
+static func count_beat_seconds(beats: int, bpm: float) -> float:
+	return lead_in_seconds(beats, bpm) / float(maxi(beats, 1))
 
 
 static func ease_out(x: float) -> float:

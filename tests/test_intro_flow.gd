@@ -138,7 +138,9 @@ func test_restart_uses_quick_intro_and_one_beat_lead_in() -> void:
 	gp.intro.advance(1.0)
 	await _frames(3)
 	assert_bool(gp.is_began()).is_true()
-	assert_float(gp.conductor.song_time()).is_between(-SPB - 0.05, -SPB + 0.2)
+	# one beat at 120 bpm (0.5 s) is raised to the 0.6 s minimum lead-in (WR-06)
+	var lead := IntroTimeline.LEAD_IN_MIN_SEC
+	assert_float(gp.conductor.song_time()).is_between(-lead - 0.05, -lead + 0.2)
 
 
 func test_restart_with_intro_none_stays_none() -> void:

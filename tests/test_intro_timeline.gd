@@ -135,3 +135,13 @@ func test_guarded_spb_is_finite() -> void:
 		assert_bool(is_finite(spb)).is_true()
 		assert_float(spb).is_equal_approx(60.0, 0.0001)
 	assert_bool(is_finite(IntroTimeline.beat_fraction(-0.3, 0.5))).is_true()
+
+
+func test_lead_in_seconds_is_bounded() -> void:
+	# WR-06: 1 beat at 240 bpm (0.25 s) is raised to the minimum; 3 beats at 40 bpm (4.5 s) capped.
+	assert_float(IntroTimeline.lead_in_seconds(1, 240.0)).is_equal(IntroTimeline.LEAD_IN_MIN_SEC)
+	assert_float(IntroTimeline.lead_in_seconds(3, 40.0)).is_equal(IntroTimeline.LEAD_IN_MAX_SEC)
+	assert_float(IntroTimeline.lead_in_seconds(3, 120.0)).is_equal_approx(1.5, 1e-9)
+	assert_float(IntroTimeline.count_beat_seconds(1, 240.0)).is_equal(IntroTimeline.LEAD_IN_MIN_SEC)
+	assert_float(IntroTimeline.count_beat_seconds(3, 40.0)).is_equal_approx(4.0 / 3.0, 1e-9)
+	assert_float(IntroTimeline.count_beat_seconds(3, 120.0)).is_equal_approx(0.5, 1e-9)
