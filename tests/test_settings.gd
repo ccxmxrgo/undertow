@@ -262,3 +262,13 @@ func test_reset_defaults_restores_display() -> void:
 	s.reset_defaults()
 	assert_bool(s.fullscreen).is_true()
 	assert_bool(s.low_effects).is_false()
+
+
+## Godot 4.7.2 on Windows: a window CREATED fullscreen (window/size/mode=3) can never return to
+## windowed (window_set_mode(WINDOWED) reports EXCLUSIVE_FULLSCREEN and ignores the size; found
+## by the 01.1-05 windowed harness). The window must be created windowed at 1600x900 and
+## Settings.apply_window() switches to fullscreen at boot.
+func test_project_creates_window_windowed_1600x900() -> void:
+	assert_int(int(ProjectSettings.get_setting("display/window/size/mode", -1))).is_equal(DisplayServer.WINDOW_MODE_WINDOWED)
+	assert_int(int(ProjectSettings.get_setting("display/window/size/window_width_override", 0))).is_equal(1600)
+	assert_int(int(ProjectSettings.get_setting("display/window/size/window_height_override", 0))).is_equal(900)
