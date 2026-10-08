@@ -5,6 +5,9 @@ extends Control
 ## x = 1888, fixed-width boxes), NO-FAIL badge. Colors via Palette only.
 ## Deviation from the sketch: the HULL caption sits under the bar so everything stays inside
 ## the 32 px safe margin.
+## 01.1-06 recording-frame chrome: off-white captions/values and hull fill (sonar green retired
+## for HUD chrome; PERFECT STREAK keeps the accent). Hull critical = red AND a pulsing bar AND
+## the "HULL CRITICAL" caption, so it never relies on color alone (the chrome also uses a red).
 
 const BAR_POS := Vector2(32.0, 32.0)
 const BAR_SIZE := Vector2(480.0, 24.0)
@@ -16,6 +19,7 @@ const PULSE_SEC := 0.08
 const PULSE_SCALE := 1.1
 const DAMAGE_FLASH_USEC := 200000
 const SHRINK_TAU := 0.05  # ~150 ms to settle
+const CRITICAL_PULSE_HZ := 3.0
 
 var hull_max: float = 100.0
 var hull_value: Label
@@ -95,8 +99,10 @@ func _make_label(pos: Vector2, sz: Vector2, text: String, heading: bool, align: 
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if heading:
 		l.theme_type_variation = &"HeadingLabel"
+		l.add_theme_color_override("font_color", Palette.REC_TEXT)
 	else:
 		l.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
+		l.add_theme_color_override("font_color", Palette.alpha(Palette.REC_TEXT, 0.7))
 	add_child(l)
 	return l
 
@@ -128,8 +134,8 @@ func depth_text(meters: float) -> String:
 func _update_hull_text() -> void:
 	hull_value.text = "%d%%" % int(round(_hull / hull_max * 100.0))
 	hull_caption.text = "HULL CRITICAL" if is_critical() else "HULL"
-	hull_caption.add_theme_color_override("font_color", Palette.DESTRUCTIVE if is_critical() else Palette.TEXT)
-	hull_value.add_theme_color_override("font_color", Palette.DESTRUCTIVE if is_critical() else Palette.TEXT)
+	hull_caption.add_theme_color_override("font_color", Palette.DESTRUCTIVE if is_critical() else Palette.alpha(Palette.REC_TEXT, 0.7))
+	hull_value.add_theme_color_override("font_color", Palette.DESTRUCTIVE if is_critical() else Palette.REC_TEXT)
 
 
 func _on_hull_changed(value: float, delta: float) -> void:
@@ -180,33 +186,47 @@ func _process(delta: float) -> void:
 			_shown_hull = _hull
 	else:
 		_shown_hull = _hull
-	if _shown_hull != prev or Time.get_ticks_usec() < _flash_until:
+	if _shown_hull != prev or Time.get_ticks_usec() < _flash_until or critical_pulsing():
 		queue_redraw()
+
+
+## The hull bar pulses while critical (shape/motion cue in addition to color and caption).
+func critical_pulsing() -> bool:
+	return is_critical() and not Settings.reduce_motion
+
+
+## Hull fill alpha: 1.0 normally; 0.45..1.0 at CRITICAL_PULSE_HZ while critical.
+func hull_fill_alpha(now_usec: int) -> float:
+	if not critical_pulsing():
+		return 1.0
+	var ph := float(now_usec) / 1000000.0 * CRITICAL_PULSE_HZ * TAU
+	return 0.725 + 0.275 * cos(ph)
 
 
 func _draw() -> void:
 	var track := Rect2(BAR_POS, BAR_SIZE)
 	draw_rect(track, Palette.PANEL)
 	var pct := clampf(_shown_hull / hull_max, 0.0, 1.0)
-	var fill_col := Palette.DESTRUCTIVE if is_critical() else Palette.ACCENT
+	var fill_col := Palette.DESTRUCTIVE if is_critical() else Palette.REC_TEXT
+	fill_col.a = hull_fill_alpha(Time.get_ticks_usec())
 	if pct > 0.0:
 		draw_rect(Rect2(BAR_POS + Vector2(2.0, 2.0), Vector2((BAR_SIZE.x - 4.0) * pct, BAR_SIZE.y - 4.0)), fill_col)
 	var now := Time.get_ticks_usec()
 	if now < _flash_until:
 		var a := float(_flash_until - now) / DAMAGE_FLASH_USEC
 		draw_rect(track, Palette.alpha(Palette.DESTRUCTIVE, 0.7 * a))
-	draw_rect(track, Palette.DIM, false, 2.0)
+	draw_rect(track, Palette.alpha(Palette.REC_TEXT, 0.5), false, 2.0)
 	# 30% notch: a tick through the bar so the critical zone has a shape cue.
 	var nx := BAR_POS.x + BAR_SIZE.x * CRITICAL_PCT / 100.0
-	draw_line(Vector2(nx, BAR_POS.y - 6.0), Vector2(nx, BAR_POS.y + BAR_SIZE.y + 6.0), Palette.TEXT, 2.0)
+	draw_line(Vector2(nx, BAR_POS.y - 6.0), Vector2(nx, BAR_POS.y + BAR_SIZE.y + 6.0), Palette.REC_RED, 2.0)
 	if _no_fail:
 		var bx := BAR_POS.x
 		var by := BAR_POS.y + BAR_SIZE.y + 38.0
 		var r := Rect2(bx, by, 144.0, 32.0)
-		draw_rect(r, Palette.TEXT, false, 2.0)
-		draw_string(Palette.font(), Vector2(bx, by + 22.0), "NO-FAIL", HORIZONTAL_ALIGNMENT_CENTER, 144.0, Palette.SIZE_LABEL, Palette.TEXT)
+		draw_rect(r, Palette.REC_TEXT, false, 2.0)
+		draw_string(Palette.font(), Vector2(bx, by + 22.0), "NO-FAIL", HORIZONTAL_ALIGNMENT_CENTER, 144.0, Palette.SIZE_LABEL, Palette.REC_TEXT)
 	if _autoplay:
 		var ax := BAR_POS.x + (144.0 + Palette.SP_MD if _no_fail else 0.0)
 		var ay := BAR_POS.y + BAR_SIZE.y + 38.0
-		draw_rect(Rect2(ax, ay, 144.0, 32.0), Palette.TEXT, false, 2.0)
-		draw_string(Palette.font(), Vector2(ax, ay + 22.0), "AUTOPLAY", HORIZONTAL_ALIGNMENT_CENTER, 144.0, Palette.SIZE_LABEL, Palette.TEXT)
+		draw_rect(Rect2(ax, ay, 144.0, 32.0), Palette.REC_TEXT, false, 2.0)
+		draw_string(Palette.font(), Vector2(ax, ay + 22.0), "AUTOPLAY", HORIZONTAL_ALIGNMENT_CENTER, 144.0, Palette.SIZE_LABEL, Palette.REC_TEXT)

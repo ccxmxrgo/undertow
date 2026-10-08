@@ -169,7 +169,7 @@ func _build_display(root: VBoxContainer) -> void:
 	root.add_child(_hint("F11 toggles fullscreen at any time."))
 	low_effects_button = _toggle_row(root, "Low effects", func() -> void:
 		Settings.low_effects = not Settings.low_effects)
-	root.add_child(_hint("Turns off the visor vignette, scanlines and edge readouts."))
+	root.add_child(_hint("Turns off the visor grain, scanlines, glitches and blinking."))
 
 
 func _hint(text: String) -> Label:
