@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01.1-04-PLAN.md
-last_updated: "2026-10-08T00:15:17.742Z"
+stopped_at: 01.1-05 Task 4 human-verify checkpoint
+last_updated: "2026-10-08T00:41:00.762Z"
 last_activity: 2026-10-08
 progress:
   total_phases: 7
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 
 Phase: 1.1 (Playtest Feedback Polish) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute plan 01.1-05
+Status: 01.1-05 automated tasks done (harness 0 failed, v0.2 zip built); awaiting human look/feel approval (Task 4)
 Last activity: 2026-10-08
 
 Progress: [#########.] 93%
@@ -67,6 +67,7 @@ Progress: [#########.] 93%
 
 Decisions are logged in PROJECT.md Key Decisions table.
 
+- 01.1-05: window is created windowed (1600x900) and Settings.apply_window() goes fullscreen at boot; Godot 4.7.2 cannot leave a window created fullscreen. All harness scenarios use a temp ScoreStore path.
 - 01-10: real-hardware re-run closes gaps 1-6 (Bug 2 with documented limitation); drift-run jitter p99 0.48 ms with tau 0.4 s, no retune; export excludes build/*
 - 01-08: clock_slew_tau_s = 0.4 s (time-constant smoothing, p99 < 2 ms at 30-240 fps); overlays use UiLayout.fill_rect; DriftHarness.log_path injectable
 - 01-06: per-run _run_root rebuilt on restart; autoplay disables LaneInput; pause menu emits restart/menu signals and Gameplay owns scene changes; Back to Menu falls back to skeleton until plan 07 menu exists.
@@ -97,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-08T00:15:17.736Z
-Stopped at: Completed 01.1-04-PLAN.md
-Resume file: None
+Last session: 2026-10-08T00:41:00.758Z
+Stopped at: 01.1-05 Task 4 human-verify checkpoint
+Resume file: .planning/phases/01.1-playtest-feedback-polish/01.1-05-SUMMARY.md
