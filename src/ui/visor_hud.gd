@@ -33,7 +33,7 @@ const HDG_TOP := 4.0
 const HDG_TICK_STEP := 16.0
 const HDG_TEXT_POS := Vector2(1336.0, 46.0)  # baseline
 ## Left ruler (trim) and right ruler (depth gauge) along the lens edge.
-const LRULER_X := 144.0
+const LRULER_X := 168.0
 const LRULER_Y := Vector2(300.0, 780.0)
 const RRULER_X := 1776.0
 const RRULER_Y := Vector2(470.0, 800.0)
@@ -260,7 +260,7 @@ func _relayout() -> void:
 		[TAG_TEXT, TAG_POS, txt],
 		[_hdg_text, HDG_TEXT_POS, data],
 		["TRIM", Vector2(LRULER_X - 8.0, LRULER_Y.x - 12.0), dim],
-		["DEPTH", Vector2(RRULER_X - 56.0, RRULER_Y.x - 12.0), dim],
+		["BATHY", Vector2(RRULER_X - 56.0, RRULER_Y.x - 12.0), dim],
 		[_band_top_text, Vector2(RRULER_X - 24.0 - top_w, RRULER_Y.x + 6.0), dim],
 		[_band_bot_text, Vector2(RRULER_X - 24.0 - bot_w, RRULER_Y.y + 6.0), dim],
 		[_depth_text, Vector2(RRULER_X - 32.0 - depth_w, gy + 7.0), data],

@@ -33,6 +33,7 @@ uniform float grain : hint_range(0.0, 0.2) = 0.07;
 uniform float sweep_alpha : hint_range(0.0, 0.2) = 0.04;
 uniform float sweep_period = 8.0;
 uniform float chroma_px = 2.5;
+uniform float sheen : hint_range(0.0, 0.2) = 0.05;  // static lavender glass tint inside the lens
 uniform float jitter_period = 3.7;  // seconds between ambient slice glitches
 uniform float jitter_px = 4.0;
 
@@ -90,6 +91,9 @@ void fragment() {
 	float line = step(0.5, fract(UV.y * scan_lines));
 	dark = 1.0 - (1.0 - dark) * (1.0 - scan * line * fx * inside);
 	vec4 col = vec4(0.0, 0.0, 0.0, dark);
+	// Static glass sheen: the lens reads as lit glass against the black frame (both modes).
+	float glass = sheen * inside * clamp(-sd / vignette_width, 0.0, 1.0);
+	col = over(vec4(0.91, 0.90, 0.94, glass), col);
 	// Fine grain (off-white specks), animated, effects only.
 	float n = hash(floor(px) + vec2(fract(TIME * 7.0) * 517.0, fract(TIME * 3.0) * 211.0));
 	col = over(vec4(0.91, 0.90, 0.94, n * grain * fx), col);

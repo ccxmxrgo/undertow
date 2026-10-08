@@ -24,7 +24,7 @@ const SETTINGS_SCENE := "res://scenes/settings.tscn"
 const DRIFT := "res://scenes/drift_harness.tscn"
 const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
-	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 180.0}
+	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note. Values stay >= 5 ms
 ## from window edges (35 / 70 / 100 ms) so frame jitter cannot flip the expected judgment.
 const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
@@ -1584,6 +1584,38 @@ func _region_max(img: Image, center: Vector2, r: float, step: float = 2.0) -> fl
 	return best
 
 
+## Median brightest-channel value along design row y across the highway lanes.
+func _row_median(img: Image, y: float) -> float:
+	var vals: Array = []
+	var x := Highway.lane_left() + 4.0
+	while x < Highway.lane_left() + Highway.LANE_W * Highway.LANES - 4.0:
+		vals.append(_chan_max(_img_px(img, Vector2(x, y))))
+		x += 6.0
+	vals.sort()
+	return float(vals[vals.size() / 2])
+
+
+## Mean and max abs brightest-channel difference over a grid covering the highway rect.
+func _highway_diff(a: Image, b: Image) -> Dictionary:
+	var mx := 0.0
+	var sa := 0.0
+	var sb := 0.0
+	var n := 0
+	var y := 2.0
+	while y < Highway.SCREEN_H:
+		var x := 674.0
+		while x < 1248.0:
+			var va := _chan_max(_img_px(a, Vector2(x, y)))
+			var vb := _chan_max(_img_px(b, Vector2(x, y)))
+			mx = maxf(mx, absf(va - vb))
+			sa += va
+			sb += vb
+			n += 1
+			x += 8.0
+		y += 8.0
+	return {"max_abs_diff": mx, "mean_visor": sa / n, "mean_low_effects": sb / n, "samples": n}
+
+
 ## Median brightest-channel value along the hull line row across the highway.
 func _hull_row_median(img: Image) -> float:
 	var vals: Array = []
@@ -1636,6 +1668,89 @@ func _pending_dt_within(g: Gameplay, lo: float, hi: float) -> bool:
 		if dt >= lo:
 			return true
 	return false
+
+
+## 01.1-06 recording-frame visor: fps with the full visor, then a frozen frame (conductor paused,
+## no pause overlay) shot with the visor full and with Low effects so the highway pixels can be
+## compared 1:1, lens-mask corners, and a glitch-burst shot. Autoplay run: never recorded.
+func _polish_visor_upgrade() -> void:
+	var g: Gameplay = await start_dive_from_menu(true)
+	if g == null:
+		return
+	var gw: WeakRef = weakref(g)
+	Settings.low_effects = false
+	Settings.settings_changed.emit()
+	await wait_until(func() -> bool: return _gone_or_stopped(gw) or g.conductor.song_time() > 6.0, 15.0)
+	if _gone_or_stopped(gw):
+		check("visor upgrade run reached mid-song", false)
+		return
+	# Average fps over 5 s of real play with the full visor (vsync on, real window).
+	var f0 := Engine.get_frames_drawn()
+	var t0 := Time.get_ticks_usec()
+	await wait(5.0)
+	var fps := float(Engine.get_frames_drawn() - f0) / (float(Time.get_ticks_usec() - t0) / 1000000.0)
+	metrics["visor_fps_5s"] = snappedf(fps, 0.1)
+	metrics["visor_fps_engine"] = Engine.get_frames_per_second()
+	check("full visor holds >= 60 fps averaged over 5 s", fps >= 60.0, "%.1f fps" % fps)
+	if _gone_or_stopped(gw):
+		return
+	# Freeze the frame: conductor paused directly (no pause overlay), let feedback settle.
+	g.conductor.pause()
+	g.lane_input.enabled = false
+	await wait(1.2)
+	await shot("visor_full", g)
+	var img_full := last_img
+	var hull_full := _row_median(img_full, Highway.HULL_Y)
+	var mid_full := _row_median(img_full, 500.0)
+	var c1 := _chan_max(_img_px(img_full, Vector2(8.0, 8.0)))
+	var c2 := _chan_max(_img_px(img_full, Vector2(1912.0, 1072.0)))
+	Settings.low_effects = true
+	Settings.settings_changed.emit()
+	await frame()
+	await frame()
+	await shot("visor_low_effects", g)
+	var img_low := last_img
+	var hull_low := _row_median(img_low, Highway.HULL_Y)
+	var mid_low := _row_median(img_low, 500.0)
+	var c3 := _chan_max(_img_px(img_low, Vector2(8.0, 8.0)))
+	var c4 := _chan_max(_img_px(img_low, Vector2(1912.0, 1072.0)))
+	var diff := _highway_diff(img_full, img_low)
+	metrics["visor_upgrade"] = {"song_time": snappedf(g.conductor.song_time(), 0.001),
+		"hull_row_median_full": hull_full, "hull_row_median_low": hull_low,
+		"mid_lane_row_median_full": mid_full, "mid_lane_row_median_low": mid_low,
+		"highway_grid": diff, "corner_tl_full": c1, "corner_br_full": c2,
+		"corner_tl_low": c3, "corner_br_low": c4}
+	var tol := func(a: float, b: float) -> bool: return absf(a - b) <= maxf(0.02 * maxf(a, b), 1.0 / 255.0)
+	check("hull line brightness equal with Low effects on/off (+-2%)", tol.call(hull_full, hull_low),
+		"%.4f vs %.4f" % [hull_full, hull_low])
+	check("mid-lane brightness equal with Low effects on/off (+-2%)", tol.call(mid_full, mid_low),
+		"%.4f vs %.4f" % [mid_full, mid_low])
+	check("highway rect pixels identical with Low effects on/off (max diff <= 2%)",
+		float(diff["max_abs_diff"]) <= 0.02, diff)
+	check("lens mask corners near-black (8,8) and (1912,1072), full and low",
+		c1 < 0.1 and c2 < 0.1 and c3 < 0.1 and c4 < 0.1, [c1, c2, c3, c4])
+	check("timeline playhead tracks real song progress",
+		absf(g.visor_hud.progress() - VisorHud.progress_for(g.conductor.song_time(),
+			Gameplay.song_length(g.chart, 0.0))) < 0.01 and g.visor_hud.progress() > 0.0,
+		"%.4f" % g.visor_hud.progress())
+	Settings.low_effects = false
+	Settings.settings_changed.emit()
+	# Resume and capture a glitch burst mid-song (frame only, highway untouched).
+	g.conductor.resume(0)
+	await wait(0.6)
+	if not _gone_or_stopped(gw):
+		g.visor.trigger_glitch()
+		var burst_on := g.visor.glitch_active()
+		await shot("visor_glitch_burst", g)
+		check("glitch burst active on trigger (full effects)", burst_on)
+		Settings.low_effects = true
+		Settings.settings_changed.emit()
+		g.visor.trigger_glitch()
+		check("Low effects suppresses the glitch burst", not g.visor.glitch_active())
+		Settings.low_effects = false
+		Settings.settings_changed.emit()
+	await goto(MENU)
+	await wait(0.3)
 
 
 func sc_polish() -> void:
@@ -1782,7 +1897,8 @@ func sc_polish() -> void:
 		await shot("visor_low_effects", g)
 		var without := _hull_row_median(last_img)
 		var edge_plain := _chan_max(_patch(last_img, Vector2(24.0, 540.0), 3))
-		check("Low effects hides the visor frame", not g.visor.visible)
+		check("Low effects keeps the lens frame but drops the animated layers",
+			g.visor.visible and not g.visor.effects_enabled() and not g.visor_hud.animated())
 		metrics["visor"] = {"hull_row_median_visor": with_visor, "hull_row_median_low_effects": without,
 			"edge_visor": edge_visor, "edge_low_effects": edge_plain}
 		check("visor does not darken the lanes (hull row >= 90% of Low effects brightness)",
@@ -1904,5 +2020,6 @@ func sc_polish() -> void:
 	check("menu best line shows the saved best", m != null and m.best_label.text.begins_with(expect),
 		m.best_label.text if m else null)
 	await shot("menu_best_line")
+	await _polish_visor_upgrade()
 	check("records stayed in the temp record book (real scores.cfg path unused)",
 		ScoreStore.default_path == POLISH_SCORES, ScoreStore.default_path)
