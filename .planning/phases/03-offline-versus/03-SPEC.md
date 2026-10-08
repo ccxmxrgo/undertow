@@ -79,18 +79,18 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
 
 9. **Torpedo Collision**: Two disruptors fired at each other cancel out.
    - Current: n/a
-   - Target: A disruptor travels for a fixed number of beats between launch and arrival (`torpedo_travel_beats`, default 2, tunable; the telegraph from TORP-04 covers this time). If player A's disruptor is in flight toward B while B's disruptor is in flight toward A, both explode at the halfway point and neither lands. Both rewards are used up. Both players' periscope panels flash, and a collision sound plays for everyone. Buffs never collide. A Decoy Flare isn't spent by a collision.
-   - Acceptance: Unit test: A fires at B, and B fires at A one beat later while A's torpedo is still in flight. Neither payload lands, both slots are empty, and one `collision` event is emitted. If B fires after A's torpedo has arrived, there's no collision.
+   - Target: A disruptor travels for a fixed number of beats between launch and arrival (`torpedo_travel_beats`, default 1, tunable). The target is alerted the moment the disruptor launches (sound, flash on their HUD, and the incoming payload's icon), so the 1-beat trip is the TORP-04 telegraph. With a 1-beat trip, collisions only happen when both players fire on the same beat, so they stay rare. If player A's disruptor is in flight toward B while B's disruptor is in flight toward A, both explode at the halfway point and neither lands. Both rewards are used up. Both players' periscope panels flash, and a collision sound plays for everyone. Buffs never collide. A Decoy Flare isn't spent by a collision.
+   - Acceptance: Unit test: A fires at B, and B fires at A on the same beat while A's torpedo is still in flight. Neither payload lands, both slots are empty, and one `collision` event is emitted. If B fires after A's torpedo has arrived, there's no collision.
 
 10. **Bounty on the leader**: The leader carries a bounty, and landing a disruptor on them refunds part of the shooter's meter.
    - Current: n/a
-   - Target: The alive player with the highest depth (score) carries the bounty. It moves when the lead changes, with ties keeping the current holder. A marker shows on the holder's periscope panel and on their own HUD. When a disruptor actually takes effect on the bounty holder (not absorbed by Decoy Flare, not reflected, not collided), the shooter's reward meter gains 50% of their threshold (`bounty_refund_ratio`, tunable). If that pushes the meter past the threshold, the shooter earns a reward at once and the extra is dropped. A player can't claim a bounty on themselves. With only 2 players this works as a catch-up rule: only the trailing player can claim it.
-   - Acceptance: Unit test: with a threshold of 120, a shooter at 0 who lands on the leader moves to 60. A disruptor absorbed by Decoy Flare gives nothing. When the lead changes, the marker moves to the new leader on the same game-state update.
+   - Target: The alive player with the highest depth (score) carries the bounty. It moves when the lead changes, with ties keeping the current holder. A marker shows on the holder's periscope panel and on their own HUD. When a disruptor actually takes effect on the bounty holder (not absorbed by Decoy Flare, not reflected, not collided), the shooter's reward meter gains 25% of their threshold (`bounty_refund_ratio`, tunable). If that pushes the meter past the threshold, the shooter earns a reward at once and the extra is dropped. A player can't claim a bounty on themselves. With only 2 players this works as a catch-up rule: only the trailing player can claim it.
+   - Acceptance: Unit test: with a threshold of 120, a shooter at 0 who lands on the leader moves to 30. A disruptor absorbed by Decoy Flare gives nothing. When the lead changes, the marker moves to the new leader on the same game-state update.
 
 11. **Solo Duel**: The chart's guitar solo sections become a contest between all living players.
    - Current: Charts mark solo sections (`.chart` `solo`/`soloend` events, `.mid` note 103). Phase 2's importer doesn't promise to keep them.
-   - Target: For each marked solo with at least 16 notes (`solo_duel_min_notes`), a "SOLO DUEL" banner appears 1 bar before it starts. During the solo, each living player's periscope panel shows their live Perfect % for the section. When the solo ends, the living player with the highest Perfect % wins a free reward (the next item from their bag), provided they hit at least 70% Perfect (`solo_duel_min_accuracy`). Tie-break: longest Perfect streak inside the solo. A tie after that means no winner. If the winner's slot is full, the prize waits in a queue (max 1) and drops into the slot as soon as it empties. Disruptors still work during a solo. Wreck ghosts don't take part. Charts with no solo markers simply have no duels.
-   - Acceptance: Unit test with a chart containing one 20-note solo: player A ends with 85% Perfect and B with 80%, and A receives a reward when the solo ends. When everyone is below 70%, nobody wins. A 10-note solo starts no duel. A winner already holding a reward gets the prize in their slot right after using the held one.
+   - Target: For each marked solo with at least 16 notes (`solo_duel_min_notes`), a "SOLO DUEL" banner appears 1 bar before it starts. During the solo, each living player's periscope panel shows their live Perfect % for the section. When the solo ends, the living player with the highest Perfect % wins a free reward (the next item from their bag), provided they hit at least 85% Perfect (`solo_duel_min_accuracy`). Tie-break: longest Perfect streak inside the solo. A tie after that means no winner. If the winner's slot is full, the prize waits in a queue (max 1) and drops into the slot as soon as it empties. Disruptors still work during a solo. Wreck ghosts don't take part. Charts with no solo markers simply have no duels.
+   - Acceptance: Unit test with a chart containing one 20-note solo: player A ends with 90% Perfect and B with 86%, and A receives a reward when the solo ends. When everyone is below 85%, nobody wins. A 10-note solo starts no duel. A winner already holding a reward gets the prize in their slot right after using the held one.
 
 12. **Killfeed**: A small live log shows what just happened between players.
    - Current: n/a
@@ -157,8 +157,8 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
 - [ ] Lane Flip isn't in the pool, and Crossed Wires is
 - [ ] Strong bots earn 2–4 rewards per bundled song
 - [ ] Two disruptors in flight toward each other collide, neither lands, and both rewards are used up
-- [ ] Landing a disruptor on the bounty holder adds 50% of a threshold to the shooter's meter, and blocked or reflected shots add nothing
-- [ ] A marked solo of 16+ notes runs a Solo Duel, and the best Perfect % at or above 70% wins a reward
+- [ ] Landing a disruptor on the bounty holder adds 25% of a threshold to the shooter's meter, and blocked or reflected shots add nothing
+- [ ] A marked solo of 16+ notes runs a Solo Duel, and the best Perfect % at or above 85% wins a reward
 - [ ] The killfeed shows one line per listed event, at most 4 lines, each fading after 4 s
 - [ ] The results screen shows up to 3 medals per player, following the medal rules
 
@@ -185,7 +185,8 @@ Confirmed by the user on 2026-10-08: the 12% ratio, the one-slot hold with the m
 | 5     | Simplifier      | Pool and selection | At least 6 disruptors + 3 buffs, **random** in-game. Shuffled bag chosen as the fairness guard. |
 | 6     | Boundary Keeper | Confirm defaults | 12% threshold, 1 slot with the meter paused, Crossed Wires replaces Lane Flip, durations as proposed |
 | 7     | Researcher      | More multiplayer ideas (17 pitched) | Collision, Bounty, Solo Duel, Killfeed and Medals added. The rest are deferred (see Boundaries). |
-| 8     | Simplifier      | Details for the 5 added ideas | Claude chose the defaults (2-beat travel, 50% bounty refund, 70% / 16-note duel minimums, 4-line feed, 7 medals). All are tunable and not yet confirmed by the user. |
+| 8     | Simplifier      | Details for the 5 added ideas | Claude proposed defaults (2-beat travel, 50% bounty refund, 70% / 16-note duel minimums, 4-line feed, 7 medals). |
+| 9     | Boundary Keeper | Confirm multiplayer defaults | User chose: 1-beat travel with the target alerted at launch, 25% bounty refund, 85% Solo Duel minimum, all 7 medals. The 16-note solo minimum and the 4-line / 4 s killfeed are still Claude's unconfirmed defaults. |
 
 ---
 
