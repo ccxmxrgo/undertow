@@ -8,10 +8,15 @@ const GAMEPLAY_SCENE := "res://scenes/gameplay.tscn"
 const CALIBRATION_SCENE := "res://scenes/calibration.tscn"
 const SETTINGS_SCENE := "res://scenes/settings.tscn"
 const DEVICE_CHANGED_COPY := "Output device changed. Calibrate Sonar again for accurate timing."
+const NO_RECORD_COPY := "No record yet. Finish a dive to set one."
+const RECORDS_ERROR_COPY := "Records could not be loaded. Starting with an empty record book."
 const NOT_CALIBRATED_BODY := "Timing may feel off until you calibrate. Choose Calibrate Sonar to fix it."
 
 ## True once the first-launch redirect was taken or skipped this session.
 static var boot_handled: bool = false
+
+## True once the records-load error was shown this session (one-time message).
+static var records_error_shown: bool = false
 
 ## Scene changes go through this so tests can observe them.
 var navigate: Callable = Callable()
@@ -24,6 +29,9 @@ var settings_button: Button
 var quit_button: Button
 var prompt_calibrate_button: Button
 var prompt_skip_button: Button
+
+var best_label: Label
+var records_error_label: Label
 
 var _prompt: Control
 var _empty_state: Control
@@ -72,6 +80,7 @@ func _build() -> void:
 
 	start_button = _item(box, "Start Dive", func() -> void: launch(false))
 	practice_button = _item(box, "Practice Dive (No-Fail)", func() -> void: launch_practice())
+	_build_best_line(box)
 	autoplay_button = _item(box, "Autoplay Dive (test)", func() -> void: launch(true))
 	calibrate_button = _item(box, "Calibrate Sonar", func() -> void: _go(CALIBRATION_SCENE))
 	settings_button = _item(box, "Settings", func() -> void: _go(SETTINGS_SCENE))
@@ -90,6 +99,29 @@ func _build() -> void:
 		prompt_calibrate_button.grab_focus()
 	else:
 		start_button.grab_focus()
+
+
+## Read-only best line directly after the practice entry; never part of the focus ring.
+func _build_best_line(box: VBoxContainer) -> void:
+	var store := ScoreStore.new()
+	store.load()
+	var b := store.best(TestCharts.HAND_CHART_ID)
+	best_label = Label.new()
+	best_label.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
+	best_label.focus_mode = Control.FOCUS_NONE
+	if b.is_empty():
+		best_label.text = NO_RECORD_COPY
+	else:
+		best_label.text = "Best: %s m   Accuracy %d%%" % [
+			Palette.fmt_depth(int(float(b["depth"]))), int(round(float(b["accuracy"])))]
+	box.add_child(best_label)
+	if store.load_error and not records_error_shown:
+		records_error_shown = true
+		records_error_label = Label.new()
+		records_error_label.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
+		records_error_label.focus_mode = Control.FOCUS_NONE
+		records_error_label.text = RECORDS_ERROR_COPY
+		box.add_child(records_error_label)
 
 
 func _item(parent: Control, text: String, cb: Callable) -> Button:

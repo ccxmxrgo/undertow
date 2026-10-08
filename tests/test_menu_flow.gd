@@ -5,16 +5,32 @@ extends GdUnitTestSuite
 const SETTINGS_SCENE := "res://scenes/settings.tscn"
 const TEST_PATH := "user://test_menu_flow.cfg"
 
+const SCORES_TMP := "user://test_menu_scores.cfg"
+
 var _old_path: String
+var _old_scores_path: String
 
 
 func before_test() -> void:
 	_old_path = Settings.save_path
 	Settings.save_path = TEST_PATH
 	Settings.reset_defaults()
+	_old_scores_path = ScoreStore.default_path
+	ScoreStore.default_path = SCORES_TMP
+	MainMenu.records_error_shown = false
+	_rm_scores()
+
+
+func _rm_scores() -> void:
+	for p in [SCORES_TMP, SCORES_TMP + ".tmp", SCORES_TMP + ".bak"]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 
 
 func after_test() -> void:
+	ScoreStore.default_path = _old_scores_path
+	MainMenu.records_error_shown = false
+	_rm_scores()
 	Settings.reset_defaults()
 	Settings.save_path = _old_path
 	for p in [TEST_PATH, TEST_PATH + ".bak"]:
@@ -216,3 +232,34 @@ func test_launch_practice_sets_pending_and_keeps_no_fail_setting() -> void:
 	assert_bool(Gameplay.pending_practice).is_false()
 	Gameplay.pending_chart = null
 	MainMenu.boot_handled = false
+
+
+func test_best_line_empty_state_and_saved_record() -> void:
+	var m := _main_menu()
+	assert_str(m.best_label.text).is_equal("No record yet. Finish a dive to set one.")
+	var store := ScoreStore.new(SCORES_TMP)
+	store.submit(TestCharts.HAND_CHART_ID, 1240.0, 96.0, 50, true, "2026-10-08")
+	var m2 := _main_menu()
+	assert_str(m2.best_label.text).is_equal("Best: 1,240 m   Accuracy 96%")
+
+
+func test_best_label_not_focusable_and_after_practice() -> void:
+	var m := _main_menu()
+	assert_int(m.best_label.focus_mode).is_equal(Control.FOCUS_NONE)
+	assert_int(m.best_label.get_index()).is_equal(m.practice_button.get_index() + 1)
+	assert_int(m.practice_button.get_index()).is_equal(m.start_button.get_index() + 1)
+	assert_bool(m.start_button.has_focus()).is_true()
+
+
+func test_records_load_error_shown_once() -> void:
+	var f := FileAccess.open(SCORES_TMP, FileAccess.WRITE)
+	f.store_string("garbage [[ = =
+[oops")
+	f.close()
+	var m := _main_menu()
+	assert_object(m.records_error_label).is_not_null()
+	assert_str(m.records_error_label.text).is_equal(
+		"Records could not be loaded. Starting with an empty record book.")
+	assert_bool(FileAccess.file_exists(SCORES_TMP + ".bak")).is_true()
+	var m2 := _main_menu()
+	assert_object(m2.records_error_label).is_null()
