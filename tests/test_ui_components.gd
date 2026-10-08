@@ -99,7 +99,10 @@ func test_hud_values_update_from_hull_score() -> void:
 	assert_str(hud.combo_value.text).is_equal("0")
 	assert_str(hud.streak_value.text).is_equal("0")
 	assert_str(hud.hull_value.text).is_equal("92%")
-	assert_str(hud.hull_caption.text).is_equal("HULL")
+	assert_str(hud.hull_caption.text).is_equal("")
+	assert_bool(hud.hull_caption.visible).is_false()
+	assert_bool(hud.combo_value.visible).is_false()
+	assert_bool(hud.hull_value.visible).is_false()
 
 
 func test_hud_critical_state_below_thirty_percent() -> void:
@@ -111,8 +114,16 @@ func test_hud_critical_state_below_thirty_percent() -> void:
 	score.on_judged(0, 8, M, 0.2)  # 28
 	assert_bool(hud.is_critical()).is_true()
 	assert_str(hud.hull_caption.text).is_equal("HULL CRITICAL")
+	assert_bool(hud.hull_caption.visible).is_true()
 	await get_tree().process_frame
 	await get_tree().process_frame
+
+
+func test_hull_arc_angle_maps_percent_to_arc() -> void:
+	assert_float(Hud.hull_arc_angle(100.0)).is_equal_approx(1.114, 0.0001)
+	assert_float(Hud.hull_arc_angle(0.0)).is_equal_approx(2.028, 0.0001)
+	assert_float(Hud.hull_arc_angle(30.0)).is_equal_approx(2.028 - 0.3 * 0.914, 0.0001)
+	assert_float(Hud.hull_arc_angle(150.0)).is_equal_approx(1.114, 0.0001)
 
 
 func test_hud_no_fail_and_reduce_motion_paths_run() -> void:

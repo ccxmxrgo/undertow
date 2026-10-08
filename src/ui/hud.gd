@@ -1,20 +1,25 @@
 class_name Hud
 extends Control
-## HUD bound to HullScore signals (UI-SPEC Gameplay layout). Hull bar 480x24 at (32,32) with a
-## 30% notch, right column of depth / combo / multiplier / perfect streak (right-aligned at
-## x = 1888, fixed-width boxes), NO-FAIL badge. Colors via Palette only.
-## Deviation from the sketch: the HULL caption sits under the bar so everything stays inside
-## the 32 px safe margin.
-## 01.1-06 recording-frame chrome: off-white captions/values and hull fill (sonar green retired
-## for HUD chrome; PERFECT STREAK keeps the accent). Hull critical = red AND a pulsing bar AND
-## the "HULL CRITICAL" caption, so it never relies on color alone (the chrome also uses a red).
+## Minimal floating HUD (01.2 D-07). Depth + small multiplier/perfect-streak column right of the
+## board, thin hull arc under it, badges below the column. Nothing persistent in the outer 32 px.
+## The streak number itself is drawn by StreakCounter; combo_value/hull_value stay as hidden live
+## labels so the label API (tests/harness) keeps working.
+## Hull critical = red AND a pulsing arc AND the "HULL CRITICAL" caption AND a 30% tick, so it
+## never relies on colour alone.
 
-const BAR_POS := Vector2(32.0, 32.0)
-const BAR_SIZE := Vector2(480.0, 24.0)
 const CRITICAL_PCT := 30.0
-const RIGHT_EDGE := 1888.0
-const COL_W := 320.0
-const ROW_H := 94.0
+const COL_X := 1530.0
+const VAL_X := 1694.0
+const ARC_CENTER := Vector2(960.0, 428.0)
+const ARC_RADIUS := 612.0
+const ARC_LEFT := 2.028
+const ARC_RIGHT := 1.114
+const ARC_WIDTH := 4.0
+const CAPTION_COLOR := Color("8A93AD")
+const DEPTH_COLOR := Color("05D9E8")
+const BADGE_COLOR := Color("8FD98A")
+const BADGE_Y_FIRST := 861.0
+const BADGE_Y_SECOND := 905.0
 const PULSE_SEC := 0.08
 const PULSE_SCALE := 1.1
 const DAMAGE_FLASH_USEC := 200000
@@ -43,20 +48,23 @@ func _ready() -> void:
 	UiLayout.fill_rect(self)
 	if theme == null:
 		theme = Palette.load_theme()
-	hull_value = _make_label(Vector2(BAR_POS.x + BAR_SIZE.x + Palette.SP_MD, BAR_POS.y - 8.0), Vector2(160.0, 48.0), "", true, HORIZONTAL_ALIGNMENT_LEFT)
-	hull_caption = _make_label(Vector2(BAR_POS.x, BAR_POS.y + BAR_SIZE.y + Palette.SP_XS), Vector2(BAR_SIZE.x, 30.0), "HULL", false, HORIZONTAL_ALIGNMENT_LEFT)
-	var x := RIGHT_EDGE - COL_W
-	_make_caption(Vector2(x, 32.0), "DEPTH")
-	depth_value = _make_label(Vector2(x, 56.0), Vector2(COL_W, 48.0), "0 M", true, HORIZONTAL_ALIGNMENT_RIGHT)
-	_make_caption(Vector2(x, 32.0 + ROW_H), "COMBO")
-	combo_value = _make_label(Vector2(x, 56.0 + ROW_H), Vector2(COL_W, 48.0), "0", true, HORIZONTAL_ALIGNMENT_RIGHT)
-	_make_caption(Vector2(x, 32.0 + ROW_H * 2.0), "MULTIPLIER")
-	mult_value = _make_label(Vector2(x, 56.0 + ROW_H * 2.0), Vector2(COL_W, 48.0), "x1", true, HORIZONTAL_ALIGNMENT_RIGHT)
-	_make_caption(Vector2(x, 32.0 + ROW_H * 3.0), "PERFECT STREAK")
-	streak_value = _make_label(Vector2(x, 56.0 + ROW_H * 3.0), Vector2(COL_W, 48.0), "0", true, HORIZONTAL_ALIGNMENT_RIGHT)
+	hull_value = _make_label(Vector2(COL_X, 940.0), Vector2(160.0, 48.0), "", true, HORIZONTAL_ALIGNMENT_LEFT)
+	hull_value.visible = false
+	hull_caption = _make_label(Vector2(760.0, 1006.0), Vector2(400.0, 30.0), "", false, HORIZONTAL_ALIGNMENT_CENTER)
+	hull_caption.visible = false
+	depth_value = _make_label(Vector2(COL_X, 671.0), Vector2(320.0, 48.0), "0 M", true, HORIZONTAL_ALIGNMENT_LEFT)
+	depth_value.add_theme_color_override("font_color", DEPTH_COLOR)
+	_make_caption(Vector2(COL_X, 723.0), "DEPTH", 320.0)
+	combo_value = _make_label(Vector2(COL_X, 700.0), Vector2(120.0, 48.0), "0", true, HORIZONTAL_ALIGNMENT_LEFT)
+	combo_value.visible = false
+	_make_caption(Vector2(COL_X, 763.0), "MULTIPLIER", 164.0)
+	mult_value = _make_label(Vector2(VAL_X, 763.0), Vector2(120.0, 30.0), "x1", false, HORIZONTAL_ALIGNMENT_LEFT)
+	mult_value.add_theme_color_override("font_color", Palette.REC_TEXT)
+	_make_caption(Vector2(COL_X, 795.0), "PERFECT STREAK", 164.0)
+	streak_value = _make_label(Vector2(VAL_X, 795.0), Vector2(120.0, 30.0), "0", false, HORIZONTAL_ALIGNMENT_LEFT)
 	streak_value.add_theme_color_override("font_color", Palette.ACCENT)
 	for l in [combo_value, mult_value, streak_value]:
-		l.pivot_offset = Vector2(COL_W, 24.0)
+		l.pivot_offset = Vector2(0.0, 15.0)
 	_refresh_all()
 
 
@@ -102,13 +110,13 @@ func _make_label(pos: Vector2, sz: Vector2, text: String, heading: bool, align: 
 		l.add_theme_color_override("font_color", Palette.REC_TEXT)
 	else:
 		l.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
-		l.add_theme_color_override("font_color", Palette.alpha(Palette.REC_TEXT, 0.7))
+		l.add_theme_color_override("font_color", CAPTION_COLOR)
 	add_child(l)
 	return l
 
 
-func _make_caption(pos: Vector2, text: String) -> void:
-	_make_label(pos, Vector2(COL_W, 30.0), text, false, HORIZONTAL_ALIGNMENT_RIGHT)
+func _make_caption(pos: Vector2, text: String, w: float) -> void:
+	_make_label(pos, Vector2(w, 30.0), text, false, HORIZONTAL_ALIGNMENT_LEFT)
 
 
 func _refresh_all() -> void:
@@ -133,8 +141,9 @@ func depth_text(meters: float) -> String:
 
 func _update_hull_text() -> void:
 	hull_value.text = "%d%%" % int(round(_hull / hull_max * 100.0))
-	hull_caption.text = "HULL CRITICAL" if is_critical() else "HULL"
-	hull_caption.add_theme_color_override("font_color", Palette.DESTRUCTIVE if is_critical() else Palette.alpha(Palette.REC_TEXT, 0.7))
+	hull_caption.text = "HULL CRITICAL" if is_critical() else ""
+	hull_caption.visible = is_critical()
+	hull_caption.add_theme_color_override("font_color", Palette.DESTRUCTIVE)
 	hull_value.add_theme_color_override("font_color", Palette.DESTRUCTIVE if is_critical() else Palette.REC_TEXT)
 
 
@@ -203,30 +212,35 @@ func hull_fill_alpha(now_usec: int) -> float:
 	return 0.725 + 0.275 * cos(ph)
 
 
+## Angle on the hull arc for a hull percentage: 0% is the left end, 100% the right end.
+static func hull_arc_angle(pct: float) -> float:
+	return ARC_LEFT - clampf(pct, 0.0, 100.0) / 100.0 * (ARC_LEFT - ARC_RIGHT)
+
+
 func _draw() -> void:
-	var track := Rect2(BAR_POS, BAR_SIZE)
-	draw_rect(track, Palette.PANEL)
+	draw_arc(ARC_CENTER, ARC_RADIUS, ARC_RIGHT, ARC_LEFT, 96, Color(0.909, 0.902, 0.941, 0.25), ARC_WIDTH, true)
 	var pct := clampf(_shown_hull / hull_max, 0.0, 1.0)
-	var fill_col := Palette.DESTRUCTIVE if is_critical() else Palette.REC_TEXT
+	var fill_col := Palette.DESTRUCTIVE if is_critical() else Palette.ACCENT
 	fill_col.a = hull_fill_alpha(Time.get_ticks_usec())
 	if pct > 0.0:
-		draw_rect(Rect2(BAR_POS + Vector2(2.0, 2.0), Vector2((BAR_SIZE.x - 4.0) * pct, BAR_SIZE.y - 4.0)), fill_col)
+		draw_arc(ARC_CENTER, ARC_RADIUS, hull_arc_angle(pct * 100.0), ARC_LEFT, 96, fill_col, ARC_WIDTH, true)
 	var now := Time.get_ticks_usec()
 	if now < _flash_until:
 		var a := float(_flash_until - now) / DAMAGE_FLASH_USEC
-		draw_rect(track, Palette.alpha(Palette.DESTRUCTIVE, 0.7 * a))
-	draw_rect(track, Palette.alpha(Palette.REC_TEXT, 0.5), false, 2.0)
-	# 30% notch: a tick through the bar so the critical zone has a shape cue.
-	var nx := BAR_POS.x + BAR_SIZE.x * CRITICAL_PCT / 100.0
-	draw_line(Vector2(nx, BAR_POS.y - 6.0), Vector2(nx, BAR_POS.y + BAR_SIZE.y + 6.0), Palette.REC_RED, 2.0)
+		draw_arc(ARC_CENTER, ARC_RADIUS, ARC_RIGHT, ARC_LEFT, 96, Palette.alpha(Palette.DESTRUCTIVE, 0.7 * a), ARC_WIDTH, true)
+	# 30% tick across the arc: shape cue for the critical zone.
+	var ang := hull_arc_angle(CRITICAL_PCT)
+	var dir := Vector2(cos(ang), sin(ang))
+	var mid := ARC_CENTER + dir * ARC_RADIUS
+	draw_line(mid - dir * 6.0, mid + dir * 6.0, Palette.DESTRUCTIVE, 2.0)
+	var row := 0
 	if _no_fail:
-		var bx := BAR_POS.x
-		var by := BAR_POS.y + BAR_SIZE.y + 38.0
-		var r := Rect2(bx, by, 144.0, 32.0)
-		draw_rect(r, Palette.REC_TEXT, false, 2.0)
-		draw_string(Palette.font(), Vector2(bx, by + 22.0), "NO-FAIL", HORIZONTAL_ALIGNMENT_CENTER, 144.0, Palette.SIZE_LABEL, Palette.REC_TEXT)
+		_draw_badge("NO-FAIL", BADGE_Y_FIRST)
+		row = 1
 	if _autoplay:
-		var ax := BAR_POS.x + (144.0 + Palette.SP_MD if _no_fail else 0.0)
-		var ay := BAR_POS.y + BAR_SIZE.y + 38.0
-		draw_rect(Rect2(ax, ay, 144.0, 32.0), Palette.REC_TEXT, false, 2.0)
-		draw_string(Palette.font(), Vector2(ax, ay + 22.0), "AUTOPLAY", HORIZONTAL_ALIGNMENT_CENTER, 144.0, Palette.SIZE_LABEL, Palette.REC_TEXT)
+		_draw_badge("AUTOPLAY", BADGE_Y_FIRST if row == 0 else BADGE_Y_SECOND)
+
+
+func _draw_badge(text: String, y: float) -> void:
+	draw_rect(Rect2(COL_X, y, 144.0, 32.0), BADGE_COLOR, false, 2.0)
+	draw_string(Palette.font(), Vector2(COL_X, y + 22.0), text, HORIZONTAL_ALIGNMENT_CENTER, 144.0, Palette.SIZE_LABEL, Palette.REC_TEXT)
