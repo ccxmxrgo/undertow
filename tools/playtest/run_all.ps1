@@ -3,7 +3,7 @@
 # Results: build/playtest/<scenario>.json and PNG screenshots. The drift scenario takes ~5 min.
 # The player's real user://settings.cfg, user://scores.cfg and user://drift_log.csv are backed up before the run and
 # restored afterwards (T-10-01); the drift scenario's own log is kept in build/playtest/drift_log_copy.csv.
-param([string[]]$Scenarios = @("a", "b", "c", "d", "e", "f", "g", "h", "i", "layout", "polish", "drift"), [switch]$SkipDrift)
+param([string[]]$Scenarios = @("a", "b", "c", "d", "e", "f", "g", "h", "i", "layout", "polish", "immersion", "drift"), [switch]$SkipDrift)
 
 $godot = $env:GODOT_BIN
 if (-not $godot) { $godot = [Environment]::GetEnvironmentVariable("GODOT_BIN", "User") }

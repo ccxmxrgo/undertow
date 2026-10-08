@@ -9,6 +9,10 @@ extends Node
 ## parses the event. LaneInput stamps ticks on dispatch, so the judged error is the scheduled
 ## offset to well under 1 ms. This tests the clock + judge pipeline; it cannot measure the
 ## acoustic path (speaker -> ear), which needs a human or a loopback microphone.
+##
+## Scenario "immersion" (Phase 1.2): goggles intro frames and timing, Space skip, QUICK retry,
+## curved Trench board at 0.5x/1x/3x, HUD streak / HULL CRITICAL, Low effects and reduce motion,
+## screen-edge cleanliness and fps. Non-intro scenarios run with Gameplay.pending_intro = NONE.
 
 const OUT_DIR := "res://build/playtest"
 const TEMP_SETTINGS := "user://playtest_settings.cfg"
@@ -24,7 +28,7 @@ const SETTINGS_SCENE := "res://scenes/settings.tscn"
 const DRIFT := "res://scenes/drift_harness.tscn"
 const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
-	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0}
+	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0, "immersion": 240.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note. Values stay >= 5 ms
 ## from window edges (35 / 70 / 100 ms) so frame jitter cannot flip the expected judgment.
 const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
@@ -87,6 +91,7 @@ func _run() -> void:
 		"drift": await sc_drift()
 		"layout": await sc_layout()
 		"polish": await sc_polish()
+		"immersion": await sc_immersion()
 		_: check("known scenario", false, scenario)
 	_finish()
 
@@ -1915,3 +1920,321 @@ func sc_polish() -> void:
 	await shot("menu_best_line")
 	check("records stayed in the temp record book (real scores.cfg path unused)",
 		ScoreStore.default_path == POLISH_SCORES, ScoreStore.default_path)
+
+
+# ------------------------------------------------------------------------------------------------
+# immersion (Phase 1.2): goggles intro, skip / quick retry timing, curved Trench board at three
+# scroll speeds, HUD streak / critical, Low effects, edge cleanliness, fps, reduce motion.
+# ------------------------------------------------------------------------------------------------
+
+
+func _bpm_of(g: Gameplay) -> float:
+	if g.chart.tempo_map.is_empty():
+		return 120.0
+	return maxf(float(g.chart.tempo_map[0]["bpm"]), 1.0)
+
+
+## Seconds since `t0_ms` (Time.get_ticks_msec) elapsed.
+func _since(t0_ms: int) -> float:
+	return (Time.get_ticks_msec() - t0_ms) / 1000.0
+
+
+func _wait_elapsed(t0_ms: int, secs: float) -> void:
+	while _since(t0_ms) < secs:
+		await get_tree().process_frame
+
+
+func _intro_alive(g: Gameplay) -> bool:
+	return is_instance_valid(g) and g.intro != null and is_instance_valid(g.intro)
+
+
+## Pauses the conductor `lead` seconds before the next pending note (>= min_ahead away). Returns the
+## note index, or -1. Input is disabled so the frame stays frozen for pixel sampling.
+func _freeze_before_note(g: Gameplay, lead: float = 0.002, min_ahead: float = 0.15) -> int:
+	var st := g.conductor.song_time()
+	var pick := -1
+	for i in range(g.chart.notes.size()):
+		if g.highway._state[i] == Highway.S_PENDING and float(g.chart.notes[i]["time"]) > st + min_ahead:
+			pick = i
+			break
+	if pick < 0:
+		return -1
+	var gw: WeakRef = weakref(g)
+	var c := g.conductor
+	var sched := [{"t": float(g.chart.notes[pick]["time"]) - lead, "o": 0, "fn": func() -> void:
+		c.pause()
+		g.lane_input.enabled = false}]
+	await run_schedule(c, sched, func() -> bool: return _gone_or_stopped(gw))
+	return pick if is_instance_valid(g) and g.conductor != null and g.conductor.is_paused() else -1
+
+
+func _unfreeze(g: Gameplay) -> void:
+	if is_instance_valid(g) and g.conductor != null and g.conductor.is_paused():
+		g.conductor.resume(0)
+		g.lane_input.enabled = not g.autoplay
+
+
+## Brightest-channel scan: any pixel above `thr` in design rect [x0,x1] x [y0,y1].
+func _any_bright(img: Image, x0: float, x1: float, y0: float, y1: float, thr: float) -> bool:
+	var y := y0
+	while y <= y1:
+		var x := x0
+		while x <= x1:
+			if _chan_max(_img_px(img, Vector2(x, y))) > thr:
+				return true
+			x += 3.0
+		y += 3.0
+	return false
+
+
+func sc_immersion() -> void:
+	isolate_settings(true)
+	var orig_speed := Settings.scroll_speed
+	metrics["gpu"] = RenderingServer.get_video_adapter_name()
+
+	# --- A. FULL intro --------------------------------------------------------------------------
+	var g: Gameplay = await start_dive_from_menu(false, true)
+	if g == null:
+		return
+	var t0 := Time.get_ticks_msec()
+	var spb := 60.0 / _bpm_of(g)
+	check("intro mode FULL on a normal Start Dive", g.intro_mode == IntroTimeline.Mode.FULL, g.intro_mode)
+	await _wait_elapsed(t0, 0.4)
+	await shot("intro_room", g)
+	await _wait_elapsed(t0, 0.5)
+	check("conductor not begun and lane input disabled at 0.5 s",
+		not g.is_began() and not g.lane_input.enabled, "began=%s enabled=%s" % [g.is_began(), g.lane_input.enabled])
+	await _wait_elapsed(t0, 1.0)
+	await shot("intro_goggles", g)
+	await _wait_elapsed(t0, 1.4)
+	await shot("intro_crt_line", g)
+	await _wait_elapsed(t0, 1.55)
+	await shot("intro_link", g)
+	await _wait_elapsed(t0, 2.2)
+	await shot("intro_arena_fade", g)
+	var began: bool = await wait_for_began(g, 3.2 - _since(t0) + 0.5)
+	var began_t := _since(t0)
+	metrics["intro_began_s"] = began_t
+	check("count-in begins 2.2-3.2 s after scene load (pre-count 2.6 +- 0.4)",
+		began and began_t >= 2.2 and began_t <= 3.2, "%.2f s" % began_t)
+	if not began:
+		return
+	var lead := g.conductor.song_time()
+	metrics["intro_lead_in_song_time"] = lead
+	check("lead-in is about 3 beats at the first began sample", absf(lead + 3.0 * spb) <= 0.35,
+		"song_time %.3f vs %.3f" % [lead, -3.0 * spb])
+	await frame()
+	await shot("intro_count_3", g)
+	check("numeral count active right after began", _intro_alive(g) and g.intro.is_counting())
+	await wait_until(func() -> bool: return g.conductor.song_time() >= 0.05, 6.0)
+	await shot("intro_dive", g)
+	await wait_until(func() -> bool: return g.conductor.song_time() >= 0.8, 3.0)
+	check("intro node gone by song_time 0.8 s", not _intro_alive(g))
+	check("arena reveal and cable_grow back to 1.0",
+		absf(g.arena.reveal - 1.0) < 0.001 and absf(g.highway.cable_grow - 1.0) < 0.001,
+		"reveal %.3f grow %.3f" % [g.arena.reveal, g.highway.cable_grow])
+
+	# --- B. Skip --------------------------------------------------------------------------------
+	g = await start_dive_from_menu(false, true)
+	if g == null:
+		return
+	t0 = Time.get_ticks_msec()
+	await _wait_elapsed(t0, 0.8)
+	var skip_ms := Time.get_ticks_msec()
+	await press_key(KEY_SPACE)
+	var sk: bool = await wait_for_began(g, 0.5)
+	check("Space during the intro begins the count within 0.5 s", sk, "%.3f s" % _since(skip_ms))
+	await frame()
+	check("numeral visible after skip", _intro_alive(g) and g.intro.is_counting())
+	await shot("skip_count", g)
+	await wait_until(func() -> bool: return g.conductor.song_time() >= 1.0, 6.0)
+	var st_before := g.conductor.song_time()
+	await press_key(KEY_SPACE)
+	check("Space in a normal run changes nothing (no pause, no skip, still RUNNING)",
+		g.state == Gameplay.State.RUNNING and not g.pause_menu.is_open() and g.conductor.song_time() >= st_before
+		and g.is_began(), g.state)
+
+	# --- C. Quick retry -------------------------------------------------------------------------
+	check("pending_intro still FULL for the retry", Gameplay.pending_intro == IntroTimeline.Mode.FULL)
+	var r0 := Time.get_ticks_msec()
+	g.restart(false)
+	check("restart while pending FULL -> QUICK", g.intro_mode == IntroTimeline.Mode.QUICK, g.intro_mode)
+	await _wait_elapsed(r0, 0.3)
+	await shot("quick_blink", g)
+	var qd: bool = await wait_until(func() -> bool:
+		return g.conductor != null and g.is_began() and g.conductor.song_time() >= 0.0, 4.0)
+	var q_s := _since(r0)
+	metrics["quick_retry_s"] = q_s
+	check("quick retry reaches song_time 0 in < 1.6 s", qd and q_s < 1.6, "%.2f s" % q_s)
+	await wait_until(func() -> bool: return g.conductor.song_time() > 0.3, 3.0)
+	await press_key(KEY_F4)
+	check("F4 restart is QUICK", g.intro_mode == IntroTimeline.Mode.QUICK, g.intro_mode)
+
+	# --- D. Board at three speeds (autoplay, intro off) -----------------------------------------
+	g = await start_dive_from_menu(true)
+	if g == null:
+		return
+	var speeds := [[0.5, "board_scroll_0_5x"], [1.0, "board_scroll_1x"], [3.0, "board_scroll_3x"]]
+	var gw: WeakRef = weakref(g)
+	await wait_until(func() -> bool: return g.conductor.song_time() > 3.0, 15.0)
+	for sp in speeds:
+		if _gone_or_stopped(gw):
+			check("run alive for board speed %s" % sp[0], false)
+			break
+		Settings.set_scroll_speed(float(sp[0]))
+		await wait(0.3)
+		var idx := await _freeze_before_note(g)
+		if not check("froze a frame before a note at %sx" % sp[0], idx >= 0):
+			_unfreeze(g)
+			continue
+		await wait(0.25)
+		await shot(String(sp[1]), g)
+		var approach := Trench.approach_for(Settings.scroll_speed)
+		var vis := _visible_pending(g)
+		var lane: int = g.chart.notes[idx]["lane"]
+		var dt := float(g.chart.notes[idx]["time"]) - last_shot_st
+		# Readability: two notes one beat apart at the hit ring stay >= 40 px apart.
+		var dd := minf(spb / approach, 1.0)
+		var sep := Trench.point(Trench.lane_f(lane), 0.0).distance_to(Trench.point(Trench.lane_f(lane), dd))
+		metrics["note_sep_px_%s" % sp[1]] = sep
+		check("%sx: notes one beat apart are >= 40 px apart at the ring" % sp[0], sep >= 40.0, "%.1f px" % sep)
+		check("%sx: pending notes visible" % sp[0], vis.size() > 0, vis.size())
+		if absf(float(sp[0]) - 1.0) < 0.01:
+			var bright := _region_max(last_img, Trench.hit_point(lane), 30.0)
+			check("1x: note within 5 ms of the ring is bright (>= 0.85)", absf(dt) <= 0.005 and bright >= 0.85,
+				"dt %.1f ms, max %.3f" % [dt * 1000.0, bright])
+			var far := _far_note(vis)
+			if check("1x: a far note is visible alongside the ready note", not far.is_empty()):
+				var far_b := _chan_max(_patch(last_img, far["center"]))
+				check("1x: far note dimmer than the ready note", far_b < bright, "far %.3f vs ready %.3f" % [far_b, bright])
+			# Timing invariant: a note at exactly the visual time projects onto the hit point.
+			var vt := last_shot_st + Settings.visual_offset
+			var exact := Trench.point(Trench.lane_f(lane), Trench.depth_for(vt, vt, approach))
+			check("note at visual time projects onto hit_point (< 0.5 px)",
+				exact.distance_to(Trench.hit_point(lane)) < 0.5, exact)
+			var nd := Trench.depth_for(float(g.chart.notes[idx]["time"]), vt, approach)
+			var off_px := Trench.point(Trench.lane_f(lane), nd).distance_to(Trench.hit_point(lane))
+			check("nearest note offset from the ring is bounded by its time error",
+				off_px <= 3200.0 * absf(nd) + 0.5, "%.2f px for dt %.1f ms" % [off_px, dt * 1000.0])
+		_unfreeze(g)
+	Settings.set_scroll_speed(orig_speed)
+
+	# --- F/E/H/G/I on one autoplay run (intro off) ----------------------------------------------
+	g = await start_dive_from_menu(true)
+	if g == null:
+		return
+	gw = weakref(g)
+	var hit10: bool = await wait_until(func() -> bool: return _gone_or_stopped(gw) or g.score.combo >= 10, 40.0)
+	if check("autoplay reached combo 10", hit10 and not _gone_or_stopped(gw), g.score.combo):
+		await shot("hud_milestone", g)
+		check("10-streak milestone popup text", g.streak_counter.popup_text() == "10 STREAK", g.streak_counter.popup_text())
+		await wait(0.9)
+		await shot("hud_streak", g)
+		var rx := StreakCounter.right_x()
+		check("streak counter visible and right edge near x=390", g.streak_counter.is_counter_visible()
+			and absf(rx - 390.0) <= 30.0, "right_x %.1f" % rx)
+		check("streak number pixels lie left of the anchor, none in x < 32",
+			_any_bright(last_img, 32.0, rx + 4.0, 100.0, 1000.0, 0.6)
+			and not _any_bright(last_img, 0.0, 31.0, 100.0, 1000.0, 0.6), "right_x %.1f" % rx)
+		check("depth label matches depth_text", g.hud.depth_value.text == g.hud.depth_text(g.score.depth()),
+			g.hud.depth_value.text)
+	# H. fps (full effects, mid-song).
+	await wait_until(func() -> bool: return _gone_or_stopped(gw) or g.conductor.song_time() > 6.0, 15.0)
+	if _gone_or_stopped(gw):
+		check("run reached mid-song for fps", false)
+		return
+	Settings.low_effects = false
+	Settings.settings_changed.emit()
+	var f0 := Engine.get_frames_drawn()
+	var tf := Time.get_ticks_usec()
+	await wait(5.0)
+	var fps := float(Engine.get_frames_drawn() - f0) / (float(Time.get_ticks_usec() - tf) / 1000000.0)
+	metrics["fps_full_5s"] = snappedf(fps, 0.1)
+	check("full effects hold >= 60 fps averaged over 5 s", fps >= 60.0, "%.1f fps" % fps)
+	Settings.low_effects = true
+	Settings.settings_changed.emit()
+	f0 = Engine.get_frames_drawn()
+	tf = Time.get_ticks_usec()
+	await wait(3.0)
+	metrics["fps_low_3s"] = snappedf(float(Engine.get_frames_drawn() - f0) / (float(Time.get_ticks_usec() - tf) / 1000000.0), 0.1)
+	Settings.low_effects = false
+	Settings.settings_changed.emit()
+	if _gone_or_stopped(gw):
+		return
+	# G. Effects and edges on a frozen frame.
+	g.conductor.pause()
+	g.lane_input.enabled = false
+	await wait(1.0)
+	await shot("effects_full", g)
+	var img_full := last_img
+	var ring_full := _ring_median(img_full)
+	var rec_full := 0.0
+	for i in range(Highway.LANES):
+		rec_full += _chan_max(_patch(img_full, Trench.hit_point(i), 3))
+	var edges := [Vector2(3, 540), Vector2(1917, 540), Vector2(960, 3), Vector2(960, 1077),
+		Vector2(3, 360), Vector2(1917, 720)]
+	var edge_vals: Array = []
+	var edge_ok := true
+	var red_free := true
+	for e in edges:
+		var p := _patch(img_full, e, 1)
+		edge_vals.append(snappedf(_chan_max(p), 0.001))
+		edge_ok = edge_ok and _chan_max(p) <= 0.35
+		red_free = red_free and not (p.r > 0.5 and p.g < 0.25 and p.b < 0.25)
+	metrics["edge_values"] = edge_vals
+	check("screen edges are clean (max channel <= 0.35, D-06)", edge_ok, edge_vals)
+	check("no red dominance at the edges outside a miss glitch", red_free, edge_vals)
+	Settings.low_effects = true
+	Settings.settings_changed.emit()
+	await wait(0.3)
+	await shot("effects_low", g)
+	var ring_low := _ring_median(last_img)
+	var rec_low := 0.0
+	for i in range(Highway.LANES):
+		rec_low += _chan_max(_patch(last_img, Trench.hit_point(i), 3))
+	metrics["effects"] = {"ring_full": ring_full, "ring_low": ring_low, "receptors_full": rec_full, "receptors_low": rec_low}
+	check("hit ring brightness equal full vs low effects (+-10%)",
+		ring_low >= 0.9 * ring_full and ring_full >= 0.9 * ring_low, "%.3f vs %.3f" % [ring_full, ring_low])
+	check("receptor brightness equal full vs low effects (+-10%)",
+		rec_low >= 0.9 * rec_full and rec_full >= 0.9 * rec_low, "%.3f vs %.3f" % [rec_full, rec_low])
+	check("Low effects uses fewer wall rings", Arena.ring_count(true) < Arena.ring_count(false),
+		"%d vs %d" % [Arena.ring_count(true), Arena.ring_count(false)])
+	Settings.low_effects = false
+	Settings.settings_changed.emit()
+	# I. Reduce motion: the arena must not breathe.
+	Settings.reduce_motion = true
+	Settings.settings_changed.emit()
+	await wait(0.4)
+	await shot("effects_reduce_motion", g)
+	var rm_a := last_img
+	await wait(0.2)
+	await RenderingServer.frame_post_draw
+	var rm_b := get_viewport().get_texture().get_image()
+	var mxd := 0.0
+	var yy := 100.0
+	while yy < 1000.0:
+		for xx in [60.0, 150.0, 300.0, 1620.0, 1770.0, 1860.0]:
+			mxd = maxf(mxd, absf(_chan_max(_img_px(rm_a, Vector2(xx, yy))) - _chan_max(_img_px(rm_b, Vector2(xx, yy)))))
+		yy += 8.0
+	metrics["reduce_motion_wall_diff"] = mxd
+	check("reduce motion: wall pixels identical 0.2 s apart", mxd <= 0.01, mxd)
+	Settings.reduce_motion = false
+	Settings.settings_changed.emit()
+	_unfreeze(g)
+	# E. Autoplay timing over the first 25 s (or the whole chart).
+	await wait_until(func() -> bool: return _gone_or_stopped(gw) or g.conductor.song_time() > 25.0, 40.0)
+	if is_instance_valid(g):
+		check("autoplay is all-Perfect (no Good, no Miss) and hull 100",
+			g.score.miss_count == 0 and g.score.good_count == 0 and g.score.hull >= 99.99,
+			"P%d G%d M%d hull %.1f" % [g.score.perfect_count, g.score.good_count, g.score.miss_count, g.score.hull])
+	# F2. Critical hull.
+	if not _gone_or_stopped(gw):
+		var n := 0
+		while not g.hud.is_critical() and n < 12:
+			g.score.on_judged(0, -1, InputJudge.Judgment.MISS, 0.0)
+			n += 1
+		await wait(0.4)
+		await shot("hud_critical", g)
+		check("HULL CRITICAL caption shown at low hull",
+			g.hud.hull_caption.visible and g.hud.hull_caption.text == "HULL CRITICAL", g.hud.hull_caption.text)
+	Settings.set_scroll_speed(orig_speed)
