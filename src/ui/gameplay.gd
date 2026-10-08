@@ -257,7 +257,7 @@ func _on_failed() -> void:
 	fail_screen.retry_pressed.connect(_on_retry)
 	fail_screen.menu_pressed.connect(go_to_menu)
 	fail_screen.play(FailScreen.SQUASH_SEC)
-	var pivot := Vector2(Highway.SCREEN_W * 0.5, Highway.HULL_Y)
+	var pivot := Vector2(Trench.VP.x, Trench.HIT_Y)
 	for ctl in [highway, feedback]:
 		(ctl as Control).pivot_offset = pivot
 	var tw := create_tween().set_parallel(true)

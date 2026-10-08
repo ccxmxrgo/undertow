@@ -194,4 +194,4 @@ func test_feedback_flash_state_per_lane_and_spawn_offset() -> void:
 	assert_object(fb._flashes[2]).is_not_null()
 	assert_object(fb._flashes[0]).is_null()
 	assert_int(fb.floating_count()).is_equal(1)
-	assert_float(Highway.HULL_Y - Feedback.FLOAT_START_OFFSET).is_equal(816.0)
+	assert_float(Trench.hit_point(1).y - Feedback.FLOAT_START_OFFSET).is_equal_approx(867.0, 0.5)

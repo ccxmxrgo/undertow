@@ -12,8 +12,9 @@ const FLASH_USEC := {Kind.PERFECT: 120000, Kind.GOOD: 120000, Kind.MISS: 160000,
 const RING_USEC := 200000
 const FLOAT_USEC := 500000
 const FLOAT_RISE := 48.0
-const FLOAT_START_OFFSET := 64.0
-const FLASH_H := 160.0
+const FLOAT_START_OFFSET := 84.0
+const FLASH_GLOW_D := 0.12
+const FLASH_SAMPLES := 8
 const NUDGE_PX := 8.0
 const NUDGE_USEC := 100000
 
@@ -28,6 +29,7 @@ var _floating: Array[Dictionary] = []  # {text, color, lane, born}
 var _nudging: bool = false
 var _nudge_base: Vector2 = Vector2.ZERO
 var _nudge_end: int = 0
+var _glow := PackedVector2Array()
 
 
 func _ready() -> void:
@@ -139,35 +141,44 @@ func _draw() -> void:
 	for e in _floating:
 		var t := clampf(float(now - int(e["born"])) / FLOAT_USEC, 0.0, 1.0)
 		var rise := FLOAT_RISE * (1.0 - pow(1.0 - t, 2.0))  # ease-out
-		var y := Highway.HULL_Y - FLOAT_START_OFFSET - rise
+		var hit := Trench.hit_point(int(e["lane"]))
+		var y := hit.y - FLOAT_START_OFFSET - rise
 		var col: Color = Palette.alpha(e["color"], 1.0 - t)
-		var cx := Highway.lane_center_x(int(e["lane"]))
-		draw_string(font, Vector2(cx - 100.0, y), e["text"], HORIZONTAL_ALIGNMENT_CENTER, 200.0, Palette.SIZE_BODY, col)
+		draw_string(font, Vector2(hit.x - 100.0, y), e["text"], HORIZONTAL_ALIGNMENT_CENTER, 200.0, Palette.SIZE_BODY, col)
 
 
 func _draw_flash(lane: int, kind: int, age: int) -> void:
 	var life: int = FLASH_USEC[kind]
-	var cx := Highway.lane_center_x(lane)
+	var hit := Trench.hit_point(lane)
 	var lane_col := Palette.lane_color(lane)
-	var rect := Rect2(Highway.lane_left() + lane * Highway.LANE_W, Highway.HULL_Y - FLASH_H, Highway.LANE_W, FLASH_H)
 	if age < life:
 		var fade := 1.0 - float(age) / life
+		var base_col := lane_col
+		var strength := 1.0
 		match kind:
 			Kind.PERFECT:
-				draw_rect(rect, Palette.alpha(lane_col, 0.4 * fade))
+				strength = 1.0
 			Kind.GOOD:
-				draw_rect(rect, Palette.alpha(lane_col, 0.2 * fade))
+				strength = 0.5
 			Kind.MISS:
-				draw_rect(rect, Palette.alpha(Palette.DESTRUCTIVE, 0.4 * fade))
+				base_col = Palette.DESTRUCTIVE
+				strength = 0.8
 			_:
-				draw_rect(rect, Palette.alpha(lane_col, 0.25 * fade))
+				strength = 0.25
+		var col := Palette.alpha(base_col, strength * fade)
+		if _glow.size() != FLASH_SAMPLES:
+			_glow.resize(FLASH_SAMPLES)
+		var f := Trench.lane_f(lane)
+		for i in range(FLASH_SAMPLES):
+			_glow[i] = Trench.point(f, FLASH_GLOW_D * float(i) / float(FLASH_SAMPLES - 1))
+		draw_polyline(_glow, col, 8.0, true)
+		draw_circle(hit, 30.0, Palette.alpha(base_col, 0.5 * strength * fade))
 	if kind == Kind.PERFECT and age < RING_USEC:
 		var t := float(age) / RING_USEC
-		var r := lerpf(NoteShape.SIZE * 0.5, NoteShape.SIZE, t)  # 80 px to 160 px diameter
-		draw_arc(Vector2(cx, Highway.HULL_Y), r, 0.0, TAU, 48, Palette.alpha(lane_col, 1.0 - t), 3.0, true)
+		var r := lerpf(41.0, 82.0, t)
+		draw_arc(hit, r, 0.0, TAU, 48, Palette.alpha(lane_col, 1.0 - t), 3.0, true)
 	elif kind == Kind.MISS and age < life:
-		var c := Vector2(cx, Highway.HULL_Y)
 		var h := 20.0
 		var col := Palette.alpha(Palette.DESTRUCTIVE, 1.0 - float(age) / life)
-		draw_line(c + Vector2(-h, -h), c + Vector2(h, h), col, 4.0)
-		draw_line(c + Vector2(-h, h), c + Vector2(h, -h), col, 4.0)
+		draw_line(hit + Vector2(-h, -h), hit + Vector2(h, h), col, 4.0)
+		draw_line(hit + Vector2(-h, h), hit + Vector2(h, -h), col, 4.0)
