@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UNDERTOW Board Concepts</title>
+<link rel="stylesheet" href="../themes/default.css">
+<style>
+  html, body { height: 100%; overflow: hidden; margin: 0; background: #02040a; color: #e8e6f0; font-family: "Share Tech Mono", Consolas, monospace; }
+  :root { --color-bg:#02040a; --color-border:#1c2a44; --color-text:#e8e6f0; --color-text-muted:#8a93ad; --color-primary:#05d9e8; --radius-md:6px; }
+  #variant-nav { position: fixed; top: 0; left: 0; right: 0; z-index: 10; display: flex; gap: 8px; padding: 10px 16px;
+    background: rgba(2,4,10,0.85); border-bottom: 1px solid var(--color-border); align-items: center; flex-wrap: wrap; }
+  .variant-tab { font: inherit; font-size: 14px; color: var(--color-text-muted); background: transparent; border: 1px solid var(--color-border);
+    padding: 6px 12px; border-radius: var(--radius-md); cursor: pointer; transition: all .15s ease; }
+  .variant-tab:hover { color: var(--color-text); border-color: var(--color-primary); }
+  .variant-tab.active { color: var(--color-bg); background: var(--color-primary); border-color: var(--color-primary); }
+  #blurb { color: var(--color-text-muted); font-size: 13px; margin-left: 8px; }
+  #stage { position: absolute; top: 48px; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; max-width: 100%; max-height: 100%; }
+  #start { position: absolute; inset: 48px 0 0 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px;
+    background: rgba(2,4,10,.7); cursor: pointer; z-index: 5; font-size: 22px; letter-spacing: 2px; }
+  #start small { font-size: 13px; color: var(--color-text-muted); letter-spacing: 0; }
+  #sketch-tools { position: fixed; bottom: 12px; right: 12px; z-index: 9999; font: 12px system-ui; background: rgba(0,0,0,.7); color: #fff;
+    padding: 8px 12px; border-radius: 8px; opacity: .45; transition: opacity .2s; display: flex; gap: 10px; align-items: center; }
+  #sketch-tools:hover { opacity: 1; }
+  #sketch-tools label { cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="variant-nav">
+  <button class="variant-tab active" data-v="a">A: Sonar Arc</button>
+  <button class="variant-tab" data-v="b">B: Current Ribbon</button>
+  <button class="variant-tab" data-v="c">C: Trench Descent</button>
+  <span id="blurb"></span>
+</div>
+<div id="stage"><canvas id="cv" width="1600" height="900"></canvas></div>
+<div id="start">CLICK OR PRESS A KEY TO DIVE<small>Press 1 2 3 4 to hit notes · toggle Autoplay bottom-right · switch concepts with the tabs</small></div>
+<div id="sketch-tools">
+  <label><input type="checkbox" id="auto" checked> Autoplay</label>
+  <label><input type="checkbox" id="snd" checked> Sound</label>
+  <label><input type="checkbox" id="slow"> Slow-mo</label>
+</div>
+<script>
+const cv = document.getElementById('cv'), g = cv.getContext('2d');
+const W = 1600, H = 900;
+const LANE = ['#22d3ee', '#fbbf24', '#f472b6', '#a3e635'];
+const BLURB = {
+  a: 'No board surface: 4 light tendrils curve into the abyss. The hit line is a sonar arc, and ping rings arrive exactly on the beat.',
+  b: 'The road is a living current: it sways and banks with the music. Notes are bioluminescent orbs.',
+  c: 'You look down a breathing trench. Notes rise out of the depth along cables to a ring near you.'
+};
+let V = 'a';
+const BPM = 120, SPB = 60 / BPM, APPROACH = 1.9, LEAD = 2.0;
+const PERFECT = 0.035, GOOD = 0.07, MISS = 0.1;
+
+// Chart: a 32-beat loop with eighths, chords and a few holds-as-taps
+function buildChart() {
+  const pat = [0,2,1,3, 0,1,2,3, [0,3],2,1,2, 3,1,0,[1,2], 0,0,2,2, 1,3,1,3, [0,2],[1,3],0,3, 2,1,0,null];
+  const notes = [];
+  for (let loop = 0; loop < 200; loop++) {
+    pat.forEach((p, i) => {
+      if (p === null) return;
+      const beat = loop * 16 + i * 0.5;
+      (Array.isArray(p) ? p : [p]).forEach(l => notes.push({ t: beat * SPB, lane: l, hit: false, gone: false }));
+    });
+  }
+  return notes;
+}
+let notes = buildChart(), t0 = 0, started = false, combo = 0, depth = 0, best = 0;
+let judge = [], pulse = [0,0,0,0], particles = [];
+for (let i = 0; i < 90; i++) particles.push({ x: Math.random() * W, y: Math.random() * H, z: Math.random(), s: Math.random() * 0.4 + 0.1 });
+
+// Audio
+let ac = null;
+function blip(freq, dur, vol) {
+  if (!ac || !document.getElementById('snd').checked) return;
+  const o = ac.createOscillator(), gn = ac.createGain();
+  o.frequency.value = freq; o.type = 'triangle';
+  gn.gain.setValueAtTime(vol, ac.currentTime); gn.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
+  o.connect(gn).connect(ac.destination); o.start(); o.stop(ac.currentTime + dur);
+}
+let lastBeat = -1;
+
+function now() {
+  const slow = document.getElementById('slow').checked ? 0.4 : 1;
+  return ((performance.now() - t0) / 1000) * slow - LEAD;
+}
+let slowAnchor = null;
+
+// ---------- projections: lane f in [-1.5,1.5], d in [0 (hit) .. 1 (horizon)] ----------
+function persp(d) { const z = d * 10; const s = 1 / (1 + z * 0.42); const smin = 1 / (1 + 10 * 0.42); return { s, n: (s - smin) / (1 - smin) }; }
+const P = {
+  a(f, d, t) {
+    const vp = { x: 800, y: 250 }, hitY = 760, { s, n } = persp(d);
+    const bend = Math.sin(d * 3.0 + t * 0.9 + f * 0.7) * 26 * d * (1 - d) * 3;
+    const x = vp.x + f * 150 * s + bend;
+    const y = vp.y + (hitY - vp.y) * n - f * f * 26 * n;   // sonar arc: edges lifted near the hit line
+    return { x, y, s };
+  },
+  b(f, d, t) {
+    const hitY = 770, vpY = 230, { s, n } = persp(d);
+    const sway = Math.sin(t * 0.55 + d * 2.6) * 150 * d + Math.sin(t * 0.31) * 30;
+    const bank = Math.sin(t * 0.55) * 0.16;
+    const x = 800 + sway + f * 160 * s;
+    const y = vpY + (hitY - vpY) * n + f * 160 * s * bank;
+    return { x, y, s };
+  },
+  c(f, d, t) {
+    const vp = { x: 800, y: 330 }, hitY = 800, { s, n } = persp(d);
+    const sag = Math.sin(d * Math.PI) * 18 * (1 - d);
+    const x = vp.x + f * 175 * s * (0.35 + 0.65 * n);
+    const y = vp.y + (hitY - vp.y) * n + sag - (f * f) * 30 * n * n;   // ring near the bottom
+    return { x, y, s };
+  }
+};
+
+// ---------- drawing helpers ----------
+function dimColor(hex, k) {
+  const v = parseInt(hex.slice(1), 16), r = (v >> 16) & 255, gg = (v >> 8) & 255, b = v & 255;
+  return `rgb(${Math.round(r * k)},${Math.round(gg * k)},${Math.round(b * k)})`;
+}
+function shape(lane, x, y, r, col, fill, lw) {
+  g.beginPath();
+  if (lane === 0) { g.moveTo(x, y - r); g.lineTo(x + r, y); g.lineTo(x, y + r); g.lineTo(x - r, y); g.closePath(); }
+  else if (lane === 1) { g.arc(x, y, r * 0.86, 0, Math.PI * 2); }
+  else if (lane === 2) { g.moveTo(x, y - r); g.lineTo(x + r * 0.95, y + r * 0.75); g.lineTo(x - r * 0.95, y + r * 0.75); g.closePath(); }
+  else { g.rect(x - r * 0.78, y - r * 0.78, r * 1.56, r * 1.56); }
+  if (fill) { g.fillStyle = fill; g.fill(); }
+  g.lineWidth = lw; g.strokeStyle = col; g.stroke();
+}
+function laneF(l) { return l - 1.5; }
+
+// ---------- backgrounds / boards per variant ----------
+function bg(t, beatPulse) {
+  g.fillStyle = '#02040a'; g.fillRect(0, 0, W, H);
+  const glow = { a: [800, 250, '#0b5f73'], b: [800 + Math.sin(t * 0.31) * 30, 230, '#3b1d5e'], c: [800, 330, '#123a52'] }[V];
+  const rad = g.createRadialGradient(glow[0], glow[1], 0, glow[0], glow[1], 700 + beatPulse * 60);
+  rad.addColorStop(0, glow[2]); rad.addColorStop(0.35, 'rgba(10,20,40,0.6)'); rad.addColorStop(1, 'rgba(2,4,10,0)');
+  g.fillStyle = rad; g.fillRect(0, 0, W, H);
+  // drifting particles (marine snow)
+  particles.forEach(p => {
+    p.y -= p.s * (V === 'c' ? -1.2 : 0.6); p.x += Math.sin(t + p.z * 10) * 0.2;
+    if (p.y < 0) p.y = H; if (p.y > H) p.y = 0;
+    g.fillStyle = `rgba(160,230,255,${0.08 + p.z * 0.25})`;
+    g.fillRect(p.x, p.y, 1 + p.z * 2, 1 + p.z * 2);
+  });
+  // bioluminescent "crowd" silhouettes near the horizon, pulsing on the beat
+  for (let i = 0; i < 26; i++) {
+    const cx = 160 + i * 52 + Math.sin(i * 7.1) * 12, cy = (V === 'c' ? 120 : 330) + Math.sin(i * 3.3) * 16;
+    if (Math.abs(cx - 800) < 120 && V !== 'c') continue;
+    const k = 0.15 + beatPulse * 0.5 * ((i % 3) / 2 + 0.3);
+    g.fillStyle = `rgba(${i % 2 ? '244,114,182' : '34,211,238'},${k})`;
+    g.beginPath(); g.ellipse(cx, cy, 3, 6 + beatPulse * 4, 0, 0, Math.PI * 2); g.fill();
+  }
+}
+
+function boardA(t, beatPulse) {
+  // tendrils
+  for (let l = 0; l < 4; l++) {
+    g.beginPath();
+    for (let i = 0; i <= 40; i++) { const p = P.a(laneF(l), i / 40, t); i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y); }
+    g.strokeStyle = dimColor(LANE[l], 0.55); g.lineWidth = 3; g.shadowColor = LANE[l]; g.shadowBlur = 14; g.stroke(); g.shadowBlur = 0;
+  }
+  // sonar ping rings, travelling like notes so they land exactly on beats
+  const tb = Math.floor(t / SPB);
+  for (let b = tb; b < tb + 6; b++) {
+    const d = (b * SPB - t) / APPROACH; if (d < 0 || d > 1) continue;
+    g.beginPath();
+    for (let i = 0; i <= 30; i++) { const p = P.a(-2.3 + i * 4.6 / 30, d, t); i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y); }
+    const strong = b % 4 === 0;
+    g.strokeStyle = `rgba(190,245,255,${(strong ? 0.55 : 0.22) * (1 - d)})`; g.lineWidth = strong ? 2.5 : 1.2; g.stroke();
+  }
+  // the sonar hit arc
+  g.beginPath();
+  for (let i = 0; i <= 40; i++) { const p = P.a(-2.2 + i * 4.4 / 40, 0, t); i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y); }
+  g.strokeStyle = `rgba(200,250,255,${0.5 + beatPulse * 0.4})`; g.lineWidth = 3; g.shadowColor = '#05d9e8'; g.shadowBlur = 18; g.stroke(); g.shadowBlur = 0;
+}
+
+function boardB(t, beatPulse) {
+  const edgeL = [], edgeR = [];
+  for (let i = 0; i <= 40; i++) { edgeL.push(P.b(-2.15, i / 40, t)); edgeR.push(P.b(2.15, i / 40, t)); }
+  // translucent current
+  g.beginPath(); edgeL.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y));
+  for (let i = edgeR.length - 1; i >= 0; i--) g.lineTo(edgeR[i].x, edgeR[i].y); g.closePath();
+  const gr = g.createLinearGradient(0, 230, 0, 790);
+  gr.addColorStop(0, 'rgba(120,80,200,0)'); gr.addColorStop(1, `rgba(40,140,200,${0.18 + beatPulse * 0.1})`);
+  g.fillStyle = gr; g.fill();
+  // flowing shimmer bands across the current
+  for (let k = 0; k < 10; k++) {
+    const d = ((k / 10) + t * 0.35) % 1;
+    const a = P.b(-2.15, d, t), b = P.b(2.15, d, t);
+    g.strokeStyle = `rgba(180,230,255,${0.1 * (1 - d)})`; g.lineWidth = 1; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+  }
+  // glowing curved edges
+  [edgeL, edgeR].forEach(e => {
+    g.beginPath(); e.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y));
+    g.strokeStyle = `rgba(230,220,255,${0.55 + beatPulse * 0.4})`; g.lineWidth = 3; g.shadowColor = '#b48cff'; g.shadowBlur = 20; g.stroke(); g.shadowBlur = 0;
+  });
+  // luminous strands
+  for (let l = 0; l < 4; l++) {
+    g.beginPath();
+    for (let i = 0; i <= 40; i++) { const p = P.b(laneF(l), i / 40, t); i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y); }
+    g.strokeStyle = dimColor(LANE[l], 0.45); g.lineWidth = 1.5; g.stroke();
+  }
+  // hit line follows the bank
+  const a = P.b(-2.15, 0, t), b = P.b(2.15, 0, t);
+  g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.strokeStyle = 'rgba(240,235,255,0.8)'; g.lineWidth = 3; g.stroke();
+}
+
+function boardC(t, beatPulse) {
+  // breathing trench walls: jagged rings scrolling toward the player
+  for (let k = 0; k < 14; k++) {
+    const d = 1 - (((k / 14) + t * 0.22) % 1);
+    const { s, n } = persp(d);
+    const R = (60 + 900 * n) * (1 + beatPulse * 0.035);
+    g.beginPath();
+    for (let i = 0; i <= 48; i++) {
+      const a = i / 48 * Math.PI * 2, j = 1 + 0.08 * Math.sin(a * 7 + k * 1.7) + 0.05 * Math.sin(a * 13 + k);
+      const x = 800 + Math.cos(a) * R * j, y = 330 + Math.sin(a) * R * j * 0.62;
+      i ? g.lineTo(x, y) : g.moveTo(x, y);
+    }
+    g.strokeStyle = `rgba(${k % 2 ? '90,60,170' : '30,140,180'},${0.08 + n * 0.35})`; g.lineWidth = 1 + n * 3; g.stroke();
+  }
+  // cables
+  for (let l = 0; l < 4; l++) {
+    g.beginPath();
+    for (let i = 0; i <= 40; i++) { const p = P.c(laneF(l), i / 40, t); i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y); }
+    g.strokeStyle = '#0d1424'; g.lineWidth = 9; g.stroke();
+    g.strokeStyle = dimColor(LANE[l], 0.5); g.lineWidth = 2; g.stroke();
+    // signal pulses running up the cable on each beat
+    const ph = (t / SPB) % 1, p = P.c(laneF(l), 1 - ph, t);
+    g.fillStyle = LANE[l]; g.globalAlpha = 0.5 * ph; g.beginPath(); g.arc(p.x, p.y, 3 + 3 * p.s, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+  }
+  // hit ring
+  g.beginPath();
+  for (let i = 0; i <= 40; i++) { const p = P.c(-2.1 + i * 4.2 / 40, 0, t); i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y); }
+  g.strokeStyle = `rgba(160,255,240,${0.55 + beatPulse * 0.4})`; g.lineWidth = 3; g.shadowColor = '#22d3ee'; g.shadowBlur = 18; g.stroke(); g.shadowBlur = 0;
+}
+
+// ---------- gameplay ----------
+function press(lane, t) {
+  pulse[lane] = 1;
+  let bestN = null, bestE = 9;
+  for (const n of notes) {
+    if (n.lane !== lane || n.hit || n.gone) continue;
+    const e = Math.abs(n.t - t); if (e < bestE) { bestE = e; bestN = n; }
+    if (n.t - t > MISS) break;
+  }
+  if (bestN && bestE <= MISS) {
+    bestN.hit = true;
+    const j = bestE <= PERFECT ? 'PERFECT' : bestE <= GOOD ? 'GOOD' : 'MISS';
+    if (j === 'MISS') combo = 0; else { combo++; depth += j === 'PERFECT' ? 1 : 0.5; blip(880 + lane * 110, 0.08, 0.06); }
+    best = Math.max(best, combo);
+    judge.push({ lane, text: j, life: 0.5 });
+  }
+}
+addEventListener('keydown', e => {
+  if (!started) { begin(); return; }
+  const k = '1234'.indexOf(e.key); if (k >= 0 && !document.getElementById('auto').checked) press(k, now());
+});
+document.getElementById('start').onclick = begin;
+function begin() {
+  if (started) return; started = true; document.getElementById('start').style.display = 'none';
+  ac = new (window.AudioContext || window.webkitAudioContext)(); t0 = performance.now();
+}
+document.querySelectorAll('.variant-tab').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.variant-tab').forEach(x => x.classList.remove('active')); b.classList.add('active');
+  V = b.dataset.v; document.getElementById('blurb').textContent = BLURB[V];
+});
+document.getElementById('blurb').textContent = BLURB[V];
+
+function frame() {
+  const t = started ? now() : -LEAD;
+  const beatPhase = ((t % SPB) + SPB) % SPB / SPB;
+  const beatPulse = Math.pow(1 - beatPhase, 3);
+  const b = Math.floor(t / SPB);
+  if (started && b !== lastBeat && t >= 0) { lastBeat = b; blip(b % 4 === 0 ? 220 : 160, 0.05, b % 4 === 0 ? 0.08 : 0.04); }
+
+  bg(t, beatPulse);
+  ({ a: boardA, b: boardB, c: boardC })[V](t, beatPulse);
+  const proj = P[V];
+  const auto = document.getElementById('auto').checked;
+
+  // notes (far to near)
+  for (let i = notes.length - 1; i >= 0; i--) {
+    const n = notes[i];
+    if (n.hit || n.gone) continue;
+    const d = (n.t - t) / APPROACH;
+    if (d > 1) continue;
+    if (auto && n.t <= t) { press(n.lane, n.t); continue; }
+    if (t - n.t > MISS) { n.gone = true; combo = 0; judge.push({ lane: n.lane, text: 'MISS', life: 0.5 }); continue; }
+    if (d < -0.08) continue;
+    const p = proj(laneF(n.lane), Math.max(d, 0), t);
+    const ready = Math.abs(n.t - t) <= GOOD;
+    const r = 30 * p.s + 4;
+    if (V === 'b') { // bioluminescent orb
+      const gl = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 2.2);
+      gl.addColorStop(0, ready ? LANE[n.lane] : dimColor(LANE[n.lane], 0.5)); gl.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gl; g.beginPath(); g.arc(p.x, p.y, r * 2.2, 0, Math.PI * 2); g.fill();
+    }
+    if (ready) { g.shadowColor = LANE[n.lane]; g.shadowBlur = 24; }
+    shape(n.lane, p.x, p.y, r, ready ? LANE[n.lane] : dimColor(LANE[n.lane], 0.6), ready ? dimColor(LANE[n.lane], 0.35) : 'rgba(0,0,0,0.5)', 2 + p.s * 2);
+    g.shadowBlur = 0;
+  }
+  // receptors
+  for (let l = 0; l < 4; l++) {
+    const p = proj(laneF(l), 0, t), r = 30 + 4 + pulse[l] * 6;
+    shape(l, p.x, p.y, r, LANE[l], pulse[l] > 0.05 ? dimColor(LANE[l], 0.4 * pulse[l] + 0.05) : null, 3);
+    g.fillStyle = dimColor(LANE[l], 0.9); g.font = '18px Share Tech Mono, Consolas, monospace'; g.textAlign = 'center';
+    g.fillText(String(l + 1), p.x, p.y + 62);
+    pulse[l] *= 0.86;
+  }
+  // judgments
+  judge = judge.filter(j => (j.life -= 1 / 60) > 0);
+  judge.forEach(j => {
+    const p = proj(laneF(j.lane), 0, t);
+    g.globalAlpha = Math.min(1, j.life * 3); g.textAlign = 'center';
+    g.font = '22px Share Tech Mono, Consolas, monospace';
+    g.fillStyle = j.text === 'MISS' ? '#ff4a3d' : j.text === 'PERFECT' ? '#e8e6f0' : '#8fd98a';
+    g.fillText(j.text, p.x, p.y - 70 - (0.5 - j.life) * 60); g.globalAlpha = 1;
+  });
+  // minimal floating HUD near the board, nothing on the screen edges
+  const hl = proj(-2.6, 0, t), hr = proj(2.6, 0, t);
+  g.textAlign = 'right'; g.fillStyle = 'rgba(232,230,240,0.85)';
+  g.font = '44px Share Tech Mono, Consolas, monospace'; g.fillText(combo >= 5 ? String(combo) : '', hl.x - 20, hl.y - 6);
+  g.font = '14px Share Tech Mono, Consolas, monospace'; g.fillStyle = 'rgba(138,147,173,0.9)';
+  if (combo >= 5) g.fillText('STREAK', hl.x - 20, hl.y + 16);
+  g.textAlign = 'left'; g.font = '28px Share Tech Mono, Consolas, monospace'; g.fillStyle = 'rgba(232,230,240,0.85)';
+  g.fillText(Math.floor(depth * 10) + ' m', hr.x + 20, hr.y - 6);
+  g.font = '14px Share Tech Mono, Consolas, monospace'; g.fillStyle = 'rgba(138,147,173,0.9)'; g.fillText('DEPTH', hr.x + 20, hr.y + 16);
+  // thin hull arc under the board (minimal)
+  g.strokeStyle = 'rgba(232,230,240,0.25)'; g.lineWidth = 4; g.beginPath(); g.arc(800, H + 380, 470, Math.PI * 1.36, Math.PI * 1.64); g.stroke();
+  g.strokeStyle = 'rgba(163,230,53,0.8)'; g.beginPath(); g.arc(800, H + 380, 470, Math.PI * 1.36, Math.PI * (1.36 + 0.28 * 0.92)); g.stroke();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

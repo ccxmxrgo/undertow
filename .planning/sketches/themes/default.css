@@ -1,0 +1,18 @@
+:root {
+  /* UNDERTOW: neon abyss */
+  --color-bg: #02040a;
+  --color-surface: #0a1020;
+  --color-border: #1c2a44;
+  --color-text: #e8e6f0;
+  --color-text-muted: #8a93ad;
+  --color-primary: #05d9e8;
+  --color-accent: #ff1f4b;
+  --lane-1: #22d3ee;
+  --lane-2: #fbbf24;
+  --lane-3: #f472b6;
+  --lane-4: #a3e635;
+  --color-danger: #ff4a3d;
+  --font-mono: 'Share Tech Mono', 'Consolas', monospace;
+  --radius-md: 6px;
+}
+body { margin: 0; background: var(--color-bg); color: var(--color-text); font-family: var(--font-mono); }
