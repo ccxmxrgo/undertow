@@ -72,9 +72,10 @@ Plans:
   4. The world around the board (neon abyss arena with a pulsing bioluminescent "crowd") reacts to the beat and to playing well.
   5. Timing stays fair: notes reach the hit line exactly on the beat in the new 3D view, autoplay is still all-Perfect, and 60+ fps holds on the dev PC.
   6. Playtest v0.2 is exported and zipped for friends with the Phase 1.1 polish plus the new feel.
+
 **UI hint**: yes
 **Depends on:** Phase 1.1
-**Plans:** 0 plans
+**Plans:** 1/6 plans executed
 
 Plans:
 
