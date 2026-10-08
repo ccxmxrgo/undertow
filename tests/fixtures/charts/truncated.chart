@@ -1,0 +1,8 @@
+[Song]
+{
+  Resolution = 192
+}
+[ExpertSingle]
+{
+  0 = N 0 0
+  192 = N 1 0

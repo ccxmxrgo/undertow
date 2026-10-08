@@ -1,0 +1,21 @@
+// leading comment
+
+[Song]
+{
+  Resolution = 192
+}
+[SyncTrack]
+{
+  768 = B 180000
+  0 = B 120000
+}
+[ExpertSingle]
+{
+  384 = N 2 0
+  0 = N 0 0
+  192 = N 1 0
+  192 = N 3 0
+
+  // comment in the middle
+  192 = N 0 0
+}

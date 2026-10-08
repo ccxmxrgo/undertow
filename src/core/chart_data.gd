@@ -8,6 +8,13 @@ var audio_stream: AudioStream
 var title: String = ""
 ## Stable identifier used to key saved records (Phase 2 sets a content hash).
 var id: String = ""
+## Solo sections (D-17): {start: float, end: float, note_count: int}, seconds.
+var solos: Array[Dictionary] = []
+## Import metadata: mapping_version, importer_version, delay_ms, warnings.
+var meta: Dictionary = {}
+## "easy" / "medium" / "hard" / "expert" (empty for hand-made charts).
+var difficulty: String = ""
+var artist: String = ""
 
 
 func add_note(lane: int, time: float, duration: float = 0.0) -> void:

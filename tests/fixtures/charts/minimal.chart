@@ -1,0 +1,21 @@
+[Song]
+{
+  Name = "Minimal"
+  Artist = "Tester"
+  Resolution = 192
+}
+[SyncTrack]
+{
+  0 = TS 4
+  0 = B 120000
+}
+[Events]
+{
+  0 = E "section Intro"
+}
+[ExpertSingle]
+{
+  0 = N 0 0
+  192 = N 1 0
+  384 = N 2 96
+}

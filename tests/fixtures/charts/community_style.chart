@@ -1,0 +1,92 @@
+[Song]
+{
+  Name = "Community Style"
+  Artist = "Some Band"
+  Charter = "Somebody"
+  Album = "Album"
+  Year = ", 2020"
+  Offset = 0
+  Resolution = 192
+  Player2 = bass
+  Difficulty = 0
+  PreviewStart = 0
+  PreviewEnd = 0
+  Genre = "rock"
+  MediaType = "cd"
+  MusicStream = "song.ogg"
+}
+[SyncTrack]
+{
+  0 = TS 4
+  0 = B 120000
+  768 = TS 3
+  1344 = TS 4
+  1344 = B 140000
+  3072 = B 100000
+  4608 = TS 6 3
+  5568 = B 120000
+}
+[Events]
+{
+  0 = E "section Intro"
+  0 = E "phrase_start"
+  768 = E "lyric Hel-"
+  960 = E "lyric lo"
+  1344 = E "phrase_end"
+  1344 = E "section Verse 1"
+  4608 = E "section Chorus"
+}
+[ExpertSingle]
+{
+  768 = N 0 0
+  960 = N 1 0
+  1152 = N 2 96
+  1344 = N 3 0
+  1344 = N 5 0
+  1536 = N 4 0
+  1536 = N 3 0
+  1728 = N 2 0
+  1728 = N 6 0
+  1920 = E solo
+  1920 = N 0 0
+  2112 = N 1 0
+  2304 = N 2 0
+  2496 = N 3 192
+  2496 = S 2 192
+  2688 = N 7 0
+  2880 = N 0 0
+  2880 = N 1 0
+  3072 = N 2 0
+  3072 = E soloend
+  3264 = N 3 0
+  4608 = N 0 0
+  4800 = N 4 384
+  4800 = S 2 384
+}
+[HardSingle]
+{
+  768 = N 0 0
+  1152 = N 1 0
+  1536 = N 2 0
+}
+[ExpertDoubleBass]
+{
+  768 = N 0 0
+}
+[ExpertKeyboard]
+{
+  768 = N 0 0
+}
+[ExpertDrums]
+{
+  768 = N 0 0
+  960 = N 1 0
+}
+[ExpertGHLGuitar]
+{
+  768 = N 0 0
+}
+[UnknownThing]
+{
+  anything goes = here
+}

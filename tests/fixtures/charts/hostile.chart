@@ -1,0 +1,22 @@
+[Song]
+{
+  Name = "Hostile"
+  Resolution = 0
+}
+[SyncTrack]
+{
+  0 = B 0
+  0 = B -5
+  0 = B 120000
+  96 = B abc
+}
+[ExpertSingle]
+{
+  99999999999 = N 0 0
+  abc = N 1 0
+  192 = N 2 -10
+  192 = N 9 0
+  192 = N x 0
+  384 = N 3 0
+  -5 = N 0 0
+}
