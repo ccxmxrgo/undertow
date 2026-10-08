@@ -14,19 +14,19 @@ static func kind_for_lane(lane: int) -> int:
 
 
 ## size is the bounding box edge; outline in `color`, fill at 25% of its alpha.
-static func draw(canvas: CanvasItem, kind: int, center: Vector2, size: float, color: Color) -> void:
+static func draw(canvas: CanvasItem, kind: int, center: Vector2, size: float, color: Color, width: float = OUTLINE_W) -> void:
 	var h := size * 0.5
 	var fill := Palette.alpha(color, color.a * 0.25)
 	match kind:
 		Kind.CIRCLE:
-			canvas.draw_circle(center, h - OUTLINE_W * 0.5, fill)
-			canvas.draw_arc(center, h - OUTLINE_W * 0.5, 0.0, TAU, 48, color, OUTLINE_W, true)
+			canvas.draw_circle(center, h - width * 0.5, fill)
+			canvas.draw_arc(center, h - width * 0.5, 0.0, TAU, 48, color, width, true)
 		_:
 			var pts := _polygon(kind, center, h)
 			canvas.draw_colored_polygon(pts, fill)
 			var closed := pts.duplicate()
 			closed.append(pts[0])
-			canvas.draw_polyline(closed, color, OUTLINE_W, true)
+			canvas.draw_polyline(closed, color, width, true)
 
 
 ## Outline only (no fill), same geometry as `draw`, for receptors and halos.

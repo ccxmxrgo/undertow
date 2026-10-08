@@ -91,5 +91,10 @@ func test_receptor_pulse_values() -> void:
 
 
 func test_layout_constants() -> void:
-	assert_float(Highway.LABEL_Y).is_equal(936.0)
-	assert_float(Highway.HULL_Y).is_equal(880.0)
+	assert_int(Highway.LANES).is_equal(4)
+	var h0 := Trench.hit_point(0)
+	var h1 := Trench.hit_point(1)
+	assert_float(h0.x).is_equal_approx(645.0, 1.0)
+	assert_float(h0.y).is_equal_approx(879.0, 1.0)
+	assert_float(h1.x).is_equal_approx(855.0, 1.0)
+	assert_float(h1.y).is_equal_approx(951.0, 1.0)
