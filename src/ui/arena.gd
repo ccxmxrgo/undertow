@@ -93,11 +93,12 @@ func _init() -> void:
 		_snow_pos[i] = Vector2(32.0 + fposmod(float(i) * 0.7548777, 1.0) * (W - 64.0),
 			fposmod(float(i) * 0.5698403, 1.0) * H)
 	_glow_tex = _radial([0.0, 0.35, 1.0], [Color("123A52"), Color(10.0 / 255.0, 20.0 / 255.0, 40.0 / 255.0, 0.6),
-		Color(2.0 / 255.0, 4.0 / 255.0, 10.0 / 255.0, 0.0)], 0.5)
+		Color(2.0 / 255.0, 4.0 / 255.0, 10.0 / 255.0, 0.0)], 1.0)
 	_vignette_tex = _radial([0.0, 0.78, 1.0], [Color(0, 0, 0, 0), Color(0, 0, 0, 0), Color(0, 0, 0, 0.35)],
 		0.5 + 0.5 * sqrt(2.0))
 
 
+## `reach` is fill_to.x in UV: 1.0 puts the last stop at the texture edge (radius = half width).
 static func _radial(offsets: Array, colors: Array, reach: float) -> GradientTexture2D:
 	var g := Gradient.new()
 	g.offsets = PackedFloat32Array(offsets)

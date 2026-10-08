@@ -111,3 +111,24 @@ func test_fail_zeroes_energy_and_dims() -> void:
 	a.on_combo(100)
 	a.advance(1.0)
 	assert_float(a.energy()).is_equal(0.0)
+
+
+# Regression (01.2-06 windowed run): the glow radial used fill_to == fill_from, so the whole
+# 1680 px glow quad rendered as flat #123A52 and the screen edges were not near-black.
+func test_depth_glow_is_radial_and_fades_to_transparent() -> void:
+	var a: Arena = auto_free(Arena.new())
+	var img: Image = a._glow_tex.get_image()
+	var c := img.get_pixel(128, 128)
+	assert_float(c.a).is_greater(0.9)
+	assert_float(c.b).is_equal_approx(Color("123A52").b, 0.03)
+	assert_float(img.get_pixel(255, 128).a).is_less(0.05)
+	assert_float(img.get_pixel(0, 0).a).is_less(0.05)
+	var mid := img.get_pixel(128 + 45, 128)
+	assert_float(mid.a).is_less(0.95)
+
+
+func test_vignette_is_clear_in_the_middle_and_dark_in_corners() -> void:
+	var a: Arena = auto_free(Arena.new())
+	var img: Image = a._vignette_tex.get_image()
+	assert_float(img.get_pixel(128, 128).a).is_less(0.01)
+	assert_float(img.get_pixel(0, 0).a).is_greater(0.25)
