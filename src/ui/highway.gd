@@ -1,7 +1,7 @@
 class_name Highway
 extends Control
 ## Single _draw() Trench Descent board: four cables descending from a glowing depth to a curved
-## hit ring. A pure function of song_time + visual_offset + scroll speed (D-25): all geometry
+## hit line. A pure function of song_time + visual_offset + scroll speed (D-25): all geometry
 ## comes from Trench (depth is linear in time, only the projection is non-linear). Judgment
 ## uses raw song_time; only drawing adds the visual offset. Colors come from Palette only.
 ## Lane flashes and floating text live in Feedback. The Phase 1 clock-smoothness spike
@@ -178,7 +178,7 @@ func _draw_cables(phase: float, calm: bool) -> void:
 
 
 func _draw_ring(phase: float) -> void:
-	var ring := Trench.ring_points()
+	var ring := Trench.line_points()
 	var a := 0.75 if Settings.reduce_motion else 0.55 + 0.4 * BeatClock.pulse(phase)
 	if not Settings.low_effects:
 		draw_polyline(ring, Palette.alpha(RING_GLOW, 0.12), 12.0, true)
@@ -187,7 +187,7 @@ func _draw_ring(phase: float) -> void:
 
 func _draw_notes(st: float, vt: float, approach: float) -> void:
 	var notes := chart.notes
-	# Moving window: skip notes whose head AND tail are well past the ring (and the ghost fade).
+	# Moving window: skip notes whose head AND tail are well past the line (and the ghost fade).
 	var past_time := vt - 0.06 * approach - GHOST_FADE_SEC - 0.1
 	while _first_visible < notes.size() and float(notes[_first_visible]["time"]) + float(notes[_first_visible]["duration"]) < past_time:
 		_first_visible += 1

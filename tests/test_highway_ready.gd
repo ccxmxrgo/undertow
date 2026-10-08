@@ -95,6 +95,6 @@ func test_layout_constants() -> void:
 	var h0 := Trench.hit_point(0)
 	var h1 := Trench.hit_point(1)
 	assert_float(h0.x).is_equal_approx(645.0, 1.0)
-	assert_float(h0.y).is_equal_approx(879.0, 1.0)
+	assert_float(h0.y).is_equal_approx(Trench.HIT_Y, 1.0)
 	assert_float(h1.x).is_equal_approx(855.0, 1.0)
-	assert_float(h1.y).is_equal_approx(951.0, 1.0)
+	assert_float(h1.y).is_equal_approx(Trench.HIT_Y, 1.0)

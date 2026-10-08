@@ -10,7 +10,7 @@ extends Control
 const CRITICAL_PCT := 30.0
 const COL_X := 1530.0
 const VAL_X := 1694.0
-const ARC_CENTER := Vector2(960.0, 428.0)
+const ARC_CENTER := Vector2(960.0, 450.0)
 const ARC_RADIUS := 612.0
 const ARC_LEFT := 2.028
 const ARC_RIGHT := 1.114
