@@ -64,7 +64,7 @@ Plans:
 **Goal**: Players can bring their own Clone Hero songs, browse them, and play bundled songs out of the box.
 **Mode:** mvp
 **Depends on**: Phase 1
-**Requirements**: SONG-01, SONG-02, SONG-03, SONG-04, SONG-05, SONG-06
+**Requirements**: SONG-01, SONG-02, SONG-03, SONG-04, SONG-05, SONG-06, SONG-07
 **Success Criteria** (what must be TRUE):
 
   1. Player points the game at a Clone Hero song folder (`.chart`, `song.ini`, OGG/MP3/WAV) and plays it
@@ -72,6 +72,7 @@ Plans:
   3. Player browses the library, picks a song and difficulty, and hears an audio preview
   4. A fresh install has at least 2 bundled royalty-free or original songs that are playable with no imports
   5. A broken or unsupported song shows a readable error instead of crashing, and each song has a stable hash for later peer matching
+  6. A chart with guitar solo markers keeps each solo's start, end and note count after import, ready for Phase 3 Solo Duels
 
 **Plans**: TBD
 **UI hint**: yes

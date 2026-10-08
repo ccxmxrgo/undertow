@@ -35,6 +35,7 @@
 - [ ] **SONG-04**: Game ships with at least 2 bundled royalty-free/original songs with charts
 - [ ] **SONG-05**: Each song has a stable hash so peers can confirm they have the identical chart
 - [ ] **SONG-06**: Unsupported or broken songs show a readable error instead of crashing
+- [ ] **SONG-07**: The importer keeps guitar solo section markers (`.chart` `solo`/`soloend` events; `.mid` note 103 once CONT-01 lands) on the parsed chart, with each solo's start time, end time and note count. Charts without markers import normally with no solos. Needed by Phase 3 Solo Duel (see `phases/03-offline-versus/03-SPEC.md`).
 
 ### Instrument Extraction (research first)
 
@@ -175,6 +176,7 @@
 | PAY-05 | Phase 3 | Pending |
 | MATCH-05 | Phase 3 | Pending |
 | SONG-06 | Phase 2 | Pending |
+| SONG-07 | Phase 2 | Pending |
 | STEM-01 | Phase 2.1 | Pending |
 | STEM-02 | Phase 2.1 | Pending |
 | STEM-03 | Phase 2.1 | Pending |
@@ -206,10 +208,10 @@
 
 **Coverage:**
 
-- v1 requirements: 62 total
-- Mapped to phases: 62
+- v1 requirements: 63 total
+- Mapped to phases: 63
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-10-07*
-*Last updated: 2026-10-07 after roadmap creation*
+*Last updated: 2026-10-08 added SONG-07 (solo markers for Phase 3 Solo Duel)*
