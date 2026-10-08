@@ -23,6 +23,9 @@ const NUMERAL_SIZE := 180
 const NUMERAL_BASELINE := 624.0
 const SKIP_DIP_SEC := 0.12
 const HUD_FADE_SEC := 0.3
+const MASK_W := 480
+const MASK_H := 270
+const MASK_FAR_SCALE := 7.5
 
 var mode: int = IntroTimeline.Mode.FULL
 var _state: State = State.PRE
@@ -41,7 +44,7 @@ var _last_phase: int = -1
 var _last_number: int = 0
 var _dive_played: bool = false
 var _pad_last: bool = false
-var _frame_sb: StyleBoxFlat
+var _mask_tex: ImageTexture
 var _sfx: AudioStreamPlayer
 var _tick: AudioStreamWAV
 var _tick_hi: AudioStreamWAV
@@ -65,11 +68,6 @@ func setup(p_mode: int, p_conductor: Conductor, chart: ChartData, p_arena: Arena
 	if chart != null and not chart.tempo_map.is_empty():
 		bpm = float(chart.tempo_map[0]["bpm"])
 	_spb = IntroTimeline.seconds_per_beat(bpm)
-	_frame_sb = StyleBoxFlat.new()
-	_frame_sb.bg_color = Color("10131D")
-	_frame_sb.set_corner_radius_all(110)
-	_frame_sb.set_border_width_all(8)
-	_frame_sb.border_color = Color("2F3550")
 	_build_sfx()
 	_set_board(0.0, 0.0, 1.0, 0.0, 0.0)
 	_origin_usec = Time.get_ticks_usec()
@@ -249,12 +247,12 @@ func _draw_pre() -> void:
 	var phase: int = ph["phase"]
 	var p: float = ph["progress"]
 	match phase:
-		IntroTimeline.Phase.ROOM_GOGGLES:
+		IntroTimeline.Phase.ROOM_LENS:
+			var focus := IntroTimeline.lens_focus(t, mode, rm)
 			_draw_room(t)
-			if rm:
-				_draw_goggles(IntroTimeline.FULL_GOGGLES_END, clampf((t - 0.4) / 0.4, 0.0, 1.0))
-			else:
-				_draw_goggles(t, 1.0)
+			if not rm:
+				_draw_room_blur(t, focus)
+			_draw_lens_mask(IntroTimeline.lens_close(t, mode, rm), 0.0, rm)
 		IntroTimeline.Phase.BLACK:
 			draw_rect(Rect2(0, 0, W, H), Color.BLACK)
 		IntroTimeline.Phase.CRT:
@@ -263,8 +261,7 @@ func _draw_pre() -> void:
 			else:
 				_draw_crt(p)
 		IntroTimeline.Phase.ARENA:
-			if rm:
-				pass  # cross-fade is the board reveal itself
+			_draw_lens_mask(1.0, IntroTimeline.lens_open(t, mode, rm), rm)
 	if mode == IntroTimeline.Mode.FULL and not rm:
 		_draw_link_text(t)
 	if _hint_visible(t, phase):
@@ -275,68 +272,86 @@ func _draw_pre() -> void:
 func _hint_visible(t: float, phase: int) -> bool:
 	if mode != IntroTimeline.Mode.FULL:
 		return false
-	if phase == IntroTimeline.Phase.ROOM_GOGGLES:
+	if phase == IntroTimeline.Phase.ROOM_LENS:
 		return t >= 0.3
 	return phase == IntroTimeline.Phase.ARENA
 
 
 func _draw_room(t: float) -> void:
 	draw_rect(Rect2(0, 0, W, H), Color("07070B"))
+	_draw_room_props(t, 1.0)
+
+
+## Cheap blur approximation: faint offset copies of the bright props, shrinking as focus
+## returns, plus a dim toward black while unfocused.
+func _draw_room_blur(t: float, focus: float) -> void:
+	var off := 14.0 * (1.0 - focus)
+	if off > 0.5:
+		for d in [Vector2(off, 0), Vector2(-off, 0), Vector2(0, off), Vector2(0, -off)]:
+			draw_set_transform(d, 0.0, Vector2.ONE)
+			_draw_room_props(t, 0.2)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var dim := (1.0 - focus) * 0.35
+	if dim > 0.0:
+		draw_rect(Rect2(0, 0, W, H), Color(0, 0, 0, dim))
+
+
+func _draw_room_props(t: float, am: float) -> void:
 	var glow_c := Vector2(1380, 504)
 	for i in range(12):
 		var r := 624.0 * (1.0 - float(i) / 12.0)
-		draw_circle(glow_c, r, Color(60.0 / 255.0, 90.0 / 255.0, 140.0 / 255.0, 0.35 / 12.0))
-	draw_rect(Rect2(0, 768, 1920, 312), Color("0F1118"))
-	draw_rect(Rect2(1200, 360, 360, 228), Color("161A26"))
-	draw_rect(Rect2(1214, 374, 331, 199), Color(80.0 / 255.0, 140.0 / 255.0, 200.0 / 255.0, 0.25))
-	draw_rect(Rect2(216, 192, 192, 276), Color("12141C"))
-	draw_rect(Rect2(456, 240, 144, 192), Color("12141C"))
+		draw_circle(glow_c, r, Color(60.0 / 255.0, 90.0 / 255.0, 140.0 / 255.0, 0.35 / 12.0 * am))
+	draw_rect(Rect2(0, 768, 1920, 312), Color(Color("0F1118"), am))
+	draw_rect(Rect2(1200, 360, 360, 228), Color(Color("161A26"), am))
+	draw_rect(Rect2(1214, 374, 331, 199), Color(80.0 / 255.0, 140.0 / 255.0, 200.0 / 255.0, 0.25 * am))
+	draw_rect(Rect2(216, 192, 192, 276), Color(Color("12141C"), am))
+	draw_rect(Rect2(456, 240, 144, 192), Color(Color("12141C"), am))
 	var font := Palette.font()
 	draw_string(font, Vector2(1236, 480), "NEURAL DIVE RIG · READY", HORIZONTAL_ALIGNMENT_LEFT,
-		-1, Palette.SIZE_LABEL, Color(0.91, 0.90, 0.94, 0.35))
+		-1, Palette.SIZE_LABEL, Color(0.91, 0.90, 0.94, 0.35 * am))
 	var rec_on := Settings.reduce_motion or fmod(t, 1.0) < 0.5
 	if rec_on:
-		draw_circle(Vector2(1216, 474), 5.0, HOT_RED)
+		draw_circle(Vector2(1216, 474), 5.0, Color(HOT_RED, am))
 
 
-func _ellipse(c: Vector2, rx: float, ry: float, n: int = 40) -> PackedVector2Array:
-	var pts := PackedVector2Array()
-	for i in range(n):
-		var a := TAU * float(i) / float(n)
-		pts.append(c + Vector2(cos(a) * rx, sin(a) * ry))
-	return pts
+## Soft round-lens mask: two overlapping circular openings, a dark bridge between them and a
+## vignette inside each opening. Generated once, only scaled per frame.
+func _ensure_mask() -> void:
+	if _mask_tex != null:
+		return
+	var img := Image.create(MASK_W, MASK_H, false, Image.FORMAT_RGBA8)
+	var r := 82.5
+	var c1 := Vector2(195.0, 135.0)
+	var c2 := Vector2(285.0, 135.0)
+	for y in range(MASK_H):
+		for x in range(MASK_W):
+			var pt := Vector2(float(x) + 0.5, float(y) + 0.5)
+			var d := minf(pt.distance_to(c1), pt.distance_to(c2)) / r
+			var a := smoothstep(0.80, 1.0, d)
+			a = maxf(a, 0.40 * smoothstep(0.45, 0.80, d))
+			var bx := 1.0 - smoothstep(0.0, 9.0, absf(pt.x - 240.0))
+			var by := 1.0 - smoothstep(35.0, 75.0, absf(pt.y - 135.0))
+			a = maxf(a, 0.92 * bx * by)
+			img.set_pixel(x, y, Color(0.008, 0.016, 0.04, a))
+	_mask_tex = ImageTexture.create_from_image(img)
 
 
-func _draw_goggles(t: float, alpha: float) -> void:
-	var s := IntroTimeline.goggles_scale(t)
-	var y := IntroTimeline.goggles_y(t)
-	draw_set_transform(Vector2(960.0, y), 0.0, Vector2(s, s))
-	var strap := PackedVector2Array()
-	for i in range(21):
-		var u := float(i) / 20.0
-		var a := Vector2(-420, -10)
-		var b := Vector2(0, -120)
-		var c := Vector2(420, -10)
-		strap.append(a.lerp(b, u).lerp(b.lerp(c, u), u))
-	draw_polyline(strap, Color(0.102, 0.114, 0.157, alpha), 26.0, true)
-	_frame_sb.bg_color.a = alpha
-	_frame_sb.border_color.a = alpha
-	draw_style_box(_frame_sb, Rect2(-330, -110, 660, 220))
-	for x in [-150.0, 150.0]:
-		for i in range(8):
-			var u := float(i) / 7.0
-			var col := Color(2.0 / 255.0, 4.0 / 255.0, 10.0 / 255.0, 0.95).lerp(
-				Color(5.0 / 255.0, 217.0 / 255.0, 232.0 / 255.0, 0.35), u)
-			col.a *= alpha
-			var k := 1.0 - u * 0.85
-			draw_colored_polygon(_ellipse(Vector2(x - 30.0 * u, -30.0 * u), 130.0 * k, 88.0 * k), col)
-		var rim := _ellipse(Vector2(x, 0.0), 130.0, 88.0)
-		rim.append(rim[0])
-		draw_polyline(rim, Color(1.0, 31.0 / 255.0, 75.0 / 255.0, 0.55 * alpha), 6.0, true)
-	var led := HOT_RED if t / IntroTimeline.FULL_GOGGLES_END > 0.6 else Color("552030")
-	led.a = alpha
-	draw_circle(Vector2(0, -70), 7.0, led)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+## close: 0..1 closing scale; open: 0..1 opening/dissolve. Reduce motion: no scaling, alpha only.
+func _draw_lens_mask(close: float, open: float, rm: bool) -> void:
+	_ensure_mask()
+	var scale_f := 1.0
+	var alpha := 1.0
+	if rm:
+		alpha = close * (1.0 - open)
+	elif open > 0.0:
+		scale_f = lerpf(1.0, MASK_FAR_SCALE, open)
+		alpha = 1.0 - open
+	else:
+		scale_f = lerpf(MASK_FAR_SCALE, 1.0, close)
+	if alpha <= 0.0:
+		return
+	draw_texture_rect(_mask_tex, Rect2(960.0 - 960.0 * scale_f, 540.0 - 540.0 * scale_f,
+		W * scale_f, H * scale_f), false, Color(1, 1, 1, alpha))
 
 
 func _draw_crt(q: float) -> void:

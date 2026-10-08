@@ -180,3 +180,12 @@ func test_autoplay_with_skip_is_all_perfect() -> void:
 func test_no_preroll_pip_constant_remains() -> void:
 	var f := FileAccess.open("res://src/ui/highway.gd", FileAccess.READ)
 	assert_bool(f.get_as_text().contains("PREROLL_BEATS")).is_false()
+
+
+func test_intro_source_has_no_goggles_drawing() -> void:
+	var f := FileAccess.open("res://src/ui/goggles_intro.gd", FileAccess.READ)
+	assert_object(f).is_not_null()
+	var src := f.get_as_text().to_lower()
+	f.close()
+	for token in ["_frame_sb", "strap", "draw_circle(vector2(0, -70)", "_draw_goggles"]:
+		assert_bool(src.contains(token)).is_false()
