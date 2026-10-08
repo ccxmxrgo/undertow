@@ -2,9 +2,9 @@
 
 **Created:** 2026-10-08
 **Ambiguity score:** 0.18 (gate: ≤ 0.20)
-**Requirements:** 13 locked
+**Requirements:** 14 locked
 
-> **Scope of this spec.** It locks only the *reward system* (how attacks are earned, drawn and fired, and the reward pool, requirements 1–8) and five *multiplayer moments* built on top of it (Torpedo Collision, Bounty, Solo Duel, Killfeed, Medals, requirements 9–13). It changes TORP-01, TORP-02 and PAY-02 and extends MATCH-05. All other Phase 3 requirements (TORP-03..06, PAY-01, PAY-03..06, MATCH-01..04, MATCH-06) stay as written in `REQUIREMENTS.md` and are **not** pre-answered here. discuss-phase should still discuss them normally.
+> **Scope of this spec.** It locks only the *reward system* (how attacks are earned, drawn and fired, and the reward pool, requirements 1–8) and five *multiplayer moments* built on top of it (Torpedo Collision, Bounty, Solo Duel, Killfeed, Medals, requirements 9–13). It changes TORP-01, TORP-02 and PAY-02, extends MATCH-05, and slows the Phase 1 hull repair (D-13, requirement 14). All other Phase 3 requirements (TORP-03..06, PAY-01, PAY-03..06, MATCH-01..04, MATCH-06) stay as written in `REQUIREMENTS.md` and are **not** pre-answered here. discuss-phase should still discuss them normally.
 
 ## Goal
 
@@ -114,6 +114,11 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
      A tie for a "most" medal gives it to every tied player.
    - Acceptance: Unit tests on a scripted match log give the expected medals for each rule. A player who meets more than 3 rules shows the first 3 in table order.
 
+14. **Slower hull repair**: Each Perfect repairs a quarter of the current amount.
+   - Current: Phase 1 decision D-13 has each Perfect restore 1 hull (`perfect_regen = 1.0` in `src/core/judge_config.gd`), while a Miss costs 8. 8 Perfects undo a Miss, which is about 2 seconds on Expert, so damage barely lasts. The user doesn't like that hitting every note repairs the hull this fast.
+   - Target: `perfect_regen` default becomes `0.25`. A Miss now takes 32 Perfects to undo (about 6–8 s on Expert). Repair still happens per Perfect (no streak chunks; the user chose this option over chunked or no repair). Miss damage (8) and hull start (100) are unchanged. This also makes Ballast Patch (+25 hull) worth more. Supersedes the regen value in D-13.
+   - Acceptance: Unit test: from 100, a Miss leaves 92 and a following Perfect leaves 92.25. The existing hull test that expects 93 is updated to 92.25. 32 Perfects after a Miss bring the hull back to 100.
+
 ## Boundaries
 
 **In scope:**
@@ -161,6 +166,7 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
 - [ ] A marked solo of 16+ notes runs a Solo Duel, and the best Perfect % at or above 85% wins a reward
 - [ ] The killfeed shows one line per listed event, at most 4 lines, each fading after 4 s
 - [ ] The results screen shows up to 3 medals per player, following the medal rules
+- [ ] `perfect_regen` is 0.25: a Miss followed by a Perfect leaves 92.25 hull
 
 ## Ambiguity Report
 
@@ -188,6 +194,7 @@ Confirmed by the user on 2026-10-08: the 12% ratio, the one-slot hold with the m
 | 8     | Simplifier      | Details for the 5 added ideas | Claude proposed defaults (2-beat travel, 50% bounty refund, 70% / 16-note duel minimums, 4-line feed, 7 medals). |
 | 9     | Boundary Keeper | Confirm multiplayer defaults | User chose: 1-beat travel with the target alerted at launch, 25% bounty refund, 85% Solo Duel minimum, all 7 medals. |
 | 10    | Boundary Keeper | Confirm remaining defaults | User confirmed: 16-note solo minimum, killfeed of 4 lines, 4 s fade, top-right corner. |
+| 11    | Simplifier      | Hull repairs too fast on every note | Keep per-Perfect repair at a quarter of the rate: `perfect_regen` 1.0 → 0.25 (chosen over streak chunks or no repair) |
 
 ---
 
