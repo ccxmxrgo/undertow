@@ -147,14 +147,14 @@ func test_normal_run_is_not_practice() -> void:
 func test_visor_and_streak_layering_and_restart() -> void:
 	var gp := _launch(false)
 	await get_tree().process_frame
-	var order := [gp.highway, gp.feedback, gp.visor, gp.hud, gp.streak_counter, gp.visor_brackets, gp.pause_menu]
+	var order := [gp.highway, gp.feedback, gp.visor, gp.visor_hud, gp.hud, gp.streak_counter, gp.visor_brackets, gp.pause_menu]
 	for i in range(order.size() - 1):
 		assert_int((order[i] as Node).get_index()).is_less((order[i + 1] as Node).get_index())
 	gp.score.combo_changed.emit(10)
 	assert_str(gp.streak_counter.popup_text()).is_equal("10 STREAK")
 	gp.restart(false)
 	await get_tree().process_frame
-	for cls in [VisorFrame, StreakCounter, VisorBrackets]:
+	for cls in [VisorFrame, VisorHud, StreakCounter, VisorBrackets]:
 		var n := 0
 		for ch in gp._run_root.get_children():
 			if is_instance_of(ch, cls):
