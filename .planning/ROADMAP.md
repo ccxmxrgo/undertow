@@ -53,7 +53,7 @@ UNDERTOW is built as a series of vertical slices, each playable on its own. Firs
 
 **UI hint**: yes
 **Depends on:** Phase 1
-**Plans:** 2/5 plans executed
+**Plans:** 3/5 plans executed
 
 Plans:
 
