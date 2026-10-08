@@ -126,7 +126,7 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
 | Acceptance Criteria| 0.75  | 0.70 | ✓      | Strong-bot frequency check depends on bot skill model from discuss-phase |
 | **Ambiguity**      | 0.18  | ≤0.20| ✓      | |
 
-Assumptions the user hasn't explicitly confirmed (proposed in brainstorming, not objected to): the 12% ratio, the one-slot hold, Lane Flip replaced by Crossed Wires, all bar durations, and Ballast Patch at 25%. Treat them as tunable defaults.
+Confirmed by the user on 2026-10-08: the 12% ratio, the one-slot hold with the meter paused, Lane Flip replaced by Crossed Wires, and the bar durations as listed. Ballast Patch at 25% is the one value still unconfirmed. All of these remain tunable constants for playtesting.
 
 ## Interview Log
 
@@ -137,6 +137,7 @@ Assumptions the user hasn't explicitly confirmed (proposed in brainstorming, not
 | 3     | Researcher      | Streak counts of 10–75 too low? Notes per song? | Yes, too chaotic. Thresholds scale with chart note count. |
 | 4     | Boundary Keeper | How many rewards per song? | ~3 per song for a strong player, "for now" |
 | 5     | Simplifier      | Pool and selection | At least 6 disruptors + 3 buffs, **random** in-game. Shuffled bag chosen as the fairness guard. |
+| 6     | Boundary Keeper | Confirm defaults | 12% threshold, 1 slot with the meter paused, Crossed Wires replaces Lane Flip, durations as proposed |
 
 ---
 
