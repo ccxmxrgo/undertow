@@ -71,3 +71,9 @@ func test_numeral_fixed_width() -> void:
 	assert_int(c.number_text().length()).is_equal(4)
 	s.combo_changed.emit(100)
 	assert_int(c.number_text().length()).is_equal(4)
+
+
+func test_trench_anchor_and_caption() -> void:
+	assert_float(StreakCounter.RIGHT_X).is_equal(390.0)
+	assert_str(StreakCounter.CAPTION).is_equal("STREAK")
+	assert_bool(absf(StreakCounter.right_x() - StreakCounter.RIGHT_X) < 3.0).is_true()

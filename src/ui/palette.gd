@@ -9,15 +9,8 @@ const TEXT := Color("8FD98A")  # secondary text, GOOD
 const ACCENT := Color("39FF14")  # hull line, notes, focus, PERFECT
 const DESTRUCTIVE := Color("FF4A3D")  # MISS, critical hull
 
-## Recording-frame chrome (01.1-06, user art direction 2026-10-08: "braindance"-inspired
-## recording look). Used ONLY by the visor frame and gameplay HUD chrome, never by lanes.
-const REC_TEXT := Color("E8E6F0")  # off-white / light lavender chrome text
-const REC_RED := Color("FF1F4B")  # REC dot, playhead, frame ticks, rim highlight
-const REC_TEAL := Color("05D9E8")  # data readouts, keyframe markers
-## Layer-selector chip hues (decorative chips only).
-const CHIP_VISUAL := Color("F472B6")
-const CHIP_AUDIO := Color("05D9E8")
-const CHIP_SONAR := Color("FBBF24")
+## HUD off-white text (#E8E6F0): multiplier values and badge text.
+const REC_TEXT := Color("E8E6F0")
 
 ## Per-lane identity colors (D-02), lane order. ACCENT stays for hull line, edges, HUD.
 const LANE_COLORS: Array[Color] = [Color("22D3EE"), Color("FBBF24"), Color("F472B6"), Color("A3E635")]

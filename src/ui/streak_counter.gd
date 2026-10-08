@@ -1,12 +1,14 @@
 class_name StreakCounter
 extends Control
-## Large NOTE STREAK (combo) counter left of the highway plus milestone popups (D-08, D-13).
+## Large STREAK (combo) counter left of the hit ring plus milestone popups (D-08, D-13).
 ## The Perfect streak stays in the HUD; lane colors are never used here.
 
-const RIGHT_X := 672.0
-const NUMBER_Y := 760.0
-const POPUP_X := 384.0
-const POPUP_Y := 640.0
+## Fallback/spec value; the live anchor is Trench.point(-2.6, 0.0).x - 24 (see right_x()).
+const RIGHT_X := 390.0
+const ANCHOR_F := -2.6
+const NUMBER_BASE_Y := 709.0
+const CAPTION_BASE_Y := 745.0
+const POPUP_BASE_Y := 600.0
 const MIN_SHOWN := 5
 const FADE_IN_SEC := 0.12
 const PULSE_SEC := 0.08
@@ -15,7 +17,8 @@ const POPUP_RISE := 32.0
 const POPUP_STATIC_SEC := 0.7
 const POPUP_STATIC_FADE := 0.2
 const NUM_CHARS := 4
-const CAPTION := "NOTE STREAK"
+const CAPTION := "STREAK"
+const CAPTION_COLOR := Color("8A93AD")
 
 var _combo: int = 0
 var _shown_since_msec: int = 0
@@ -51,6 +54,11 @@ static func font_size_for(t: int) -> int:
 
 static func color_for(t: int) -> Color:
 	return Palette.TEXT if t <= 1 else Palette.ACCENT
+
+
+## Right edge of the number/caption/popup, derived from the trench (D-07).
+static func right_x() -> float:
+	return Trench.point(ANCHOR_F, 0.0).x - 24.0
 
 
 func on_combo(value: int) -> void:
@@ -133,24 +141,20 @@ func _draw_counter(now: int) -> void:
 			scale_f = 1.0 + 0.1 * sin(PI * p / PULSE_SEC)
 	var font := Palette.bold()
 	var text := number_text()
+	var rx := right_x()
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	var asc := font.get_ascent(size)
-	var desc := font.get_descent(size)
-	var height := asc + desc
-	# Scale about the number's right-center so the box does not shift.
-	var pivot := Vector2(RIGHT_X, NUMBER_Y)
+	# Scale about the number's right baseline so the box does not shift.
+	var pivot := Vector2(rx, NUMBER_BASE_Y)
 	draw_set_transform(pivot - pivot * scale_f, 0.0, Vector2(scale_f, scale_f))
-	var top := NUMBER_Y - height * 0.5
-	var pos := Vector2(RIGHT_X - w, top + asc)
+	var pos := Vector2(rx - w, NUMBER_BASE_Y)
 	if t >= 3:
 		draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 6, Palette.alpha(Palette.ACCENT, 0.3 * a))
 	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Palette.alpha(col, a))
 	if t >= 4:
-		var bar_y := top + height + 8.0
-		draw_rect(Rect2(RIGHT_X - w, bar_y, w, 2.0), Palette.alpha(Palette.ACCENT, a))
+		draw_rect(Rect2(rx - w, NUMBER_BASE_Y + 8.0, w, 2.0), Palette.alpha(Palette.ACCENT, a))
 	var cap_font := Palette.font()
 	var cw := cap_font.get_string_size(CAPTION, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL).x
-	draw_string(cap_font, Vector2(RIGHT_X - cw, top - 8.0), CAPTION, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.alpha(Palette.TEXT, a))
+	draw_string(cap_font, Vector2(rx - cw, CAPTION_BASE_Y), CAPTION, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.alpha(CAPTION_COLOR, a))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -172,6 +176,5 @@ func _draw_popup() -> void:
 	var size := Palette.SIZE_HEADING
 	var text := _popup_text.to_upper()
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	var h := font.get_ascent(size) + font.get_descent(size)
-	var pos := Vector2(POPUP_X - w * 0.5, POPUP_Y - rise - h * 0.5 + font.get_ascent(size))
+	var pos := Vector2(right_x() - w, POPUP_BASE_Y - rise)
 	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Palette.alpha(Palette.ACCENT, a))
