@@ -99,3 +99,14 @@ Players can bring their own Clone Hero songs (`.chart` + `song.ini` + OGG/MP3/WA
 ---
 
 *Phase: 02-chart-import-songs. Context gathered: 2026-10-08 (smart discuss, all recommended answers accepted)*
+
+## Orchestrator resolutions of research open questions (2026-10-08)
+- **Bundled tracks (D-14):** "Synth Wave April 3, 2022" and "Space Synth Wave", by Pro Sensory (Alex McCulloch) on OpenGameArt. Both are CC0 at 120 BPM. Credit is given anyway. Their charts are authored by a deterministic generator driven by a hand-written per-bar section plan. It does NOT analyse the audio, so it is consistent with the user's rejection of audio auto-charting. Beat offset (`song.ini delay`) is tuned in a Wave 0 spike with Autoplay plus the windowed harness.
+- **`[Song] Offset`:** ignore it and honour only `song.ini` `delay`, as recommended.
+- **Sustain-to-tap threshold:** sustains of a 16th note or shorter become taps.
+- **MP3 encoder padding:** measure it in the Wave 0 spike and compensate if it is above 5 ms.
+- **The 34 MB WAV:** convert it to OGG Vorbis at build time (quality ~6) to keep the dist zip small. If no encoder is available, import it as QOA. Record the choice.
+- **Calibration Track:** always listed, sorted last, marked "TEST".
+- **Digits 1–4 vs type-to-filter:** digits navigate only while the filter is empty.
+- **ScoreStore.MAX_SECTIONS:** raise it (e.g. 4096) so a real library doesn't lose records.
+- **Downloads:** agents must not download files without asking the user. Bundled audio is fetched by an explicit plan task that the user approved via this phase's context (CC0 sources listed above).
