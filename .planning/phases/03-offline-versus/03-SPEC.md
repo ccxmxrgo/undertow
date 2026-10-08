@@ -1,14 +1,14 @@
-# Phase 3: Offline Versus — Specification (Killstreak Rewards)
+# Phase 3: Offline Versus — Specification (Killstreak Rewards + Multiplayer Moments)
 
 **Created:** 2026-10-08
 **Ambiguity score:** 0.18 (gate: ≤ 0.20)
-**Requirements:** 8 locked
+**Requirements:** 13 locked
 
-> **Scope of this spec.** It locks only the *reward system* (how attacks are earned, drawn and fired, and the reward pool). It changes TORP-01, TORP-02 and PAY-02. All other Phase 3 requirements (TORP-03..06, PAY-01, PAY-03..06, MATCH-01..06) stay as written in `REQUIREMENTS.md` and are **not** pre-answered here. discuss-phase should still discuss them normally.
+> **Scope of this spec.** It locks only the *reward system* (how attacks are earned, drawn and fired, and the reward pool, requirements 1–8) and five *multiplayer moments* built on top of it (Torpedo Collision, Bounty, Solo Duel, Killfeed, Medals, requirements 9–13). It changes TORP-01, TORP-02 and PAY-02 and extends MATCH-05. All other Phase 3 requirements (TORP-03..06, PAY-01, PAY-03..06, MATCH-01..04, MATCH-06) stay as written in `REQUIREMENTS.md` and are **not** pre-answered here. discuss-phase should still discuss them normally.
 
 ## Goal
 
-The single "full tube = one torpedo" attack becomes a Call of Duty-style killstreak system. An unbroken Perfect streak earns a randomly drawn reward from a pool of 6 disruptors and 3 buffs, about 3 times per song for a strong player.
+The single "full tube = one torpedo" attack becomes a Call of Duty-style killstreak system. An unbroken Perfect streak earns a randomly drawn reward from a pool of 6 disruptors and 3 buffs, about 3 times per song for a strong player. On top of that, five multiplayer moments make the match about the people in it: torpedoes that collide head-on, a bounty on the leader, a duel during the song's guitar solo, a live killfeed, and end-of-match medals.
 
 ## Background
 
@@ -27,7 +27,7 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
 
 2. **One reward slot**: A player holds at most one reward at a time.
    - Current: n/a
-   - Target: While a reward is held, the meter stops at full and stays there. When the reward is used, the meter starts filling again from 0 with the ongoing streak. A Miss while holding a reward keeps the reward and resets the meter.
+   - Target: While a reward is held, the meter stops at full and stays there. When the reward is used, the meter starts filling again from 0 with the ongoing streak. A Miss while holding a reward keeps the reward and resets the meter. The only exception is a Solo Duel prize (requirement 11), which can wait in a one-item queue behind the held reward.
    - Acceptance: Unit test: with a reward held, 50 more Perfects don't earn a second reward. After using it, a new reward needs a full new threshold of Perfects.
 
 3. **Shuffled-bag draw**: Each player draws rewards from a personal shuffled bag of all 9 rewards.
@@ -77,6 +77,43 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
    - Target: The 0.12 ratio is tuned so that a bot at "strong" skill earns 2–4 rewards per song across the bundled songs.
    - Acceptance: A strong-skill bot match on each bundled song logs 2–4 rewards earned per strong bot. If not, adjust `reward_threshold_ratio` and record the new value.
 
+9. **Torpedo Collision**: Two disruptors fired at each other cancel out.
+   - Current: n/a
+   - Target: A disruptor travels for a fixed number of beats between launch and arrival (`torpedo_travel_beats`, default 2, tunable; the telegraph from TORP-04 covers this time). If player A's disruptor is in flight toward B while B's disruptor is in flight toward A, both explode at the halfway point and neither lands. Both rewards are used up. Both players' periscope panels flash, and a collision sound plays for everyone. Buffs never collide. A Decoy Flare isn't spent by a collision.
+   - Acceptance: Unit test: A fires at B, and B fires at A one beat later while A's torpedo is still in flight. Neither payload lands, both slots are empty, and one `collision` event is emitted. If B fires after A's torpedo has arrived, there's no collision.
+
+10. **Bounty on the leader**: The leader carries a bounty, and landing a disruptor on them refunds part of the shooter's meter.
+   - Current: n/a
+   - Target: The alive player with the highest depth (score) carries the bounty. It moves when the lead changes, with ties keeping the current holder. A marker shows on the holder's periscope panel and on their own HUD. When a disruptor actually takes effect on the bounty holder (not absorbed by Decoy Flare, not reflected, not collided), the shooter's reward meter gains 50% of their threshold (`bounty_refund_ratio`, tunable). If that pushes the meter past the threshold, the shooter earns a reward at once and the extra is dropped. A player can't claim a bounty on themselves. With only 2 players this works as a catch-up rule: only the trailing player can claim it.
+   - Acceptance: Unit test: with a threshold of 120, a shooter at 0 who lands on the leader moves to 60. A disruptor absorbed by Decoy Flare gives nothing. When the lead changes, the marker moves to the new leader on the same game-state update.
+
+11. **Solo Duel**: The chart's guitar solo sections become a contest between all living players.
+   - Current: Charts mark solo sections (`.chart` `solo`/`soloend` events, `.mid` note 103). Phase 2's importer doesn't promise to keep them.
+   - Target: For each marked solo with at least 16 notes (`solo_duel_min_notes`), a "SOLO DUEL" banner appears 1 bar before it starts. During the solo, each living player's periscope panel shows their live Perfect % for the section. When the solo ends, the living player with the highest Perfect % wins a free reward (the next item from their bag), provided they hit at least 70% Perfect (`solo_duel_min_accuracy`). Tie-break: longest Perfect streak inside the solo. A tie after that means no winner. If the winner's slot is full, the prize waits in a queue (max 1) and drops into the slot as soon as it empties. Disruptors still work during a solo. Wreck ghosts don't take part. Charts with no solo markers simply have no duels.
+   - Acceptance: Unit test with a chart containing one 20-note solo: player A ends with 85% Perfect and B with 80%, and A receives a reward when the solo ends. When everyone is below 70%, nobody wins. A 10-note solo starts no duel. A winner already holding a reward gets the prize in their slot right after using the held one.
+
+12. **Killfeed**: A small live log shows what just happened between players.
+   - Current: n/a
+   - Target: A feed in a screen corner that doesn't cover the highway, showing at most 4 lines. Each line fades after 4 s. Lines are written for these events: disruptor landed (`ALEX ⟶ Ink Cloud ⟶ SAM`), reflected (`SAM ↩ REFLECTED Ink Cloud`), absorbed by Decoy (`SAM 🛡 blocked`), collision (`ALEX ✕ SAM collided`), bounty claimed (`ALEX claimed the bounty on SAM`), Solo Duel won (`SAM wins the solo`), implosion (`💀 ALEX imploded`). Lines involving you are highlighted. The killfeed reads only from the EventChannel, so it works the same with bots now and over the network in Phase 4.
+   - Acceptance: In a bot match, each listed event type produces exactly one line with the right names. A 5th line pushes out the oldest. Lines fade after 4 s.
+
+13. **End-of-match medals**: The results screen (MATCH-05) awards fun titles.
+   - Current: MATCH-05 lists winner, depth, accuracy, torpedoes landed and reflected.
+   - Target: Each player shows up to 3 earned medals, picked in the order listed:
+
+     | Medal | Earned when |
+     |---|---|
+     | **Untouchable** | At least 2 disruptors were fired at you and none took effect |
+     | **Uno Reverse** | Most reflections in the match (at least 1) |
+     | **Bounty Hunter** | Most bounties claimed (at least 1) |
+     | **Shredder** | Won at least one Solo Duel |
+     | **Head-On** | Was part of a Torpedo Collision |
+     | **Grudge** | Landed 3 or more disruptors on the same rival |
+     | **Dogpiled** | Every rival targeted you at least once (3+ player matches only) |
+
+     A tie for a "most" medal gives it to every tied player.
+   - Acceptance: Unit tests on a scripted match log give the expected medals for each rule. A player who meets more than 3 rules shows the first 3 in table order.
+
 ## Boundaries
 
 **In scope:**
@@ -85,6 +122,7 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
 - One-slot hold, Fire to use, HUD display of the held reward
 - 6 disruptors and 3 buffs as specified
 - Bots earn, draw and fire rewards using the same rules
+- Torpedo Collision, Bounty, Solo Duel, Killfeed and Medals as specified (requirements 9–13)
 
 **Out of scope:**
 - Comeback/deathstreak rewards (Last Gasp, Mimic, Emergency Blow, Leader Seeker, Scuttle Charge): deferred. The bag already guarantees a fair mix. Candidates for a later phase.
@@ -94,6 +132,7 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
 - Finisher-tier rewards (Leviathan, Torpedo Spread, EMP): deferred. They would need TORP-05 exceptions.
 - Wreck-ghost debris attacks (MATCH-03): unchanged by this spec. Ghosts don't draw from the reward bag.
 - Network sync of draws: Phase 4. This spec only requires the seeded bag so draws can be replayed.
+- Brainstormed multiplayer ideas kept for later: Payback (unreflectable revenge shot), Interceptor (shoot down a torpedo aimed at someone else), Boarding Party (steal a held reward), Sea Mine (hot potato), Salvage Race, Thermal Vent (chorus double meter), Mute and Wrong Station (instrument-lane disruptors, need Phase 2.1), Haunting and Ghost Fleet (wreck ghosts), Kill cam, Sonar Ping taunt.
 
 ## Constraints
 
@@ -101,6 +140,8 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
 - All thresholds, durations and percentages are tunable constants (a config resource like `JudgeConfig`), not hard-coded.
 - Ghost-note and Sonar Jam visuals must stay readable with the low-effects toggle on.
 - Godot 4.7.2, GDScript, gdUnit4 tests (`tools/run_tests.ps1`).
+- **Phase 2 dependency:** Solo Duel needs the chart importer to keep solo section markers (`.chart` `solo`/`soloend`, `.mid` note 103) on the parsed chart. Phase 2 should parse them even though nothing uses them until Phase 3.
+- Collision, bounty and Solo Duel results must be decided from song-time-stamped events, so that in Phase 4 the host can decide them once and broadcast the outcome.
 
 ## Acceptance Criteria
 
@@ -115,6 +156,11 @@ Typical chart sizes (Clone Hero, 3–4 min song): Easy ~150–250 notes, Medium 
 - [ ] Overclock counts Goods as Perfect for 4 bars
 - [ ] Lane Flip isn't in the pool, and Crossed Wires is
 - [ ] Strong bots earn 2–4 rewards per bundled song
+- [ ] Two disruptors in flight toward each other collide, neither lands, and both rewards are used up
+- [ ] Landing a disruptor on the bounty holder adds 50% of a threshold to the shooter's meter, and blocked or reflected shots add nothing
+- [ ] A marked solo of 16+ notes runs a Solo Duel, and the best Perfect % at or above 70% wins a reward
+- [ ] The killfeed shows one line per listed event, at most 4 lines, each fading after 4 s
+- [ ] The results screen shows up to 3 medals per player, following the medal rules
 
 ## Ambiguity Report
 
@@ -138,6 +184,8 @@ Confirmed by the user on 2026-10-08: the 12% ratio, the one-slot hold with the m
 | 4     | Boundary Keeper | How many rewards per song? | ~3 per song for a strong player, "for now" |
 | 5     | Simplifier      | Pool and selection | At least 6 disruptors + 3 buffs, **random** in-game. Shuffled bag chosen as the fairness guard. |
 | 6     | Boundary Keeper | Confirm defaults | 12% threshold, 1 slot with the meter paused, Crossed Wires replaces Lane Flip, durations as proposed |
+| 7     | Researcher      | More multiplayer ideas (17 pitched) | Collision, Bounty, Solo Duel, Killfeed and Medals added. The rest are deferred (see Boundaries). |
+| 8     | Simplifier      | Details for the 5 added ideas | Claude chose the defaults (2-beat travel, 50% bounty refund, 70% / 16-note duel minimums, 4-line feed, 7 medals). All are tunable and not yet confirmed by the user. |
 
 ---
 
