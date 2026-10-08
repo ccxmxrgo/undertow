@@ -114,7 +114,7 @@ Plans:
   5. The tool runs on the player's own PC without a paid service, and reports progress and failures clearly
 
 **Depends on:** Phase 2
-**Plans:** 0 plans
+**Plans:** 1/6 plans executed
 
 Plans:
 
@@ -180,7 +180,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Timing Core & Calibration | 10/10 | Complete   | 2026-10-07 |
-| 2. Chart Import & Songs | 0/TBD | Not started | - |
+| 2. Chart Import & Songs | 1/6 | In Progress|  |
 | 3. Offline Versus | 0/TBD | Not started | - |
 | 4. Online Play | 0/TBD | Not started | - |
 | 5. Polish & Packaging | 0/TBD | Not started | - |
