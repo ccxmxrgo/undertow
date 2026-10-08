@@ -31,6 +31,9 @@ var conductor: Conductor
 var lane_input: LaneInput
 var highway: Highway
 var hud: Hud
+var visor: VisorFrame
+var streak_counter: StreakCounter
+var visor_brackets: VisorBrackets
 var feedback: Feedback
 var fail_screen: FailScreen
 var results: ResultsScreen
@@ -98,10 +101,17 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	feedback.nudge_target = _run_root
 	_run_root.add_child(feedback)
 	feedback.connect_judge(judge)
+	visor = VisorFrame.new()  # below the HUD so HUD contrast is untouched
+	_run_root.add_child(visor)
 	hud = Hud.new()
 	_run_root.add_child(hud)
 	hud.bind(score)
 	hud.set_autoplay(autoplay_used)
+	streak_counter = StreakCounter.new()
+	_run_root.add_child(streak_counter)
+	streak_counter.bind(score)
+	visor_brackets = VisorBrackets.new()
+	_run_root.add_child(visor_brackets)
 	_autoplay_player = Autoplay.new(chart, judge) if autoplay else null
 	_end_time = 0.0
 	for n in chart.notes:
