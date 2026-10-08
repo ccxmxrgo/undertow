@@ -183,3 +183,33 @@ func test_sustain_ribbon_span_is_clamped_and_empty_when_offscreen() -> void:
 	assert_float(Highway.ribbon_span(-0.5, 0.4, true).x).is_equal(0.0)
 	# far clamp
 	assert_float(Highway.ribbon_span(0.2, 9.0, false).y).is_equal(Trench.D_FAR)
+
+
+func test_arena_pulse_held_until_beat_live() -> void:
+	# WR-03: the idle clock must not pin the pulse at maximum before the count-in.
+	var a := Arena.new()
+	auto_free(a)
+	a.beat_live = false
+	a.advance(0.016)
+	assert_float(a._pulse).is_equal(0.0)
+
+
+func test_gameplay_holds_notes_and_pulse_until_count_in() -> void:
+	var old := Gameplay.pending_intro
+	Gameplay.pending_intro = IntroTimeline.Mode.FULL
+	Gameplay.pending_chart = TestCharts.short_chart()
+	var gp: Gameplay = (load("res://scenes/gameplay.tscn") as PackedScene).instantiate()
+	add_child(gp)
+	auto_free(gp)
+	await get_tree().process_frame
+	assert_bool(gp.is_began()).is_false()
+	assert_bool(gp.highway.notes_enabled).is_false()
+	assert_bool(gp.arena.beat_live).is_false()
+	gp.intro.skip()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert_bool(gp.is_began()).is_true()
+	assert_bool(gp.highway.notes_enabled).is_true()
+	assert_bool(gp.arena.beat_live).is_true()
+	Gameplay.pending_intro = old
+	Gameplay.pending_chart = null

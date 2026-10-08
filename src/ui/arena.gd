@@ -33,6 +33,9 @@ const EDGE_FADE_TO := 1000.0
 
 ## 0..1 whole-arena alpha, driven by the intro (plan 04).
 var reveal: float = 1.0
+## False until the conductor lead-in starts: the idle clock reads song_time 0, which would pin
+## the beat pulse at maximum for the whole pre-count (WR-03). Gameplay flips it on.
+var beat_live: bool = true
 
 var _conductor: Conductor
 var _tempo_map: Array = []
@@ -192,7 +195,7 @@ func advance(delta: float) -> void:
 		_dim = maxf(_dim - delta / FAIL_DIM_SEC * 0.5, 0.5)
 	if not rm:
 		var st := _conductor.song_time() if _conductor != null else _t
-		_pulse = BeatClock.pulse(BeatClock.phase(st, _tempo_map))
+		_pulse = BeatClock.pulse(BeatClock.phase(st, _tempo_map)) if beat_live else 0.0
 		for i in SNOW_FULL:
 			var z := _snow_z[i]
 			var p := _snow_pos[i]

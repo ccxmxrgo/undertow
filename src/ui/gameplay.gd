@@ -109,6 +109,9 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	highway.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_run_root.add_child(highway)
 	highway.setup(chart, conductor, cfg)
+	# Hold the board's notes and beat pulse until the lead-in starts (WR-03).
+	highway.notes_enabled = false
+	arena.beat_live = false
 	lane_input.lane_pressed.connect(highway.on_lane_pressed)
 	judge.judged.connect(highway.on_judged)
 	judge.stray.connect(highway.on_stray)
@@ -160,6 +163,8 @@ func _begin_count_in(skipped: bool = false) -> void:
 	conductor.begin(chart.audio_stream, beats * IntroTimeline.seconds_per_beat(_bpm()))
 	lane_input.enabled = not autoplay  # autoplay presses for the player
 	_began = true
+	highway.notes_enabled = true
+	arena.beat_live = true
 	if intro != null and is_instance_valid(intro):
 		intro.on_count_started(skipped)
 

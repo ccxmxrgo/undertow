@@ -52,6 +52,9 @@ var _vis := PackedInt32Array()
 var cable_grow: float = 1.0  # fraction of the cable samples drawn, from the far end inward
 var cable_bright: float = 0.0  # 0 = dim x0.50 line, 1 = full lane colour 3.6 px with glow
 var receptor_alpha: float = 1.0  # multiplies receptor and lane-number alpha
+## False until the conductor lead-in starts: before that the idle clock reads song_time 0 and
+## early notes would sit on the cables, then jump away when the lead-in begins (WR-03).
+var notes_enabled: bool = true
 
 
 ## True while a note is inside the Good window (inclusive); NaN/inf are never ready.
@@ -146,7 +149,8 @@ func _draw() -> void:
 
 	_draw_cables(phase, calm)
 	_draw_ring(phase)
-	_draw_notes(st, vt, approach)
+	if notes_enabled:
+		_draw_notes(st, vt, approach)
 	_draw_receptors()
 	_draw_indicator()
 	if show_spike_readout:
