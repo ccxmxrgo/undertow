@@ -110,3 +110,10 @@ Players can bring their own Clone Hero songs (`.chart` + `song.ini` + OGG/MP3/WA
 - **Digits 1–4 vs type-to-filter:** digits navigate only while the filter is empty.
 - **ScoreStore.MAX_SECTIONS:** raise it (e.g. 4096) so a real library doesn't lose records.
 - **Downloads:** agents must not download files without asking the user. Bundled audio is fetched by an explicit plan task that the user approved via this phase's context (CC0 sources listed above).
+
+## User song wishlist (2026-10-08)
+- The user wants to play: the song from their YouTube link, "Sea Shanty 2" (RuneScape), "Invisible" (Duran Duran) and "Out of Touch" (Hall & Oates).
+- These are **not bundled and not downloaded by the game or by agents.** Claude declined to rip them from YouTube (YouTube ToS and copyright; distributing them in the friends' zip would share copyrighted music).
+- **Path to play them:** the user and each friend supply their own copy of the audio plus a chart (a community Clone Hero chart they download themselves, or the Phase 2.1 extraction tool) and drop the folder into `Songs`. The SONG-05 fingerprint lets friends match the same chart in Phase 4.
+- **Planning implication:** song import must handle typical community Clone Hero folders robustly: multi-stem audio, `song.ini` variants and album art (ignored is fine). Add a test fixture shaped like a typical community song folder.
+- **Download approval:** the user approved downloading the two CC0 OpenGameArt tracks (D-14) for bundling.
