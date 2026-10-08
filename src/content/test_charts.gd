@@ -7,6 +7,7 @@ extends RefCounted
 static func click_chart(bpm: float, beats: int, rate: int = 0) -> ChartData:
 	var c := ChartData.new()
 	c.title = "Click %d BPM" % int(bpm)
+	c.id = "test.click.%d.%d" % [int(bpm), beats]
 	var spb := 60.0 / bpm
 	for beat in range(beats):
 		c.add_note(beat % 4, beat * spb)
@@ -16,6 +17,8 @@ static func click_chart(bpm: float, beats: int, rate: int = 0) -> ChartData:
 	return c
 
 
+## Bump the suffix if the hand chart notes ever change.
+const HAND_CHART_ID := "test.hand_chart.v1"
 const HAND_BPM_A := 100.0
 const HAND_BPM_B := 140.0
 const HAND_BARS_A := 16
@@ -36,6 +39,7 @@ static func _beat_time(beat: int, bpm_a: float, bars_a: int, bpm_b: float) -> fl
 static func hand_chart(rate: int = 0) -> ChartData:
 	var c := ChartData.new()
 	c.title = "Hand chart"
+	c.id = HAND_CHART_ID
 	var change_time := _beat_time(HAND_BARS_A * 4, HAND_BPM_A, HAND_BARS_A, HAND_BPM_B)
 	c.tempo_map.append({"time": 0.0, "bpm": HAND_BPM_A})
 	c.tempo_map.append({"time": change_time, "bpm": HAND_BPM_B})
@@ -77,6 +81,7 @@ static func short_chart(rate: int = 0) -> ChartData:
 	const BPM := 120.0
 	var c := ChartData.new()
 	c.title = "Short chart"
+	c.id = "test.short_chart.v1"
 	c.tempo_map.append({"time": 0.0, "bpm": BPM})
 	var spb := 60.0 / BPM
 	for beat in range(1, 17):
@@ -97,4 +102,6 @@ static func short_chart(rate: int = 0) -> ChartData:
 
 ## 300 s of notes on every beat (lanes cycle) with a matching click track.
 static func five_minute_click_chart(bpm: float = 120.0, rate: int = 0) -> ChartData:
-	return click_chart(bpm, int(300.0 * bpm / 60.0), rate)
+	var c := click_chart(bpm, int(300.0 * bpm / 60.0), rate)
+	c.id = "test.click5.%d" % int(bpm)
+	return c

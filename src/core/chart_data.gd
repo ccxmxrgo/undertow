@@ -6,6 +6,8 @@ var notes: Array[Dictionary] = []  # {lane:int 0-3, time:float, duration:float}
 var tempo_map: Array[Dictionary] = []  # {time:float, bpm:float}
 var audio_stream: AudioStream
 var title: String = ""
+## Stable identifier used to key saved records (Phase 2 sets a content hash).
+var id: String = ""
 
 
 func add_note(lane: int, time: float, duration: float = 0.0) -> void:
