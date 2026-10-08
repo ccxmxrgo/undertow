@@ -1,10 +1,9 @@
 UNDERTOW - early playtest build (v0.2, 2026-10-08)
 =================================================
 
-You're a submarine sinking into a deep-sea trench, and your note highway is
-the sonar screen. This build is still the single-player core: it's for
-checking that timing and the look feel good. Torpedoes and online versus
-come later.
+You're a submarine sinking into a deep-sea trench. This build is still the
+single-player core: it's for checking that timing and the new look feel
+good. Torpedoes and online versus come later.
 
 This update is based on your v0.1 feedback. Thank you!
 
@@ -25,14 +24,20 @@ CONTROLS
 --------
   Lanes ............ 1  2  3  4     (number keys on the top row;
                                      gamepad: LB  LT  RT  RB)
+  Skip intro ....... Space          (gamepad: A)
   Pause ............ Esc            (gamepad: Start)
   Fullscreen ....... F11            (switches fullscreen / window)
   Debug overlay .... F3             (shows timing numbers)
   Autoplay ......... F4             (watch the bot play the song perfectly)
 
+Space skips the intro straight to a short 3-2-1 count-in. Retry and the F4
+autoplay restart play a quick version of the intro, so getting back in is
+fast. Esc pauses at any time.
+
 The game opens fullscreen. F11 switches to a window and back.
-Settings > Display also has a Fullscreen switch and a Low effects switch
-(Low effects turns off the goggle-visor look if it bothers you).
+Settings > Display also has a Fullscreen switch and a Low effects switch.
+Low effects simplifies the abyss (fewer rings and particles, no glitch);
+notes and lanes stay fully bright.
 
 Played v0.1? Your keys move to 1 2 3 4 automatically, unless you had
 changed them yourself. Settings > Reset Controls always gives you 1 2 3 4.
@@ -47,14 +52,22 @@ The music is still generated test audio, not real songs yet. Real songs
 
 WHAT'S NEW IN v0.2
 ------------------
+- A whole new look. Every dive starts by putting the goggles on: your room,
+  the goggles slide down, a CRT blink, LINK ESTABLISHED, and you drop into
+  a neon abyss. Takes about 4 seconds; press Space to skip it.
+- The board is now a trench: four glowing cables run from a far horizon
+  down to a curved hit ring at the bottom. Notes travel down the cables.
+- Clean screen edges and a minimal HUD: your streak sits left of the board,
+  depth on the right, and a hull arc under the board turns red with
+  HULL CRITICAL when you're about to sink.
+- The abyss reacts to you: the crowd glows brighter on long streaks, dims
+  when you miss, and the trench walls breathe on the beat.
 - Keys are now 1 2 3 4, so you can play with one hand.
 - Each lane has its own color and shape: cyan diamond, amber circle,
   magenta triangle, lime square.
-- Hit markers sit on the hull line, so you can see exactly where to hit.
 - Notes only light up when you can actually hit them. Dim = too early,
   bright = hit it now.
-- A cyberpunk visor frame around the screen (turn it off with Low effects).
-- A big NOTE STREAK counter, with popups at 10, 25, 50 and 100 in a row.
+- A big streak counter, with popups at 10, 25, 50 and 100 in a row.
 - Your best score is saved for each song and shown on the menu and on the
   results screen. Practice, Autoplay and No-Fail dives never set a record.
 - "Practice Dive (No-Fail)" in the main menu, right under Start Dive.
@@ -68,13 +81,15 @@ FEEDBACK WE NEED (reply in Discord or on WhatsApp)
 2. What audio offset did calibration give you? (shown as "+NN MS")
 3. Do hits feel ON the beat, early or late? Does anything feel laggy?
 4. Do PERFECT / GOOD / MISS feel fair? Too strict or too easy?
-5. Is the screen readable? Can you tell the 4 note shapes apart quickly?
+5. Can you tell the 4 note shapes apart quickly?
 6. Keyboard or gamepad? Do keys 1 2 3 4 feel OK? Did every press register?
 7. What headphones/speakers did you use (wired / Bluetooth / USB)?
 8. Anything confusing, ugly or annoying?
-9. Is it easier to tell the notes apart now?
-10. Do notes look ready at the right moment (do they light up when you can
-    hit them)?
-11. Does the fullscreen/visor look OK, or did Low effects help?
+9. Do notes look ready at the right moment (do they light up when you can
+   hit them)?
+10. Did the intro feel cool or too long? Did you use Space to skip it?
+11. Can you read the notes at your scroll speed? Which speed did you use?
+12. Does the new look feel like UNDERTOW and not like a guitar game?
+13. Did the frame rate stay smooth?
 
 Thanks for diving!
