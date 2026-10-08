@@ -31,10 +31,8 @@ var conductor: Conductor
 var lane_input: LaneInput
 var highway: Highway
 var hud: Hud
-var visor: VisorFrame
-var visor_hud: VisorHud
+var arena: Arena
 var streak_counter: StreakCounter
-var visor_brackets: VisorBrackets
 var feedback: Feedback
 var fail_screen: FailScreen
 ## Last finished-dive record outcome {eligible, new_record, previous_depth, best_depth}.
@@ -91,6 +89,12 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	_run_root.add_child(lane_input)
 	lane_input.setup(conductor, judge)
 	lane_input.enabled = not autoplay  # autoplay presses for the player
+	arena = Arena.new()  # first child: the world behind the board
+	_run_root.add_child(arena)
+	arena.bind(conductor, chart.tempo_map)
+	score.combo_changed.connect(arena.on_combo)
+	judge.judged.connect(_on_judged_arena)
+	score.hull_changed.connect(_on_hull_arena)
 	highway = Highway.new()
 	UiLayout.fill_rect(highway)
 	highway.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -104,13 +108,6 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	feedback.nudge_target = _run_root
 	_run_root.add_child(feedback)
 	feedback.connect_judge(judge)
-	visor = VisorFrame.new()  # below the HUD so HUD contrast is untouched
-	_run_root.add_child(visor)
-	visor_hud = VisorHud.new()  # recording-frame instruments: above the lens, below the HUD
-	_run_root.add_child(visor_hud)
-	visor_hud.bind(score)
-	judge.judged.connect(_on_judged_glitch)
-	score.hull_changed.connect(_on_hull_glitch)
 	hud = Hud.new()
 	_run_root.add_child(hud)
 	hud.bind(score)
@@ -118,13 +115,10 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	streak_counter = StreakCounter.new()
 	_run_root.add_child(streak_counter)
 	streak_counter.bind(score)
-	visor_brackets = VisorBrackets.new()
-	_run_root.add_child(visor_brackets)
 	_autoplay_player = Autoplay.new(chart, judge) if autoplay else null
 	_end_time = 0.0
 	for n in chart.notes:
 		_end_time = maxf(_end_time, float(n["time"]) + float(n["duration"]))
-	visor_hud.setup_timeline(conductor, chart.tempo_map, song_length(chart, _end_time))
 	var bpm := 120.0
 	if not chart.tempo_map.is_empty():
 		bpm = float(chart.tempo_map[0]["bpm"])
@@ -144,22 +138,14 @@ func _on_run_built() -> void:
 	pause_menu.menu_confirmed.connect(go_to_menu)
 
 
-## Timeline length: the audio length when known, else the last note end.
-static func song_length(c: ChartData, last_note_end: float) -> float:
-	var l := 0.0
-	if c.audio_stream != null:
-		l = c.audio_stream.get_length()
-	return l if l > 0.0 else last_note_end
+func _on_judged_arena(_lane: int, _idx: int, judgment: int, _err: float) -> void:
+	if judgment == InputJudge.Judgment.MISS and arena != null:
+		arena.on_miss()
 
 
-func _on_judged_glitch(_lane: int, _idx: int, judgment: int, _err: float) -> void:
-	if judgment == InputJudge.Judgment.MISS and visor != null:
-		visor.trigger_glitch()
-
-
-func _on_hull_glitch(_value: float, delta: float) -> void:
-	if delta < 0.0 and visor != null:
-		visor.trigger_glitch()
+func _on_hull_arena(_value: float, delta: float) -> void:
+	if delta < 0.0 and arena != null:
+		arena.on_miss()
 
 
 func _teardown() -> void:
@@ -246,6 +232,8 @@ func _on_failed() -> void:
 	state = State.FAILED
 	conductor.stop()  # audio stops immediately
 	lane_input.enabled = false
+	if arena != null:
+		arena.fail()
 	fail_screen = FailScreen.new()
 	_run_root.add_child(fail_screen)
 	# Read-only: failed dives never update records.
