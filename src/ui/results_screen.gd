@@ -14,7 +14,13 @@ var flags: Array[String] = []
 var rows: Array[Array] = []
 
 
-func setup(score: HullScore, autoplay_used: bool) -> void:
+## NEW RECORD banner node (null unless the run set a record).
+var record_banner: Label
+var note_label: Label
+
+
+func setup(score: HullScore, autoplay_used: bool, record_info: Dictionary = {},
+		practice: bool = false) -> void:
 	UiLayout.fill_rect(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if theme == null:
@@ -36,6 +42,20 @@ func setup(score: HullScore, autoplay_used: bool) -> void:
 	title.theme_type_variation = &"HeadingLabel"
 	title.add_theme_color_override("font_color", Palette.ACCENT)
 	box.add_child(title)
+	var is_record: bool = record_info.get("new_record", false)
+	var eligible: bool = record_info.get("eligible", true)
+	if is_record:
+		box.add_child(_bar())
+		record_banner = Label.new()
+		record_banner.text = "NEW RECORD"
+		record_banner.theme_type_variation = &"HeadingLabel"
+		record_banner.add_theme_color_override("font_color", Palette.ACCENT)
+		record_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(record_banner)
+		box.add_child(_bar())
+		if not Settings.reduce_motion and is_inside_tree():
+			record_banner.modulate.a = 0.0
+			create_tween().tween_property(record_banner, "modulate:a", 1.0, 0.3)
 	rows = [
 		["Depth", "%d m" % int(score.depth())],
 		["Max combo", str(score.max_combo)],
@@ -44,6 +64,9 @@ func setup(score: HullScore, autoplay_used: bool) -> void:
 		["Miss", str(score.miss_count)],
 		["Final hull", "%d%%" % int(round(score.hull))],
 	]
+	if is_record:
+		var prev: float = record_info.get("previous_depth", -1.0)
+		rows.append(["Previous best", "%s m" % Palette.fmt_depth(int(prev)) if prev >= 0.0 else "none"])
 	for r in rows:
 		var row := HBoxContainer.new()
 		var k := Label.new()
@@ -60,11 +83,26 @@ func setup(score: HullScore, autoplay_used: bool) -> void:
 		flags.append("NO-FAIL USED")
 	if autoplay_used:
 		flags.append("AUTOPLAY USED")
+	if practice:
+		flags.append("PRACTICE DIVE")
 	for f in flags:
 		var fl := Label.new()
 		fl.text = f
 		fl.add_theme_color_override("font_color", Palette.TEXT)
 		box.add_child(fl)
+	if not record_info.is_empty():
+		var best_d: float = record_info.get("best_depth", -1.0)
+		note_label = Label.new()
+		note_label.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
+		if not eligible:
+			note_label.text = "Not recorded. Practice, Autoplay and No-Fail dives do not set records."
+		elif not is_record and best_d >= 0.0:
+			note_label.text = "Best: %s m" % Palette.fmt_depth(int(best_d))
+		if note_label.text != "":
+			box.add_child(note_label)
+		else:
+			note_label.free()
+			note_label = null
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0.0, Palette.SP_MD)
 	box.add_child(spacer)
@@ -82,6 +120,15 @@ func setup(score: HullScore, autoplay_used: bool) -> void:
 	menu_button.focus_neighbor_top = menu_button.get_path_to(retry_button)
 	if is_inside_tree():
 		retry_button.grab_focus()
+
+
+func _bar() -> ColorRect:
+	var b := ColorRect.new()
+	b.color = Palette.ACCENT
+	b.custom_minimum_size = Vector2(120.0, 2.0)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return b
 
 
 func _ready() -> void:

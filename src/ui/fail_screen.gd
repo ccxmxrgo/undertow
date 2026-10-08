@@ -16,7 +16,13 @@ var title_label: Label
 var body_label: Label
 
 
-func setup(depth_m: float) -> void:
+## Extra body lines in UI-SPEC order after body_label (never any NEW RECORD text).
+var stats_label: Label
+var best_label: Label
+var note_label: Label
+
+
+func setup(depth_m: float, max_combo: int = 0, saved_best: float = -1.0) -> void:
 	UiLayout.fill_rect(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if theme == null:
@@ -43,6 +49,19 @@ func setup(depth_m: float) -> void:
 	body_label.text = "Hull breached at %d m." % int(depth_m)
 	body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(body_label)
+	stats_label = Label.new()
+	stats_label.text = "Max combo: %d" % max_combo
+	stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(stats_label)
+	best_label = Label.new()
+	best_label.text = "Saved best: %s m" % Palette.fmt_depth(int(saved_best)) 		if saved_best >= 0.0 else "No saved best yet."
+	best_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(best_label)
+	note_label = Label.new()
+	note_label.text = "Records are saved only when a dive is finished."
+	note_label.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
+	note_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(note_label)
 	retry_button = Button.new()
 	retry_button.text = "Retry Dive"
 	retry_button.custom_minimum_size = Vector2(320.0, 56.0)

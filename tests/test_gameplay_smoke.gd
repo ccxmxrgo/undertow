@@ -5,15 +5,29 @@ extends GdUnitTestSuite
 const SCENE := "res://scenes/gameplay.tscn"
 const TIMEOUT_MSEC := 40000
 
+const SCORES_TMP := "user://test_smoke_scores.cfg"
+
 var _saved_no_fail := false
+var _old_scores_path: String
 
 
 func before_test() -> void:
 	_saved_no_fail = Settings.no_fail
 	Settings.no_fail = false
+	_old_scores_path = ScoreStore.default_path
+	ScoreStore.default_path = SCORES_TMP
+	_rm_scores()
+
+
+func _rm_scores() -> void:
+	for p in [SCORES_TMP, SCORES_TMP + ".tmp", SCORES_TMP + ".bak"]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 
 
 func after_test() -> void:
+	ScoreStore.default_path = _old_scores_path
+	_rm_scores()
 	Settings.no_fail = _saved_no_fail
 	Gameplay.pending_chart = null
 	Gameplay.pending_autoplay = false
@@ -146,3 +160,72 @@ func test_visor_and_streak_layering_and_restart() -> void:
 			if is_instance_of(ch, cls):
 				n += 1
 		assert_int(n).is_equal(1)
+
+
+func _manual_finish(gp: Gameplay, depth_score: int) -> void:
+	gp.score.score = depth_score
+	gp.score.perfect_count = 10
+	gp.score.max_combo = 10
+	gp._finish()
+
+
+func test_eligible_finish_saves_record_and_equal_is_not_record() -> void:
+	var gp := _launch(false)
+	await get_tree().process_frame
+	_manual_finish(gp, 5000)
+	assert_bool(gp.record_info.eligible).is_true()
+	assert_bool(gp.record_info.new_record).is_true()
+	assert_float(gp.record_info.previous_depth).is_equal(-1.0)
+	assert_bool(FileAccess.file_exists(SCORES_TMP)).is_true()
+	var saved := FileAccess.get_file_as_string(SCORES_TMP)
+	assert_str(saved).contains("chart:test.short_chart.v1")
+	assert_object(gp.results.record_banner).is_not_null()
+	gp.restart(false)
+	await get_tree().process_frame
+	_manual_finish(gp, 5000)
+	assert_bool(gp.record_info.new_record).is_false()
+	assert_bool(gp.record_info.eligible).is_true()
+	assert_str(FileAccess.get_file_as_string(SCORES_TMP)).is_equal(saved)
+
+
+func test_practice_autoplay_nofail_finishes_write_nothing() -> void:
+	Gameplay.pending_practice = true
+	var gp := _launch(false)
+	await get_tree().process_frame
+	_manual_finish(gp, 5000)
+	assert_bool(gp.record_info.eligible).is_false()
+	assert_bool(FileAccess.file_exists(SCORES_TMP)).is_false()
+	assert_bool(gp.results.flags.has("PRACTICE DIVE")).is_true()
+	# Retry from practice stays practice and stays ineligible.
+	gp.restart(false)
+	await get_tree().process_frame
+	_manual_finish(gp, 5000)
+	assert_bool(gp.practice).is_true()
+	assert_bool(gp.record_info.eligible).is_false()
+	var gp2 := _launch(true)
+	await get_tree().process_frame
+	_manual_finish(gp2, 5000)
+	assert_bool(gp2.record_info.eligible).is_false()
+	Settings.no_fail = true
+	var gp3 := _launch(false)
+	await get_tree().process_frame
+	_manual_finish(gp3, 5000)
+	assert_bool(gp3.score.no_fail_used).is_false()
+	assert_bool(gp3.record_info.eligible).is_false()
+	assert_bool(FileAccess.file_exists(SCORES_TMP)).is_false()
+
+
+func test_failed_dive_never_writes() -> void:
+	var gp := _launch(false)
+	await get_tree().process_frame
+	_manual_finish(gp, 5000)
+	var saved := FileAccess.get_file_as_string(SCORES_TMP)
+	var gp2 := _launch(false)
+	await get_tree().process_frame
+	gp2.score.score = 90000
+	gp2.score.max_combo = 77
+	gp2._on_failed()
+	assert_int(gp2.state).is_equal(Gameplay.State.FAILED)
+	assert_str(FileAccess.get_file_as_string(SCORES_TMP)).is_equal(saved)
+	assert_str(gp2.fail_screen.stats_label.text).is_equal("Max combo: 77")
+	assert_bool(gp2.fail_screen.best_label.text.begins_with("Saved best: ")).is_true()

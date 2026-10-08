@@ -36,6 +36,8 @@ var streak_counter: StreakCounter
 var visor_brackets: VisorBrackets
 var feedback: Feedback
 var fail_screen: FailScreen
+## Last finished-dive record outcome {eligible, new_record, previous_depth, best_depth}.
+var record_info: Dictionary = {}
 var results: ResultsScreen
 var pause_menu: PauseMenu
 var debug_overlay: DebugOverlay
@@ -193,9 +195,24 @@ func restart(with_autoplay: bool = false) -> void:
 func _finish() -> void:
 	state = State.DONE
 	lane_input.enabled = false
+	# The ONLY place records are written. Failed dives never reach here (see _on_failed).
+	var store := ScoreStore.new()
+	store.load()
+	var eligible := ScoreStore.is_eligible(autoplay_used, score.no_fail, practice)
+	var acc := ScoreStore.accuracy(score.perfect_count, score.good_count, score.miss_count)
+	var res := store.submit(chart.id, score.depth(), acc, score.max_combo, eligible,
+		Time.get_date_string_from_system())
+	var prev: Dictionary = res["previous"]
+	var best := store.best(chart.id)
+	record_info = {
+		"eligible": eligible,
+		"new_record": res["new_record"],
+		"previous_depth": float(prev["depth"]) if not prev.is_empty() else -1.0,
+		"best_depth": float(best["depth"]) if not best.is_empty() else -1.0,
+	}
 	results = ResultsScreen.new()
 	_run_root.add_child(results)
-	results.setup(score, autoplay_used)
+	results.setup(score, autoplay_used, record_info, practice)
 	results.retry_pressed.connect(_on_retry)
 	results.menu_pressed.connect(go_to_menu)
 
@@ -206,7 +223,12 @@ func _on_failed() -> void:
 	lane_input.enabled = false
 	fail_screen = FailScreen.new()
 	_run_root.add_child(fail_screen)
-	fail_screen.setup(score.depth())
+	# Read-only: failed dives never update records.
+	var fail_store := ScoreStore.new()
+	fail_store.load()
+	var saved := fail_store.best(chart.id)
+	fail_screen.setup(score.depth(), score.max_combo,
+		float(saved["depth"]) if not saved.is_empty() else -1.0)
 	fail_screen.retry_pressed.connect(_on_retry)
 	fail_screen.menu_pressed.connect(go_to_menu)
 	fail_screen.play(FailScreen.SQUASH_SEC)

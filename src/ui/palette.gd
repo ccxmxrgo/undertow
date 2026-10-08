@@ -34,6 +34,17 @@ static var _bold: Font
 
 
 ## c with its alpha replaced.
+## Integer meters with a thousands separator, e.g. 1240 -> "1,240".
+static func fmt_depth(meters: int) -> String:
+	var digits := str(absi(meters))
+	var out := ""
+	for i in range(digits.length()):
+		if i > 0 and (digits.length() - i) % 3 == 0:
+			out += ","
+		out += digits[i]
+	return ("-" if meters < 0 else "") + out
+
+
 static func alpha(c: Color, a: float) -> Color:
 	return Color(c, a)
 

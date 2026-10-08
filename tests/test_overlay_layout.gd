@@ -15,7 +15,20 @@ func _launch() -> Gameplay:
 	return gp
 
 
+const SCORES_TMP := "user://test_overlay_scores.cfg"
+var _old_scores_path: String
+
+
+func before_test() -> void:
+	_old_scores_path = ScoreStore.default_path
+	ScoreStore.default_path = SCORES_TMP
+
+
 func after_test() -> void:
+	ScoreStore.default_path = _old_scores_path
+	for p in [SCORES_TMP, SCORES_TMP + ".tmp", SCORES_TMP + ".bak"]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 	Gameplay.pending_chart = null
 	Gameplay.pending_autoplay = false
 
@@ -192,3 +205,64 @@ func test_settings_overlay_fills_viewport() -> void:
 	assert_object(screen).is_not_null()
 	assert_bool(screen.size.is_equal_approx(_vp(screen))).override_failure_message(
 		_describe(screen)).is_true()
+
+
+func test_fail_screen_shows_run_stats_and_saved_best() -> void:
+	var host := Control.new()
+	add_child(host)
+	auto_free(host)
+	var f := FailScreen.new()
+	host.add_child(f)
+	f.setup(310.7, 42, 1240.0)
+	assert_str(f.body_label.text).is_equal("Hull breached at 310 m.")
+	assert_str(f.stats_label.text).is_equal("Max combo: 42")
+	assert_str(f.best_label.text).is_equal("Saved best: 1,240 m")
+	assert_str(f.note_label.text).is_equal("Records are saved only when a dive is finished.")
+	var g := FailScreen.new()
+	host.add_child(g)
+	g.setup(5.0, 1, -1.0)
+	assert_str(g.best_label.text).is_equal("No saved best yet.")
+	var h := FailScreen.new()
+	host.add_child(h)
+	h.setup(5.0)
+	assert_str(h.body_label.text).is_equal("Hull breached at 5 m.")
+
+
+func _results(info: Dictionary, practice: bool = false, autoplay: bool = false) -> ResultsScreen:
+	var host := Control.new()
+	add_child(host)
+	auto_free(host)
+	var r := ResultsScreen.new()
+	host.add_child(r)
+	r.setup(HullScore.new(JudgeConfig.new()), autoplay, info, practice)
+	return r
+
+
+func _texts(r: ResultsScreen) -> Array[String]:
+	var out: Array[String] = []
+	for n in r.find_children("*", "Label", true, false):
+		out.append((n as Label).text)
+	return out
+
+
+func test_results_new_record_and_previous_best() -> void:
+	var r := _results({"eligible": true, "new_record": true, "previous_depth": 1240.0, "best_depth": 1500.0})
+	assert_object(r.record_banner).is_not_null()
+	assert_str(r.record_banner.text).is_equal("NEW RECORD")
+	assert_bool(r.rows.has(["Previous best", "1,240 m"])).is_true()
+	var first := _results({"eligible": true, "new_record": true, "previous_depth": -1.0, "best_depth": 5.0})
+	assert_bool(first.rows.has(["Previous best", "none"])).is_true()
+	assert_bool(r.retry_button.has_focus() or r.retry_button.is_inside_tree()).is_true()
+
+
+func test_results_ineligible_and_non_record_copy() -> void:
+	var r := _results({"eligible": false, "new_record": false, "previous_depth": -1.0, "best_depth": -1.0}, true)
+	assert_object(r.record_banner).is_null()
+	assert_bool(_texts(r).has("Not recorded. Practice, Autoplay and No-Fail dives do not set records.")).is_true()
+	assert_bool(r.flags.has("PRACTICE DIVE")).is_true()
+	var b := _results({"eligible": true, "new_record": false, "previous_depth": 100.0, "best_depth": 2500.0})
+	assert_bool(_texts(b).has("Best: 2,500 m")).is_true()
+	assert_object(b.record_banner).is_null()
+	var a := _results({"eligible": false}, false, true)
+	assert_bool(a.flags.has("AUTOPLAY USED")).is_true()
+	assert_bool(a.flags.has("PRACTICE DIVE")).is_false()
