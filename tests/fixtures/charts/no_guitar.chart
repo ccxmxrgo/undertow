@@ -1,0 +1,17 @@
+[Song]
+{
+  Resolution = 192
+}
+[SyncTrack]
+{
+  0 = B 120000
+}
+[ExpertDrums]
+{
+  0 = N 0 0
+  192 = N 1 0
+}
+[ExpertDoubleBass]
+{
+  0 = N 0 0
+}

@@ -1,0 +1,21 @@
+[Song]
+{
+  Resolution = 192
+}
+[SyncTrack]
+{
+  0 = B 120000
+}
+[Events]
+{
+  384 = E "solo"
+  768 = E "soloend"
+}
+[ExpertSingle]
+{
+  0 = N 0 0
+  384 = N 0 0
+  576 = N 1 0
+  768 = N 2 0
+  960 = N 3 0
+}
