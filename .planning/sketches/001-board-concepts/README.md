@@ -2,7 +2,7 @@
 sketch: 001
 name: board-concepts
 question: "Which 3D note board feels like UNDERTOW (diving into a neon abyss) and NOT like Guitar Hero?"
-winner: null
+winner: "C"
 tags: [board, highway, 3d, immersion, phase-1.2]
 ---
 

@@ -2,7 +2,7 @@
 sketch: 002
 name: goggles-intro
 question: "What should putting the goggles on feel like before each dive?"
-winner: null
+winner: "A"
 tags: [intro, transition, immersion, phase-1.2]
 ---
 
