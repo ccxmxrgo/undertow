@@ -136,7 +136,7 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 		# Above the streak counter, below the pause menu.
 		_run_root.add_child(intro)
 		_run_root.move_child(intro, pause_menu.get_index())
-		intro.setup(intro_mode, _bpm())
+		intro.setup(intro_mode, conductor, chart, arena, highway, hud, streak_counter)
 		intro.pre_count_finished.connect(_begin_count_in.bind(false))
 		intro.skip_requested.connect(_begin_count_in.bind(true))
 
@@ -160,6 +160,8 @@ func _begin_count_in(skipped: bool = false) -> void:
 	conductor.begin(chart.audio_stream, beats * IntroTimeline.seconds_per_beat(_bpm()))
 	lane_input.enabled = not autoplay  # autoplay presses for the player
 	_began = true
+	if intro != null and is_instance_valid(intro):
+		intro.on_count_started(skipped)
 
 
 func _on_run_built() -> void:
