@@ -12,6 +12,7 @@ var _old_scores_path: String
 
 
 func before_test() -> void:
+	Gameplay.pending_intro = IntroTimeline.Mode.NONE
 	_saved_no_fail = Settings.no_fail
 	Settings.no_fail = false
 	_old_scores_path = ScoreStore.default_path
@@ -32,6 +33,7 @@ func after_test() -> void:
 	Gameplay.pending_chart = null
 	Gameplay.pending_autoplay = false
 	Gameplay.pending_practice = false
+	Gameplay.pending_intro = IntroTimeline.Mode.FULL
 
 
 func _launch(autoplay: bool) -> Gameplay:

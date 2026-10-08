@@ -19,7 +19,12 @@ func _launch() -> Gameplay:
 	return gp
 
 
+func before_test() -> void:
+	Gameplay.pending_intro = IntroTimeline.Mode.NONE
+
+
 func after_test() -> void:
+	Gameplay.pending_intro = IntroTimeline.Mode.FULL
 	Gameplay.pending_chart = null
 	Gameplay.pending_autoplay = false
 

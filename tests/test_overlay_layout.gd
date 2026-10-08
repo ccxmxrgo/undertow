@@ -20,6 +20,7 @@ var _old_scores_path: String
 
 
 func before_test() -> void:
+	Gameplay.pending_intro = IntroTimeline.Mode.NONE
 	_old_scores_path = ScoreStore.default_path
 	ScoreStore.default_path = SCORES_TMP
 
@@ -31,6 +32,7 @@ func after_test() -> void:
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 	Gameplay.pending_chart = null
 	Gameplay.pending_autoplay = false
+	Gameplay.pending_intro = IntroTimeline.Mode.FULL
 
 
 func _frames(n: int) -> void:

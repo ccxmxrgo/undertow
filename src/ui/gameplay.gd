@@ -9,7 +9,8 @@ enum State { RUNNING, FAILED, DONE, ERROR }
 
 const MENU_SCENE := "res://scenes/main_menu.tscn"
 const FALLBACK_SCENE := "res://scenes/skeleton.tscn"
-const LEAD_IN_BEATS := 2
+const LEAD_IN_BEATS := 3
+const QUICK_LEAD_IN_BEATS := 1
 const END_PAD_SEC := 0.5
 const ERROR_RETURN_SEC := 3.0
 const AUDIO_ERROR := "Song audio could not be loaded. Reinstall the game files or choose another song."
@@ -18,6 +19,8 @@ const AUDIO_ERROR := "Song audio could not be loaded. Reinstall the game files o
 static var pending_chart: ChartData
 static var pending_autoplay: bool = false
 static var pending_practice: bool = false
+## Intro mode for the next run. NOT reset in _ready: test suites set NONE so runs never wait.
+static var pending_intro: int = IntroTimeline.Mode.FULL
 
 ## Practice Dive: No-Fail forced on for this run only (never written to Settings).
 var practice: bool = false
@@ -40,11 +43,14 @@ var record_info: Dictionary = {}
 var results: ResultsScreen
 var pause_menu: PauseMenu
 var debug_overlay: DebugOverlay
+var intro: GogglesIntro
+var intro_mode: int = IntroTimeline.Mode.FULL
 
 var _run_root: Control
 var _autoplay_player: Autoplay
 var _fail_tween: Tween
 var _end_time: float = 0.0
+var _began: bool = false
 
 
 func _ready() -> void:
@@ -57,12 +63,15 @@ func _ready() -> void:
 	pending_autoplay = false
 	practice = pending_practice
 	pending_practice = false
-	start(c, a)
+	start(c, a, pending_intro)
 
 
 ## Build a fresh run. Tears down any previous one first.
-func start(p_chart: ChartData, p_autoplay: bool) -> void:
+func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -> void:
 	_teardown()
+	intro_mode = p_intro
+	_began = false
+	intro = null
 	chart = p_chart
 	autoplay = p_autoplay
 	autoplay_used = autoplay_used or p_autoplay
@@ -88,7 +97,7 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	lane_input = LaneInput.new()
 	_run_root.add_child(lane_input)
 	lane_input.setup(conductor, judge)
-	lane_input.enabled = not autoplay  # autoplay presses for the player
+	lane_input.enabled = false  # enabled by _begin_count_in (T-1.2-09)
 	arena = Arena.new()  # first child: the world behind the board
 	_run_root.add_child(arena)
 	arena.bind(conductor, chart.tempo_map)
@@ -119,11 +128,38 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	_end_time = 0.0
 	for n in chart.notes:
 		_end_time = maxf(_end_time, float(n["time"]) + float(n["duration"]))
+	_on_run_built()
+	if intro_mode == IntroTimeline.Mode.NONE:
+		_begin_count_in()
+	else:
+		intro = GogglesIntro.new()
+		# Above the streak counter, below the pause menu.
+		_run_root.add_child(intro)
+		_run_root.move_child(intro, pause_menu.get_index())
+		intro.setup(intro_mode, _bpm())
+		intro.pre_count_finished.connect(_begin_count_in.bind(false))
+		intro.skip_requested.connect(_begin_count_in.bind(true))
+
+
+func _bpm() -> float:
 	var bpm := 120.0
 	if not chart.tempo_map.is_empty():
 		bpm = float(chart.tempo_map[0]["bpm"])
-	conductor.begin(chart.audio_stream, LEAD_IN_BEATS * 60.0 / bpm)
-	_on_run_built()
+	return maxf(bpm, 1.0)
+
+
+func is_began() -> bool:
+	return _began
+
+
+## Start the conductor lead-in (the 3-2-1). The only place Conductor.begin is called.
+func _begin_count_in(skipped: bool = false) -> void:
+	if _began or conductor == null:
+		return
+	var beats := IntroTimeline.lead_in_beats(intro_mode, skipped)
+	conductor.begin(chart.audio_stream, beats * IntroTimeline.seconds_per_beat(_bpm()))
+	lane_input.enabled = not autoplay  # autoplay presses for the player
+	_began = true
 
 
 func _on_run_built() -> void:
@@ -170,7 +206,7 @@ func is_done() -> bool:
 
 
 func _process(_delta: float) -> void:
-	if state != State.RUNNING or conductor == null:
+	if state != State.RUNNING or conductor == null or not _began:
 		return
 	if conductor.is_paused():
 		return
@@ -185,7 +221,7 @@ func _process(_delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_echo():
 		return
-	if event.is_action_pressed(&"pause") and state == State.RUNNING and pause_menu != null 			and not pause_menu.is_open() and not pause_menu.is_counting_down():
+	if event.is_action_pressed(&"pause") and state == State.RUNNING and _began and pause_menu != null 			and not pause_menu.is_open() and not pause_menu.is_counting_down():
 		get_viewport().set_input_as_handled()
 		pause_menu.open()
 		return
@@ -200,7 +236,10 @@ func restart(with_autoplay: bool = false) -> void:
 	var a := autoplay or with_autoplay
 	if a and not autoplay_used:
 		autoplay_used = true
-	start(c, a)
+	var mode := IntroTimeline.Mode.QUICK
+	if pending_intro == IntroTimeline.Mode.NONE:
+		mode = IntroTimeline.Mode.NONE
+	start(c, a, mode)
 
 
 func _finish() -> void:
