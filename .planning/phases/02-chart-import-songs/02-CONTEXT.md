@@ -117,3 +117,10 @@ Players can bring their own Clone Hero songs (`.chart` + `song.ini` + OGG/MP3/WA
 - **Path to play them:** the user and each friend supply their own copy of the audio plus a chart (a community Clone Hero chart they download themselves, or the Phase 2.1 extraction tool) and drop the folder into `Songs`. The SONG-05 fingerprint lets friends match the same chart in Phase 4.
 - **Planning implication:** song import must handle typical community Clone Hero folders robustly: multi-stem audio, `song.ini` variants and album art (ignored is fine). Add a test fixture shaped like a typical community song folder.
 - **Download approval:** the user approved downloading the two CC0 OpenGameArt tracks (D-14) for bundling.
+
+## "Ready when I put them in the folder" (user, 2026-10-08)
+- The user will add their own songs to `Songs` later and expects them to "just work".
+- **D-18 (bare audio):** An audio file (or a folder with audio but no `.chart`) dropped into `Songs` must be **listed in song select** with its title/artist taken from tags or the filename, marked **"Needs a chart"**, with a one-line hint that the Phase 2.1 extraction tool will chart it. It is not playable yet, and it is never silently skipped. Phase 2.1 then makes these playable in place.
+- **D-19 (forgiving community folders):** Typical community Clone Hero folders must import: `notes.chart` or any single `*.chart`; `song.ini` with case/key variants; audio named `song.ogg/.mp3/.wav` or split stems (`guitar`, `rhythm`, `drums`, `vocals`, `keys`, `bass`, `crowd`), played together; `album.png/jpg` ignored or shown as a thumbnail (Claude's discretion). One nested folder level and zips are handled.
+- **D-20 (Songs folder discoverability):** The `Songs` folder path is shown in song select and in the README, and "Open songs folder" works on first launch, before any scan.
+- **Acceptance:** fixtures for (a) a bare MP3 → listed as "Needs a chart", (b) a community-style folder with stems and `song.ini` variants → playable, (c) a zip → playable.
