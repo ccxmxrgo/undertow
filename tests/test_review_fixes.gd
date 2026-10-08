@@ -213,3 +213,20 @@ func test_gameplay_holds_notes_and_pulse_until_count_in() -> void:
 	assert_bool(gp.arena.beat_live).is_true()
 	Gameplay.pending_intro = old
 	Gameplay.pending_chart = null
+
+
+func test_miss_reduces_arena_energy_once() -> void:
+	# WR-05: judged(MISS) + hull_changed(<0) for one miss must apply the x0.4 drop once.
+	var old := Gameplay.pending_intro
+	Gameplay.pending_intro = IntroTimeline.Mode.NONE
+	Gameplay.pending_chart = TestCharts.short_chart()
+	var gp: Gameplay = (load("res://scenes/gameplay.tscn") as PackedScene).instantiate()
+	add_child(gp)
+	auto_free(gp)
+	await get_tree().process_frame
+	gp.arena._energy = 1.0
+	gp._on_judged_arena(0, 0, InputJudge.Judgment.MISS, 0.0)
+	gp._on_hull_arena(0.9, -0.1)
+	assert_float(gp.arena.energy()).is_equal_approx(0.4, 0.001)
+	Gameplay.pending_intro = old
+	Gameplay.pending_chart = null

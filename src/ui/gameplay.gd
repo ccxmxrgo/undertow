@@ -51,6 +51,7 @@ var _autoplay_player: Autoplay
 var _fail_tween: Tween
 var _end_time: float = 0.0
 var _began: bool = false
+var _arena_miss_frame: int = -1
 
 
 func _ready() -> void:
@@ -71,6 +72,7 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	_teardown()
 	intro_mode = p_intro
 	_began = false
+	_arena_miss_frame = -1
 	intro = null
 	chart = p_chart
 	autoplay = p_autoplay
@@ -182,13 +184,25 @@ func _on_run_built() -> void:
 
 
 func _on_judged_arena(_lane: int, _idx: int, judgment: int, _err: float) -> void:
-	if judgment == InputJudge.Judgment.MISS and arena != null:
-		arena.on_miss()
+	if judgment == InputJudge.Judgment.MISS:
+		_arena_miss()
 
 
 func _on_hull_arena(_value: float, delta: float) -> void:
-	if delta < 0.0 and arena != null:
-		arena.on_miss()
+	if delta < 0.0:
+		_arena_miss()
+
+
+## A miss reaches the arena through both `judged` and `hull_changed` in the same frame; react
+## once per frame so energy drops x0.4, not x0.16 (WR-05). Stray-press damage still counts.
+func _arena_miss() -> void:
+	if arena == null or not is_instance_valid(arena):
+		return
+	var frame := Engine.get_process_frames()
+	if frame == _arena_miss_frame:
+		return
+	_arena_miss_frame = frame
+	arena.on_miss()
 
 
 func _teardown() -> void:
