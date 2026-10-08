@@ -154,3 +154,9 @@ func test_no_full_rect_anchor_preset_left_in_ui() -> void:
 		if f.ends_with(".gd") and f != "ui_layout.gd":
 			var src := FileAccess.get_file_as_string("res://src/ui/" + f)
 			assert_bool(src.contains("PRESET_FULL_RECT")).override_failure_message(f).is_false()
+
+
+func test_quick_intro_draws_no_lens_mask() -> void:
+	# CR-01: QUICK has an ARENA phase but lens_open() is 0 there; the mask must not be drawn.
+	assert_bool(GogglesIntro.arena_draws_lens(IntroTimeline.Mode.QUICK)).is_false()
+	assert_bool(GogglesIntro.arena_draws_lens(IntroTimeline.Mode.FULL)).is_true()

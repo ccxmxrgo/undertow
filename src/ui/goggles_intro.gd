@@ -264,12 +264,19 @@ func _draw_pre() -> void:
 			else:
 				_draw_crt(p)
 		IntroTimeline.Phase.ARENA:
-			_draw_lens_mask(1.0, IntroTimeline.lens_open(t, mode, rm), rm)
+			if arena_draws_lens(mode):
+				_draw_lens_mask(1.0, IntroTimeline.lens_open(t, mode, rm), rm)
 	if mode == IntroTimeline.Mode.FULL and not rm:
 		_draw_link_text(t)
 	if _hint_visible(t, phase):
 		var txt := "A TO SKIP" if _pad_last else "SPACE TO SKIP"
 		_draw_spaced(txt, 960.0, 1040.0, Palette.SIZE_LABEL, Palette.alpha(HINT_COL, 0.7), 2.0)
+
+
+## Only the FULL intro has a lens mask; the QUICK intro is a CRT blink plus one count (D-11),
+## so its ARENA phase must show the board, not a closed mask (CR-01).
+static func arena_draws_lens(p_mode: int) -> bool:
+	return p_mode == IntroTimeline.Mode.FULL
 
 
 func _hint_visible(t: float, phase: int) -> bool:
