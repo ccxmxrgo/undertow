@@ -250,13 +250,20 @@ func _draw_notes(st: float, vt: float, approach: float) -> void:
 			_draw_x(c, r * 0.5, Palette.alpha(Palette.DESTRUCTIVE, ghost))
 
 
+## Drawable depth range (x = start, y = end) of a sustain ribbon. The start is clamped to the
+## projection's drawable range so a long-past head cannot yield zero-area quads (WR-01).
+## Empty when y <= x + 0.001.
+static func ribbon_span(d_head: float, d_tail: float, holding: bool) -> Vector2:
+	var d0 := maxf(d_head, 0.0) if holding else maxf(d_head, Trench.D_MIN)  # held: consumed at the ring
+	return Vector2(d0, minf(d_tail, Trench.D_FAR))
+
+
 ## Ribbon along the cable between head and tail depth.
 func _draw_sustain(lane: int, d_head: float, d_tail: float, state: int, ready: bool) -> void:
-	var d0 := d_head
-	if state == S_HOLDING:
-		d0 = maxf(d_head, 0.0)  # consumed at the ring while held
-	var d1 := minf(d_tail, Trench.D_FAR)
-	if d1 <= d0:
+	var span := ribbon_span(d_head, d_tail, state == S_HOLDING)
+	var d0 := span.x
+	var d1 := span.y
+	if d1 <= d0 + 0.001:
 		return
 	var lane_col := Palette.lane_color(lane)
 	var base := lane_col if (ready or state == S_HOLDING) else Palette.dim(lane_col)

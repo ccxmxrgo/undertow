@@ -169,3 +169,17 @@ func test_lens_mask_texture_is_cached_across_instances() -> void:
 	assert_object(a).is_not_null()
 	assert_bool(a == b).is_true()
 	assert_int(a.get_width()).is_equal(GogglesIntro.MASK_W)
+
+
+func test_sustain_ribbon_span_is_clamped_and_empty_when_offscreen() -> void:
+	# WR-01: a missed sustain whose head is far past must not produce degenerate quads.
+	var span := Highway.ribbon_span(-2.0, 0.5, false)
+	assert_float(span.x).is_equal_approx(Trench.D_MIN, 0.0001)
+	assert_float(span.y).is_equal_approx(0.5, 0.0001)
+	# tail also fully past the drawable range: empty
+	var gone := Highway.ribbon_span(-2.0, -1.0, false)
+	assert_bool(gone.y <= gone.x + 0.001).is_true()
+	# held: consumed at the ring
+	assert_float(Highway.ribbon_span(-0.5, 0.4, true).x).is_equal(0.0)
+	# far clamp
+	assert_float(Highway.ribbon_span(0.2, 9.0, false).y).is_equal(Trench.D_FAR)
