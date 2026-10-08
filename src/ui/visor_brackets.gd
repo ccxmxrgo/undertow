@@ -1,40 +1,28 @@
 class_name VisorBrackets
 extends Control
-## Visor bracket corners (always drawn) and decorative edge readouts (hidden in Low effects).
-## Static, decorative only: no lane colors, accent or red.
+## Visor bracket corners (always drawn) plus reticle marks around the playfield.
+## Text readouts moved to VisorHud in 01.1-06. Static, decorative only. Recording-frame chrome:
+## off-white corner brackets, hot red reticle marks. No lane colors.
 
 const INSET := 16.0
 const LEG := 64.0
 const STROKE := 2.0
 const W := 1920.0
 const H := 1080.0
-const TOP_TEXT := "UNDERTOW // VISOR"
-const LEFT_TEXT := "HULL SCAN"
-const RIGHT_TEXT := "SONAR ACTIVE"
-
-var _readouts: bool = true
+## Reticle: small L marks framing the lens interior, outside the highway clear rect.
+const RETICLE_LEG := 24.0
+const RETICLE_PTS: Array[Vector2] = [Vector2(232.0, 240.0), Vector2(1688.0, 240.0),
+	Vector2(232.0, 840.0), Vector2(1688.0, 840.0)]
 
 
 func _ready() -> void:
 	UiLayout.fill_rect(self)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if not Settings.settings_changed.is_connected(apply_low_effects):
-		Settings.settings_changed.connect(apply_low_effects)
-	apply_low_effects()
 
 
-func _exit_tree() -> void:
-	if Settings.settings_changed.is_connected(apply_low_effects):
-		Settings.settings_changed.disconnect(apply_low_effects)
-
-
-func apply_low_effects() -> void:
-	_readouts = not Settings.low_effects
-	queue_redraw()
-
-
+## Text readouts are owned by VisorHud since 01.1-06; kept for API compatibility.
 func readouts_visible() -> bool:
-	return _readouts
+	return false
 
 
 func brackets_visible() -> bool:
@@ -42,31 +30,25 @@ func brackets_visible() -> bool:
 
 
 func _draw() -> void:
-	var c := Palette.DIM
+	var c := Palette.alpha(Palette.REC_TEXT, 0.7)
 	var x0 := INSET
 	var x1 := W - INSET
 	var y0 := INSET
 	var y1 := H - INSET
 	# top-left, top-right, bottom-left, bottom-right
-	_bracket(Vector2(x0, y0), 1.0, 1.0, c)
-	_bracket(Vector2(x1, y0), -1.0, 1.0, c)
-	_bracket(Vector2(x0, y1), 1.0, -1.0, c)
-	_bracket(Vector2(x1, y1), -1.0, -1.0, c)
-	if not _readouts:
-		return
-	var f := Palette.font()
-	var s := Palette.SIZE_LABEL
-	var asc := f.get_ascent(s)
-	var tw := f.get_string_size(TOP_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, s).x
-	draw_string(f, Vector2((W - tw) * 0.5, 16.0 + asc), TOP_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, s, c)
-	var base_y := 1064.0 - f.get_descent(s)
-	draw_string(f, Vector2(96.0, base_y), LEFT_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, s, c)
-	var rw := f.get_string_size(RIGHT_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, s).x
-	draw_string(f, Vector2(W - 96.0 - rw, base_y), RIGHT_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, s, c)
+	_bracket(Vector2(x0, y0), 1.0, 1.0, LEG, c)
+	_bracket(Vector2(x1, y0), -1.0, 1.0, LEG, c)
+	_bracket(Vector2(x0, y1), 1.0, -1.0, LEG, c)
+	_bracket(Vector2(x1, y1), -1.0, -1.0, LEG, c)
+	for i in RETICLE_PTS.size():
+		var p := RETICLE_PTS[i]
+		var sx := 1.0 if p.x < W * 0.5 else -1.0
+		var sy := 1.0 if p.y < H * 0.5 else -1.0
+		_bracket(p, sx, sy, RETICLE_LEG, Palette.REC_RED)
 
 
-func _bracket(corner: Vector2, sx: float, sy: float, c: Color) -> void:
-	var h := Rect2(corner, Vector2(LEG * sx, STROKE * sy)).abs()
-	var v := Rect2(corner, Vector2(STROKE * sx, LEG * sy)).abs()
+func _bracket(corner: Vector2, sx: float, sy: float, leg: float, c: Color) -> void:
+	var h := Rect2(corner, Vector2(leg * sx, STROKE * sy)).abs()
+	var v := Rect2(corner, Vector2(STROKE * sx, leg * sy)).abs()
 	draw_rect(h, c)
 	draw_rect(v, c)

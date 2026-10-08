@@ -32,6 +32,7 @@ var lane_input: LaneInput
 var highway: Highway
 var hud: Hud
 var visor: VisorFrame
+var visor_hud: VisorHud
 var streak_counter: StreakCounter
 var visor_brackets: VisorBrackets
 var feedback: Feedback
@@ -105,6 +106,11 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	feedback.connect_judge(judge)
 	visor = VisorFrame.new()  # below the HUD so HUD contrast is untouched
 	_run_root.add_child(visor)
+	visor_hud = VisorHud.new()  # recording-frame instruments: above the lens, below the HUD
+	_run_root.add_child(visor_hud)
+	visor_hud.bind(score)
+	judge.judged.connect(_on_judged_glitch)
+	score.hull_changed.connect(_on_hull_glitch)
 	hud = Hud.new()
 	_run_root.add_child(hud)
 	hud.bind(score)
@@ -118,6 +124,7 @@ func start(p_chart: ChartData, p_autoplay: bool) -> void:
 	_end_time = 0.0
 	for n in chart.notes:
 		_end_time = maxf(_end_time, float(n["time"]) + float(n["duration"]))
+	visor_hud.setup_timeline(conductor, chart.tempo_map, song_length(chart, _end_time))
 	var bpm := 120.0
 	if not chart.tempo_map.is_empty():
 		bpm = float(chart.tempo_map[0]["bpm"])
@@ -135,6 +142,24 @@ func _on_run_built() -> void:
 	pause_menu.restore_input = not autoplay
 	pause_menu.restart_confirmed.connect(func() -> void: call_deferred("restart", false))
 	pause_menu.menu_confirmed.connect(go_to_menu)
+
+
+## Timeline length: the audio length when known, else the last note end.
+static func song_length(c: ChartData, last_note_end: float) -> float:
+	var l := 0.0
+	if c.audio_stream != null:
+		l = c.audio_stream.get_length()
+	return l if l > 0.0 else last_note_end
+
+
+func _on_judged_glitch(_lane: int, _idx: int, judgment: int, _err: float) -> void:
+	if judgment == InputJudge.Judgment.MISS and visor != null:
+		visor.trigger_glitch()
+
+
+func _on_hull_glitch(_value: float, delta: float) -> void:
+	if delta < 0.0 and visor != null:
+		visor.trigger_glitch()
 
 
 func _teardown() -> void:
