@@ -1,0 +1,430 @@
+extends GdUnitTestSuite
+## SongSelect: list, selection, filter rules, dive wiring, preview timing, empty states.
+## Uses its own SongLibrary instance with injected entries (no scanning, no real user://songs).
+
+const D := "user://test_song_select"
+const SCORES := D + "/scores.cfg"
+
+var _old_reduce: bool
+var _old_scores: String
+var _old_music: float
+
+
+func before_test() -> void:
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(D))
+	_old_reduce = Settings.reduce_motion
+	_old_music = Settings.volume_music
+	Settings.reduce_motion = true
+	Settings.volume_music = 0.8
+	_old_scores = ScoreStore.default_path
+	ScoreStore.default_path = SCORES
+	Gameplay.pending_chart = null
+	Gameplay.pending_autoplay = false
+	Gameplay.pending_practice = false
+	SongSelect.run_autoplay = false
+	SongSelect.run_practice = false
+
+
+func after_test() -> void:
+	Settings.reduce_motion = _old_reduce
+	Settings.volume_music = _old_music
+	ScoreStore.default_path = _old_scores
+	Gameplay.pending_chart = null
+	Gameplay.pending_autoplay = false
+	Gameplay.pending_practice = false
+	SongSelect.run_autoplay = false
+	SongSelect.run_practice = false
+	for p in [SCORES, SCORES + ".tmp", SCORES + ".bak"]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+
+
+func _entry(id: String, title: String, diffs: Array = ["easy", "medium", "hard", "expert"],
+		status: String = "ok", source: String = "songs") -> SongEntry:
+	var e := SongEntry.new()
+	e.id = id
+	e.title = title
+	e.artist = "Artist"
+	e.status = status
+	e.source = source
+	e.length_sec = 100.0
+	e.bpm_min = 120.0
+	e.bpm_max = 120.0
+	if status == "broken":
+		e.error = SongEntry.ERR_OPUS
+		e.fix_hint = SongEntry.hint_for(e.error)
+	if status == "needs_chart":
+		e.error = SongEntry.ERR_NEEDS_CHART
+	if status == "ok":
+		for d in diffs:
+			e.difficulties.append({"name": d, "note_count": 100, "fingerprint": "fp_%s_%s" % [id, d]})
+	return e
+
+
+func _songs(n: int) -> Array:
+	var out: Array = []
+	for i in n:
+		out.append(_entry("s%02d" % i, "Song %02d" % i))
+	return out
+
+
+func _lib(entries: Array) -> Node:
+	var lib: Node = load("res://src/autoload/song_library.gd").new()
+	lib.songs_root_override = D + "/songs"
+	lib.cache_path = D + "/cache.json"
+	lib.auto_scan = false
+	add_child(lib)
+	auto_free(lib)
+	lib.entries.assign(entries)
+	return lib
+
+
+func _screen(lib: Node) -> SongSelect:
+	var s: SongSelect = (load("res://scenes/song_select.tscn") as PackedScene).instantiate()
+	s.library = lib
+	add_child(s)
+	auto_free(s)
+	return s
+
+
+func _nav(s: SongSelect) -> Array:
+	var calls: Array = []
+	s.navigate = func(p: String) -> void: calls.append(p)
+	return calls
+
+
+func test_scene_loads_with_contract_node_names() -> void:
+	var s := _screen(_lib(_songs(3)))
+	for n in ["SongList", "DetailPanel", "FilterField", "SortChip", "ScanStatus", "FooterHints", "CreditsLine"]:
+		assert_object(s.get_node_or_null(n)).is_not_null()
+		assert_int((s.get_node(n) as Control).mouse_filter).is_equal(Control.MOUSE_FILTER_IGNORE)
+	assert_str(s.name).is_equal("SongSelect")
+
+
+func test_nine_rows_visible_for_long_list() -> void:
+	var s := _screen(_lib(_songs(30)))
+	var st := s.debug_state()
+	assert_int((st["rows"] as Array).size()).is_equal(9)
+	assert_int(st["view_size"]).is_equal(30)
+
+
+func test_initial_selection_is_first_playable_not_calibration() -> void:
+	var cal := SongLibrary.calibration_entry()
+	var s := _screen(_lib([cal] + _songs(3)))
+	assert_str(s.debug_state()["selected"]).is_equal("s00")
+
+
+func test_initial_selection_uses_last_song_and_difficulty() -> void:
+	var lib := _lib(_songs(30))
+	lib.last_song_id = "s20"
+	lib.last_difficulty = "hard"
+	var s := _screen(lib)
+	var st := s.debug_state()
+	assert_str(st["selected"]).is_equal("s20")
+	assert_str(st["difficulty"]).is_equal("hard")
+	assert_bool((st["rows"] as Array).has("s20")).is_true()
+
+
+func test_selection_keeps_screen_row_when_scan_inserts_rows_above() -> void:
+	var lib := _lib(_songs(30))
+	var s := _screen(lib)
+	for i in 12:
+		s.press_key_for_test(KEY_DOWN)
+	var before := s.debug_state()
+	var row_before: int = (before["rows"] as Array).find(before["selected"])
+	var batch: Array = []
+	for i in 5:
+		batch.append(_entry("a%02d" % i, "Aaa %02d" % i))
+	lib.entries.append_array(batch)
+	lib.entries_added.emit(batch)
+	var after := s.debug_state()
+	assert_str(after["selected"]).is_equal(before["selected"])
+	assert_int((after["rows"] as Array).find(after["selected"])).is_equal(row_before)
+
+
+func test_digits_navigate_only_while_filter_empty() -> void:
+	var s := _screen(_lib(_songs(30)))
+	s.press_key_for_test(KEY_2, 50)
+	assert_str(s.debug_state()["selected"]).is_equal("s01")
+	s.press_key_for_test(KEY_4, 52)
+	assert_str(s.debug_state()["selected"]).is_equal("s10")
+	s.press_key_for_test(KEY_3, 51)
+	assert_str(s.debug_state()["selected"]).is_equal("s01")
+	s.press_key_for_test(KEY_1, 49)
+	assert_str(s.debug_state()["selected"]).is_equal("s00")
+	# Typing a letter starts the filter; digits then type instead of navigate.
+	s.type_for_test("s")
+	s.press_key_for_test(KEY_2, 50)
+	assert_str(s.debug_state()["filter"]).is_equal("s2")
+	assert_str(s.debug_state()["empty_state"]).is_equal("no_matches")
+
+
+func test_slash_enters_typing_mode_so_digits_type() -> void:
+	var s := _screen(_lib(_songs(5)))
+	s.press_key_for_test(KEY_SLASH, 47)
+	assert_str(s.debug_state()["filter"]).is_equal("")
+	assert_bool(s.debug_state()["typing"]).is_true()
+	s.press_key_for_test(KEY_2, 50)
+	assert_str(s.debug_state()["filter"]).is_equal("2")
+
+
+func test_escape_clears_filter_first_then_goes_back() -> void:
+	var s := _screen(_lib(_songs(5)))
+	var calls := _nav(s)
+	s.type_for_test("song")
+	assert_str(s.debug_state()["filter"]).is_equal("song")
+	s.press_key_for_test(KEY_ESCAPE)
+	assert_str(s.debug_state()["filter"]).is_equal("")
+	assert_int(calls.size()).is_equal(0)
+	s.press_key_for_test(KEY_ESCAPE)
+	assert_array(calls).is_equal([SongSelect.MENU_SCENE])
+
+
+func test_filter_capped_at_40_chars() -> void:
+	var s := _screen(_lib(_songs(5)))
+	s.type_for_test("x".repeat(60))
+	assert_int((s.debug_state()["filter"] as String).length()).is_equal(40)
+
+
+func test_no_matches_and_empty_states() -> void:
+	var s := _screen(_lib(_songs(5)))
+	s.set_filter_for_test("zzzz")
+	assert_str(s.debug_state()["empty_state"]).is_equal("no_matches")
+	assert_bool(s.debug_state()["start_enabled"]).is_false()
+	s.press_key_for_test(KEY_ESCAPE)
+	assert_str(s.debug_state()["empty_state"]).is_equal("")
+	var lib := _lib([])
+	var s2 := _screen(lib)
+	assert_str(s2.debug_state()["empty_state"]).is_equal("no_songs")
+
+
+func test_enter_ignored_on_broken_and_needs_chart() -> void:
+	var list := _songs(2)
+	list.append(_entry("nc", "Needs one", [], "needs_chart"))
+	list.append(_entry("bad", "Broken one", [], "broken"))
+	var s := _screen(_lib(list))
+	var calls := _nav(s)
+	for id in ["bad", "nc"]:
+		s.select_for_test(id)
+		assert_bool(s.debug_state()["start_enabled"]).is_false()
+		s.press_key_for_test(KEY_ENTER)
+	assert_int(calls.size()).is_equal(0)
+	assert_object(Gameplay.pending_chart).is_null()
+	assert_bool(s.debug_state()["diving"]).is_false()
+
+
+func test_broken_and_needs_chart_sort_last_and_are_selectable() -> void:
+	var list := [_entry("bad", "Aaa broken", [], "broken"), _entry("nc", "Aaa needs", [], "needs_chart")]
+	list.append_array(_songs(2))
+	var s := _screen(_lib(list))
+	assert_array(s.debug_state()["rows"]).is_equal(["s00", "s01", "nc", "bad"])
+	s.press_key_for_test(KEY_END)
+	assert_str(s.debug_state()["selected"]).is_equal("bad")
+
+
+func test_difficulty_snaps_when_song_changes_and_remembers_wish() -> void:
+	var list := [_entry("a", "Aaa", ["easy", "expert"]), _entry("b", "Bbb", ["easy", "medium"]),
+		_entry("c", "Ccc", ["easy", "medium", "hard", "expert"])]
+	var s := _screen(_lib(list))
+	assert_str(s.debug_state()["difficulty"]).is_equal("expert")
+	s.press_key_for_test(KEY_DOWN)
+	assert_str(s.debug_state()["difficulty"]).is_equal("medium")
+	s.press_key_for_test(KEY_DOWN)
+	# The wish was expert; song c has it.
+	assert_str(s.debug_state()["difficulty"]).is_equal("expert")
+	s.press_key_for_test(KEY_LEFT)
+	assert_str(s.debug_state()["difficulty"]).is_equal("hard")
+	s.press_key_for_test(KEY_RIGHT)
+	s.press_key_for_test(KEY_RIGHT)
+	assert_str(s.debug_state()["difficulty"]).is_equal("expert")
+
+
+func test_difficulty_snap_tie_prefers_lower() -> void:
+	var list := [_entry("a", "Aaa", ["easy", "hard"])]
+	var lib := _lib(list)
+	lib.last_difficulty = "medium"
+	var s := _screen(lib)
+	assert_str(s.debug_state()["difficulty"]).is_equal("easy")
+
+
+func test_dive_sets_pending_flags_and_navigates_once() -> void:
+	var cal := SongLibrary.calibration_entry()
+	var lib := _lib([cal])
+	SongSelect.run_practice = true
+	SongSelect.run_autoplay = true
+	var s := _screen(lib)
+	var calls := _nav(s)
+	assert_str(s.debug_state()["selected"]).is_equal(cal.id)
+	assert_bool(s.debug_state()["start_enabled"]).is_true()
+	s.press_key_for_test(KEY_ENTER)
+	s.press_key_for_test(KEY_ENTER)
+	assert_array(calls).is_equal([SongSelect.GAMEPLAY_SCENE])
+	assert_object(Gameplay.pending_chart).is_not_null()
+	assert_str(Gameplay.pending_chart.id).is_equal(TestCharts.HAND_CHART_ID)
+	assert_bool(Gameplay.pending_practice).is_true()
+	assert_bool(Gameplay.pending_autoplay).is_true()
+	assert_str(lib.last_song_id).is_equal(cal.id)
+	assert_str(lib.last_difficulty).is_equal("expert")
+	Gameplay.pending_chart = null
+
+
+func test_dive_without_flags_is_normal_run() -> void:
+	var cal := SongLibrary.calibration_entry()
+	var s := _screen(_lib([cal]))
+	_nav(s)
+	s.press_key_for_test(KEY_ENTER)
+	assert_bool(Gameplay.pending_practice).is_false()
+	assert_bool(Gameplay.pending_autoplay).is_false()
+	Gameplay.pending_chart = null
+
+
+func test_run_flags_reset_when_screen_exits() -> void:
+	SongSelect.run_practice = true
+	SongSelect.run_autoplay = true
+	var s := _screen(_lib(_songs(2)))
+	s.free()
+	assert_bool(SongSelect.run_practice).is_false()
+	assert_bool(SongSelect.run_autoplay).is_false()
+
+
+func test_failed_build_shows_message_and_stays() -> void:
+	# An ok entry whose files do not exist: build_chart returns null.
+	var e := _entry("ghost", "Ghost song")
+	e.chart_path = D + "/none/notes.chart"
+	var s := _screen(_lib([e, _entry("zz", "Zzz other")]))
+	var calls := _nav(s)
+	s.press_key_for_test(KEY_ENTER)
+	assert_int(calls.size()).is_equal(0)
+	assert_str(s.debug_state()["message"]).is_equal("This song's audio could not be loaded. Choose another song.")
+	assert_bool(s.debug_state()["diving"]).is_false()
+	s.press_key_for_test(KEY_DOWN)
+	assert_str(s.debug_state()["message"]).is_equal("")
+
+
+func test_preview_waits_for_gate_then_plays_and_stops_on_dive() -> void:
+	var cal := SongLibrary.calibration_entry()
+	var lib := _lib([cal])
+	var s := _screen(lib)
+	_nav(s)
+	var stream := AudioSynth.make_click_track(120.0, 8.0)
+	s.preview_loader = func(_e: SongEntry) -> AudioStream: return stream
+	# Force a fresh highlight change so the debounce starts now.
+	s.set_filter_for_test("a")
+	s.set_filter_for_test("")
+	assert_str(s.debug_state()["preview_state"]).is_equal("pending")
+	s.tick_preview(Time.get_ticks_msec() + 100)
+	assert_str(s.debug_state()["preview_state"]).is_equal("pending")
+	s.tick_preview(Time.get_ticks_msec() + 600)
+	var st: String = s.debug_state()["preview_state"]
+	assert_bool(st == "loading" or st == "playing").is_true()
+	var t0 := Time.get_ticks_msec()
+	while s.debug_state()["preview_state"] != "playing" and Time.get_ticks_msec() - t0 < 3000:
+		await get_tree().process_frame
+	assert_str(s.debug_state()["preview_state"]).is_equal("playing")
+	s.press_key_for_test(KEY_ENTER)
+	assert_str(s.debug_state()["preview_state"]).is_equal("none")
+	Gameplay.pending_chart = null
+
+
+func test_preview_not_started_for_broken_song() -> void:
+	var list := [_entry("bad", "Broken one", [], "broken")]
+	var s := _screen(_lib(list))
+	s.preview_loader = func(_e: SongEntry) -> AudioStream: return AudioSynth.make_click_track(120.0, 4.0)
+	s.select_for_test("bad")
+	s.set_filter_for_test("b")
+	s.set_filter_for_test("")
+	s.tick_preview(Time.get_ticks_msec() + 1000)
+	assert_str(s.debug_state()["preview_state"]).is_equal("none")
+
+
+func test_open_folder_failure_message_and_success() -> void:
+	var lib := _lib(_songs(2))
+	var s := _screen(lib)
+	lib.shell_opener = func(_p: String) -> bool: return false
+	s.open_folder_for_test()
+	assert_str(s.debug_state()["message"]).starts_with("Could not open the Songs folder. It is at ")
+	assert_str(s.debug_state()["message"]).contains(lib.songs_dir())
+	var s2 := _screen(lib)
+	lib.shell_opener = func(_p: String) -> bool: return true
+	s2.open_folder_for_test()
+	assert_str(s2.debug_state()["message"]).is_equal("")
+
+
+func test_open_folder_works_before_any_scan() -> void:
+	var lib := _lib([])
+	var s := _screen(lib)
+	var seen: Array = []
+	lib.shell_opener = func(p: String) -> bool:
+		seen.append(p)
+		return true
+	s.press_key_for_test(KEY_F6)
+	assert_int(seen.size()).is_equal(1)
+	assert_str(seen[0]).is_equal(lib.songs_dir())
+
+
+func test_onboarding_row_is_skipped_by_navigation() -> void:
+	var cal := SongLibrary.calibration_entry()
+	var bundled := _entry("b1", "Bundled", ["easy"], "ok", "bundled")
+	var s := _screen(_lib([bundled, cal]))
+	var st := s.debug_state()
+	assert_bool(st["onboarding"]).is_true()
+	assert_array(st["rows"]).is_equal(["b1", cal.id, ""])
+	s.press_key_for_test(KEY_DOWN)
+	assert_str(s.debug_state()["selected"]).is_equal(cal.id)
+	s.press_key_for_test(KEY_DOWN)
+	assert_str(s.debug_state()["selected"]).is_equal(cal.id)
+
+
+func test_sort_key_cycles_and_orders_by_artist() -> void:
+	var a := _entry("a", "Aaa")
+	a.artist = "Zed"
+	var b := _entry("b", "Bbb")
+	b.artist = "Abe"
+	var s := _screen(_lib([a, b]))
+	assert_array(s.debug_state()["rows"]).is_equal(["a", "b"])
+	s.press_key_for_test(KEY_F2)
+	assert_int(s.debug_state()["sort"]).is_equal(SongListModel.SortMode.ARTIST)
+	assert_array(s.debug_state()["rows"]).is_equal(["b", "a"])
+
+
+func test_best_prefetch_feeds_best_sort() -> void:
+	var store := ScoreStore.new(SCORES)
+	store.submit("fp_b_expert", 900.0, 90.0, 10, true, "2026-10-08")
+	store.save()
+	var s := _screen(_lib([_entry("a", "Aaa"), _entry("b", "Bbb")]))
+	s.set_sort_for_test(SongListModel.SortMode.BEST)
+	assert_array(s.debug_state()["rows"]).is_equal(["b", "a"])
+
+
+func test_scan_status_text_follows_library_state() -> void:
+	var lib := _lib(_songs(3))
+	var s := _screen(lib)
+	lib.progress.emit(2, 10, "x")
+	lib.scan_finished.emit(3, 1)
+	assert_str(s.debug_state()["scan_text"]).is_equal("3 songs  ·  1 unplayable")
+
+
+func test_drawing_every_state_runs_without_errors() -> void:
+	# _draw runs on the next frames; script errors there show in the log (checked by the runner output).
+	var list := _songs(12)
+	list.append(_entry("nc", "Needs one", [], "needs_chart"))
+	list.append(_entry("bad", "Broken one " + "long ".repeat(30), [], "broken"))
+	list.append(_entry("cjk", "日本語のタイトル Привет", ["hard"]))
+	var lib := _lib(list)
+	var s := _screen(lib)
+	SongSelect.run_practice = true
+	for id in ["s03", "nc", "bad", "cjk"]:
+		s.select_for_test(id)
+		await get_tree().process_frame
+		await get_tree().process_frame
+	s.set_filter_for_test("zzz")
+	await get_tree().process_frame
+	s.set_filter_for_test("")
+	s.press_key_for_test(KEY_F2)
+	await get_tree().process_frame
+	lib.shell_opener = func(_p: String) -> bool: return false
+	s.open_folder_for_test()
+	await get_tree().process_frame
+	var empty := _screen(_lib([]))
+	await get_tree().process_frame
+	assert_bool(s.is_inside_tree() and empty.is_inside_tree()).is_true()

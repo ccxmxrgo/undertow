@@ -36,6 +36,9 @@ var reveal: float = 1.0
 ## False until the conductor lead-in starts: the idle clock reads song_time 0, which would pin
 ## the beat pulse at maximum for the whole pre-count (WR-03). Gameplay flips it on.
 var beat_live: bool = true
+## Menu mode (Song Select): no Conductor, no beat pulse, no crowd, no miss glitch, walls at x0.25.
+## Set before adding to the tree.
+var menu_mode: bool = false
 
 var _conductor: Conductor
 var _tempo_map: Array = []
@@ -165,7 +168,7 @@ func on_combo(value: int) -> void:
 
 func on_miss() -> void:
 	_energy *= 0.4
-	if not _calm():
+	if not _calm() and not menu_mode:
 		_glitch_left = GLITCH_SEC
 
 
@@ -186,7 +189,7 @@ func _process(delta: float) -> void:
 func advance(delta: float) -> void:
 	_t += delta
 	var rm := Settings.reduce_motion
-	_scroll += delta * WALL_SCROLL * (0.25 if rm else 1.0)
+	_scroll += delta * WALL_SCROLL * (0.25 if (rm or menu_mode) else 1.0)
 	var tau := RISE_TAU if _target > _energy else FALL_TAU
 	_energy = clampf(_energy + (_target - _energy) * (1.0 - exp(-delta / tau)), 0.0, 1.0)
 	if _glitch_left > 0.0:
@@ -225,7 +228,8 @@ func _draw() -> void:
 	draw_texture_rect(_glow_tex, Rect2(Trench.VP.x - gr, Trench.VP.y - gr, gr * 2.0, gr * 2.0), false,
 		Color(1, 1, 1, reveal * _dim))
 	_draw_walls(ring_count(low))
-	_draw_crowd(low)
+	if not menu_mode:
+		_draw_crowd(low)
 	_draw_snow(snow_count(low))
 	if glitch > 0.0:
 		for x in [0.0, W - 24.0]:
