@@ -142,6 +142,59 @@ func test_selection_keeps_screen_row_when_scan_inserts_rows_above() -> void:
 	assert_int((after["rows"] as Array).find(after["selected"])).is_equal(row_before)
 
 
+## 02-06 windowed finding: a full rescan (scan_started, batches, scan_finished) must not clear the
+## list, so the selection stays on the same screen row when new songs sort above it.
+func test_full_rescan_keeps_selection_row_and_drops_missing_entries() -> void:
+	var lib := _lib(_songs(30))
+	var s := _screen(lib)
+	for i in 12:
+		s.press_key_for_test(KEY_DOWN)
+	var before := s.debug_state()
+	var row_before: int = (before["rows"] as Array).find(before["selected"])
+	lib.scan_started.emit()
+	assert_str(s.debug_state()["selected"]).is_equal(before["selected"])
+	var fresh := _songs(30)
+	fresh.remove_at(29)  # s29 was deleted from disk
+	# First batch does not contain the selected song (bundled songs arrive first in the real scan).
+	lib.entries_added.emit(fresh.slice(20))
+	var added: Array = []
+	for i in 3:
+		added.append(_entry("a%02d" % i, "Aaa %02d" % i))
+	lib.entries_added.emit(added + fresh.slice(0, 20))
+	lib.scan_finished.emit(32, 0)
+	var after := s.debug_state()
+	assert_str(after["selected"]).is_equal(before["selected"])
+	assert_int((after["rows"] as Array).find(after["selected"])).is_equal(row_before)
+	assert_int(int(after["offset"])).is_equal(int(before["offset"]) + 3)
+	assert_int(int(after["view_size"])).is_equal(32)
+	assert_bool(s._view_ids().has("s29")).is_false()
+
+
+## 02-06 windowed finding: the filter field counted the Calibration Track ("36 songs") while the
+## footer status did not ("35 songs").
+func test_filter_count_excludes_calibration_track() -> void:
+	var cal := SongLibrary.calibration_entry()
+	var s := _screen(_lib([cal] + _songs(3)))
+	assert_str(s.filter_count_text()).is_equal("3 songs")
+	s.set_filter_for_test("song 0")
+	assert_str(s.filter_count_text()).is_equal("3 / 3")
+	s.set_filter_for_test("calibration")
+	assert_str(s.filter_count_text()).is_equal("0 / 3")
+
+
+## 02-06 windowed finding: the empty-state path broke inside a folder name.
+func test_wrap_path_breaks_after_separators() -> void:
+	var s := _screen(_lib(_songs(1)))
+	var path := "C:/Users/someone/AppData/Roaming/Godot/app_userdata/UNDERTOW/songs"
+	var lines: Array = s.wrap_path(path, Palette.SIZE_BODY, 800.0)
+	assert_str("".join(lines)).is_equal(path)
+	assert_int(lines.size()).is_greater(1)
+	for i in lines.size() - 1:
+		assert_bool(String(lines[i]).ends_with("/")).is_true()
+	for ln in lines:
+		assert_float(s._w(ln, Palette.SIZE_BODY)).is_less_equal(800.0)
+
+
 func test_digits_navigate_only_while_filter_empty() -> void:
 	var s := _screen(_lib(_songs(30)))
 	s.press_key_for_test(KEY_2, 50)
@@ -324,6 +377,35 @@ func test_preview_waits_for_gate_then_plays_and_stops_on_dive() -> void:
 	s.press_key_for_test(KEY_ENTER)
 	assert_str(s.debug_state()["preview_state"]).is_equal("none")
 	Gameplay.pending_chart = null
+
+
+## 02-06 windowed finding: unreaped WorkerThreadPool preview tasks crashed the game on quit.
+func test_preview_load_tasks_are_reaped() -> void:
+	var cal := SongLibrary.calibration_entry()
+	var s := _screen(_lib([cal]))
+	_nav(s)
+	var stream := AudioSynth.make_click_track(120.0, 4.0)
+	s.preview_loader = func(_e: SongEntry) -> AudioStream: return stream
+	s.set_filter_for_test("a")
+	s.set_filter_for_test("")
+	s.tick_preview(Time.get_ticks_msec() + 600)
+	assert_int(s._preview_tasks.size()).is_equal(1)
+	var t0 := Time.get_ticks_msec()
+	while not s._preview_tasks.is_empty() and Time.get_ticks_msec() - t0 < 3000:
+		await get_tree().process_frame
+	assert_int(s._preview_tasks.size()).is_equal(0)
+	# A load still running when the screen leaves the tree is waited for in _exit_tree.
+	var slow := func(_e: SongEntry) -> AudioStream:
+		OS.delay_msec(200)
+		return stream
+	s.preview_loader = slow
+	s._stream_cache.clear()
+	s.set_filter_for_test("a")
+	s.set_filter_for_test("")
+	s.tick_preview(Time.get_ticks_msec() + 600)
+	assert_int(s._preview_tasks.size()).is_equal(1)
+	remove_child(s)
+	assert_int(s._preview_tasks.size()).is_equal(0)
 
 
 func test_preview_not_started_for_broken_song() -> void:

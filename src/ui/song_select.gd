@@ -59,6 +59,11 @@ var library: Node
 var preview_loader: Callable = Callable()
 
 var _all: Array[SongEntry] = []
+## id -> index in _all (rescans replace entries in place instead of clearing the list).
+var _pos: Dictionary = {}
+## Ids delivered by the running rescan; entries not seen by its end are dropped.
+var _seen_ids: Dictionary = {}
+var _rescanning: bool = false
 var _view: Array = []
 var _sel_id: String = ""
 var _wanted_diff: String = "expert"
@@ -108,6 +113,10 @@ var _preview_request: int = 0
 var _preview_entry_id: String = ""
 var _preview_tween: Tween
 var _stream_cache: Array = []
+## WorkerThreadPool ids of preview loads. Every task is reaped with wait_for_task_completion (in
+## _process once finished, in _exit_tree at the latest): an unreaped task keeps its lambda alive
+## until engine shutdown, which crashed the game on quit (0xC0000005, 02-06 harness finding).
+var _preview_tasks: Array[int] = []
 
 var _arena: Arena
 var _panes: Array[Pane] = []
@@ -150,6 +159,7 @@ func _ready() -> void:
 		if library.last_difficulty != "":
 			_wanted_diff = library.last_difficulty
 		_all.assign(library.entries)
+		_reindex()
 		_refresh_bests(_all)
 		_scan_count = maxi(0, _all.size() - 1)
 		library.scan_started.connect(_on_scan_started)
@@ -169,6 +179,7 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	_stop_preview(false)
+	_reap_preview_tasks(true)
 	if library != null:
 		for pair in [[library.scan_started, _on_scan_started], [library.entries_added, _on_entries_added],
 				[library.progress, _on_progress], [library.scan_finished, _on_scan_finished]]:
@@ -220,9 +231,13 @@ func _refresh_bests(batch: Array) -> void:
 				_best_by_fp[fp] = b
 
 
+## A rescan keeps the current list on screen: arriving entries replace or extend it, and
+## entries the scan did not deliver are dropped when it finishes. The selection therefore never
+## disappears, and rows inserted above it keep its screen row (02-06 harness finding).
 func _on_scan_started() -> void:
 	_restore_id = _sel_id
-	_all.clear()
+	_seen_ids = {}
+	_rescanning = true
 	_scan_started_msec = Time.get_ticks_msec()
 	_scan_done = 0
 	_scan_total = 0
@@ -231,7 +246,13 @@ func _on_scan_started() -> void:
 
 func _on_entries_added(batch: Array) -> void:
 	for item in batch:
-		_all.append(item)
+		var se: SongEntry = item
+		_seen_ids[se.id] = true
+		if _pos.has(se.id):
+			_all[int(_pos[se.id])] = se
+		else:
+			_pos[se.id] = _all.size()
+			_all.append(se)
 	_refresh_bests(batch)
 	_rebuild(true)
 	var want := _restore_id
@@ -256,6 +277,23 @@ func _on_progress(done: int, total: int, label: String) -> void:
 func _on_scan_finished(count: int, unplayable: int) -> void:
 	_scan_count = count
 	_scan_unplayable = unplayable
+	if _rescanning:
+		_rescanning = false
+		var kept: Array[SongEntry] = []
+		for e in _all:
+			if _seen_ids.has(e.id):
+				kept.append(e)
+		if kept.size() != _all.size():
+			_all = kept
+			_reindex()
+			_rebuild(true)
+	_restore_id = ""
+
+
+func _reindex() -> void:
+	_pos = {}
+	for i in _all.size():
+		_pos[_all[i].id] = i
 
 
 func _has_imported() -> bool:
@@ -748,6 +786,7 @@ func _process(delta: float) -> void:
 		_message = ""
 		_message_kind = ""
 	tick_preview(Time.get_ticks_msec())
+	_reap_preview_tasks(false)
 	for p in _panes:
 		p.queue_redraw()
 
@@ -779,9 +818,20 @@ func tick_preview(now_msec: int) -> void:
 	_preview_request += 1
 	var req := _preview_request
 	var loader := _loader()
-	WorkerThreadPool.add_task(func() -> void:
+	_preview_tasks.append(WorkerThreadPool.add_task(func() -> void:
 		var s: AudioStream = loader.call(e)
-		_preview_loaded.call_deferred(req, e.id, s))
+		_preview_loaded.call_deferred(req, e.id, s)))
+
+
+## Waits for finished preview loads (or all of them when `all` is set, e.g. on leaving the screen).
+func _reap_preview_tasks(all: bool) -> void:
+	var keep: Array[int] = []
+	for id in _preview_tasks:
+		if all or WorkerThreadPool.is_task_completed(id):
+			WorkerThreadPool.wait_for_task_completion(id)
+		else:
+			keep.append(id)
+	_preview_tasks = keep
 
 
 func _preview_loaded(req: int, id: String, stream: AudioStream) -> void:
@@ -974,11 +1024,26 @@ func _paint_filter(c: CanvasItem) -> void:
 		_txt(c, Vector2(80, 156), _filter, Palette.SIZE_BODY, C_TEXT)
 		if Settings.reduce_motion or fmod(_t, 1.0) < 0.5:
 			c.draw_rect(Rect2(80.0 + _w(_filter, Palette.SIZE_BODY), 128.0, 2.0, 28.0), C_TEXT)
-		var shown := _view.size() - (1 if _view.has(null) else 0)
-		_txt_r(c, 992, 152, "%d / %d" % [shown, _all.size()], Palette.SIZE_LABEL, C_CAP)
+		_txt_r(c, 992, 152, filter_count_text(), Palette.SIZE_LABEL, C_CAP)
 	else:
 		_txt(c, Vector2(80, 156), "Type to search title or artist", Palette.SIZE_BODY, C_CAP)
-		_txt_r(c, 992, 152, SongListModel.count_text(maxi(0, _all.size())), Palette.SIZE_LABEL, C_CAP)
+		_txt_r(c, 992, 152, filter_count_text(), Palette.SIZE_LABEL, C_CAP)
+
+
+## Right side of the filter field. Counts songs like the footer status does (the Calibration Track
+## is not a song), so the two numbers on screen agree (02-06 harness finding: "36 songs" vs "35 songs").
+func filter_count_text() -> String:
+	var total := 0
+	for e in _all:
+		if e.source != "test":
+			total += 1
+	if _filter == "":
+		return SongListModel.count_text(total)
+	var shown := 0
+	for e in _view:
+		if e != null and (e as SongEntry).source != "test":
+			shown += 1
+	return "%d / %d" % [shown, total]
 
 
 func _paint_credits(c: CanvasItem) -> void:
@@ -1030,9 +1095,29 @@ func _paint_empty(c: CanvasItem, title: String, body: String, show_path: bool) -
 		var cap := "Your Songs folder is:"
 		_txt(c, Vector2(cx - _w(cap, Palette.SIZE_LABEL) * 0.5, 620), cap, Palette.SIZE_LABEL, C_CAP)
 		var py := 660.0
-		for ln in _wrap(library.songs_dir(), Palette.SIZE_BODY, 800.0).slice(0, 3):
+		for ln in wrap_path(library.songs_dir(), Palette.SIZE_BODY, 800.0).slice(0, 3):
 			_txt(c, Vector2(cx - _w(ln, Palette.SIZE_BODY) * 0.5, py), ln, Palette.SIZE_BODY, C_TEXT)
 			py += 36.0
+
+
+## Path wrap that breaks after "/" separators (never inside a folder name unless one name alone is
+## wider than the line). 02-06 harness finding: the empty state split ".../UND" + "ERTOW/...".
+func wrap_path(path: String, size: int, max_w: float) -> Array:
+	var lines: Array = []
+	var cur := ""
+	var parts := path.split("/")
+	for i in parts.size():
+		var seg: String = parts[i] + ("/" if i < parts.size() - 1 else "")
+		if cur != "" and _w(cur + seg, size) > max_w:
+			lines.append(cur)
+			cur = ""
+		cur += seg
+	if cur != "":
+		lines.append(cur)
+	var out: Array = []
+	for ln in lines:
+		out.append_array(_wrap(ln, size, max_w) if _w(ln, size) > max_w else [ln])
+	return out
 
 
 ## Greedy word wrap by measured width; over-long words are split by character.
