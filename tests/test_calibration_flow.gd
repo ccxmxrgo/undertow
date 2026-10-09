@@ -183,11 +183,11 @@ func test_menu_start_and_autoplay_set_launch_params() -> void:
 	var calls: Array = []
 	m.navigate = func(p: String) -> void: calls.append(p)
 	m.start_button.pressed.emit()
-	assert_str(calls[0]).is_equal("res://scenes/gameplay.tscn")
-	assert_object(Gameplay.pending_chart).is_not_null()
-	assert_bool(Gameplay.pending_autoplay).is_false()
+	assert_str(calls[0]).is_equal("res://scenes/song_select.tscn")
+	assert_bool(SongSelect.run_autoplay).is_false()
 	m.autoplay_button.pressed.emit()
-	assert_bool(Gameplay.pending_autoplay).is_true()
+	assert_bool(SongSelect.run_autoplay).is_true()
+	SongSelect.run_autoplay = false
 	assert_str(m.autoplay_button.text).is_equal("Autoplay Dive (test)")
 
 

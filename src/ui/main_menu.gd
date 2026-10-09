@@ -5,6 +5,8 @@ extends Control
 ## session; an output-device change since the last calibration shows the re-calibrate prompt.
 
 const GAMEPLAY_SCENE := "res://scenes/gameplay.tscn"
+const SONG_SELECT_SCENE := "res://scenes/song_select.tscn"
+const FOLDER_MSG_SEC := 6.0
 const CALIBRATION_SCENE := "res://scenes/calibration.tscn"
 const SETTINGS_SCENE := "res://scenes/settings.tscn"
 const DEVICE_CHANGED_COPY := "Output device changed. Calibrate Sonar again for accurate timing."
@@ -21,12 +23,17 @@ static var records_error_shown: bool = false
 ## Scene changes go through this so tests can observe them.
 var navigate: Callable = Callable()
 
+## Test seam: Callable() -> bool replaces SongLibrary.open_songs_folder().
+var open_folder: Callable = Callable()
+
 var start_button: Button
 var practice_button: Button
 var autoplay_button: Button
 var calibrate_button: Button
 var settings_button: Button
 var quit_button: Button
+var open_folder_button: Button
+var folder_message_label: Label
 var prompt_calibrate_button: Button
 var prompt_skip_button: Button
 
@@ -81,13 +88,23 @@ func _build() -> void:
 	start_button = _item(box, "Start Dive", func() -> void: launch(false))
 	practice_button = _item(box, "Practice Dive (No-Fail)", func() -> void: launch_practice())
 	_build_best_line(box)
-	autoplay_button = _item(box, "Autoplay Dive (test)", func() -> void: launch(true))
 	calibrate_button = _item(box, "Calibrate Sonar", func() -> void: _go(CALIBRATION_SCENE))
 	settings_button = _item(box, "Settings", func() -> void: _go(SETTINGS_SCENE))
+	autoplay_button = _item(box, "Autoplay Dive (test)", func() -> void: launch(true))
+	open_folder_button = _item(box, "Open Songs Folder", func() -> void: open_songs_folder())
+	folder_message_label = Label.new()
+	folder_message_label.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
+	folder_message_label.add_theme_color_override("font_color", Palette.DESTRUCTIVE)
+	folder_message_label.focus_mode = Control.FOCUS_NONE
+	folder_message_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	folder_message_label.custom_minimum_size = Vector2(480.0, 0.0)
+	folder_message_label.visible = false
+	box.add_child(folder_message_label)
 	quit_button = _item(box, "Quit Game", func() -> void:
 		if is_inside_tree():
 			get_tree().quit())
-	var items := [start_button, practice_button, autoplay_button, calibrate_button, settings_button, quit_button]
+	var items := [start_button, practice_button, calibrate_button, settings_button, autoplay_button,
+			open_folder_button, quit_button]
 	for i in range(items.size()):
 		var b: Button = items[i]
 		b.focus_neighbor_top = b.get_path_to(items[(i + items.size() - 1) % items.size()])
@@ -101,7 +118,8 @@ func _build() -> void:
 		start_button.grab_focus()
 
 
-## Read-only best line directly after the practice entry; never part of the focus ring.
+## The visible "Best: ..." line moved into Song Select (records are per song and difficulty).
+## The label stays as a hidden node for harness compatibility; never part of the focus ring.
 func _build_best_line(box: VBoxContainer) -> void:
 	var store := ScoreStore.new()
 	store.load()
@@ -109,6 +127,7 @@ func _build_best_line(box: VBoxContainer) -> void:
 	best_label = Label.new()
 	best_label.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
 	best_label.focus_mode = Control.FOCUS_NONE
+	best_label.visible = false
 	if b.is_empty():
 		best_label.text = NO_RECORD_COPY
 	else:
@@ -181,19 +200,37 @@ func empty_state_visible() -> bool:
 	return _empty_state.visible
 
 
+## Opens Song Select with the run flags; the chart is chosen there (D-13).
 func launch(autoplay: bool) -> void:
-	Gameplay.pending_chart = TestCharts.hand_chart()
-	Gameplay.pending_autoplay = autoplay
-	Gameplay.pending_practice = false
-	_go(GAMEPLAY_SCENE)
+	SongSelect.run_autoplay = autoplay
+	SongSelect.run_practice = false
+	_go(SONG_SELECT_SCENE)
 
 
 ## D-09: No-Fail run that never touches the persisted Settings.no_fail.
 func launch_practice() -> void:
-	Gameplay.pending_chart = TestCharts.hand_chart()
-	Gameplay.pending_autoplay = false
-	Gameplay.pending_practice = true
-	_go(GAMEPLAY_SCENE)
+	SongSelect.run_autoplay = false
+	SongSelect.run_practice = true
+	_go(SONG_SELECT_SCENE)
+
+
+## D-05/D-20: works before any scan; shows a red line for 6 s when the file manager fails.
+func open_songs_folder() -> void:
+	var lib := get_node_or_null("/root/SongLibrary")
+	var ok := true
+	if open_folder.is_valid():
+		ok = bool(open_folder.call())
+	else:
+		ok = lib != null and lib.open_songs_folder()
+	if ok:
+		return
+	var path := ProjectSettings.globalize_path("user://songs").simplify_path()
+	folder_message_label.text = "Could not open the Songs folder. It is at %s" % path
+	folder_message_label.visible = true
+	if is_inside_tree():
+		var tw := create_tween()
+		tw.tween_interval(FOLDER_MSG_SEC)
+		tw.tween_callback(func() -> void: folder_message_label.visible = false)
 
 
 func _go(path: String) -> void:

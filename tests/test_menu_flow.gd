@@ -28,6 +28,8 @@ func _rm_scores() -> void:
 
 
 func after_test() -> void:
+	SongSelect.run_autoplay = false
+	SongSelect.run_practice = false
 	ScoreStore.default_path = _old_scores_path
 	MainMenu.records_error_shown = false
 	_rm_scores()
@@ -218,20 +220,73 @@ func test_practice_button_directly_under_start() -> void:
 	assert_bool(m.start_button.has_focus()).is_true()
 
 
-func test_launch_practice_sets_pending_and_keeps_no_fail_setting() -> void:
+func test_launch_practice_sets_run_flags_and_keeps_no_fail_setting() -> void:
 	var m := _main_menu()
 	var calls: Array = []
 	m.navigate = func(p: String) -> void: calls.append(p)
 	Settings.no_fail = false
 	m.launch_practice()
-	assert_bool(Gameplay.pending_practice).is_true()
-	assert_bool(Gameplay.pending_autoplay).is_false()
-	assert_array(calls).is_equal([MainMenu.GAMEPLAY_SCENE])
+	assert_bool(SongSelect.run_practice).is_true()
+	assert_bool(SongSelect.run_autoplay).is_false()
+	assert_array(calls).is_equal([MainMenu.SONG_SELECT_SCENE])
 	assert_bool(Settings.no_fail).is_false()
 	m.launch(false)
-	assert_bool(Gameplay.pending_practice).is_false()
-	Gameplay.pending_chart = null
+	assert_bool(SongSelect.run_practice).is_false()
+	SongSelect.run_practice = false
 	MainMenu.boot_handled = false
+
+
+func test_launch_opens_song_select_and_does_not_preset_chart() -> void:
+	var m := _main_menu()
+	var calls: Array = []
+	m.navigate = func(p: String) -> void: calls.append(p)
+	Gameplay.pending_chart = null
+	m.launch(true)
+	assert_array(calls).is_equal(["res://scenes/song_select.tscn"])
+	assert_bool(SongSelect.run_autoplay).is_true()
+	assert_bool(SongSelect.run_practice).is_false()
+	assert_object(Gameplay.pending_chart).is_null()
+	m.launch(false)
+	assert_bool(SongSelect.run_autoplay).is_false()
+	assert_object(Gameplay.pending_chart).is_null()
+	assert_int(calls.size()).is_equal(2)
+	MainMenu.boot_handled = false
+
+
+func test_item_order_and_focus_ring_include_open_songs_folder() -> void:
+	var m := _main_menu()
+	var order: Array = [m.start_button, m.practice_button, m.calibrate_button, m.settings_button,
+		m.autoplay_button, m.open_folder_button, m.quit_button]
+	assert_str(m.open_folder_button.text).is_equal("Open Songs Folder")
+	for i in order.size():
+		var b: Button = order[i]
+		var next: Button = order[(i + 1) % order.size()]
+		var prev: Button = order[(i + order.size() - 1) % order.size()]
+		assert_bool(b.get_node(b.focus_neighbor_bottom) == next).is_true()
+		assert_bool(b.get_node(b.focus_neighbor_top) == prev).is_true()
+	for i in range(order.size() - 1):
+		assert_bool((order[i] as Button).get_index() < (order[i + 1] as Button).get_index()).is_true()
+
+
+func test_open_songs_folder_calls_seam_and_shows_error_on_failure() -> void:
+	var m := _main_menu()
+	var calls := [0]
+	m.open_folder = func() -> bool:
+		calls[0] += 1
+		return true
+	m.open_folder_button.pressed.emit()
+	assert_int(calls[0]).is_equal(1)
+	assert_bool(m.folder_message_label.visible).is_false()
+	m.open_folder = func() -> bool: return false
+	m.open_songs_folder()
+	assert_bool(m.folder_message_label.visible).is_true()
+	assert_str(m.folder_message_label.text).starts_with("Could not open the Songs folder. It is at ")
+
+
+func test_best_line_is_hidden_but_still_present() -> void:
+	var m := _main_menu()
+	assert_object(m.best_label).is_not_null()
+	assert_bool(m.best_label.visible).is_false()
 
 
 func test_best_line_empty_state_and_saved_record() -> void:
