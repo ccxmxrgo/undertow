@@ -116,11 +116,11 @@ Plans:
   6. The user's three custom songs (HRT, Sea Shanty 2, INVISIBLE) and the two existing bundled songs ship with audio-driven charts that pass the measured sync gate (median note-to-onset within ±5 ms, ≥90% of notes within ±25 ms)
 
 **Depends on:** Phase 2
-**Plans:** 9 plans (7 waves)
+**Plans:** 1/9 plans executed
 
 Plans:
 
-- [ ] 02.1-01-PLAN.md — Reproducible venvs, align-harness hang fix, sync gate (note_sync.py) + baseline numbers for the plan-authored charts (STEM-01 cited)
+- [x] 02.1-01-PLAN.md — Reproducible venvs, align-harness hang fix, sync gate (note_sync.py) + baseline numbers for the plan-authored charts (STEM-01 cited)
 - [ ] 02.1-02-PLAN.md — TDD: tempo map (per-beat B), Expert builder (density/merge/snap/cap), .chart/.ini writer
 - [ ] 02.1-03-PLAN.md — TDD: contour lanes, accent chords, sustains, Hard/Medium/Easy reductions, section/solo/preview picks
 - [ ] 02.1-04-PLAN.md — Analysis CLI: decode, htdemucs stems, beats, audible onsets, Basic Pitch; run on the 3 songs

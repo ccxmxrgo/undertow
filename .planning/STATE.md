@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 02.1 planned (9 plans, 7 waves); executing
-last_updated: "2026-10-09T10:29:18.292Z"
+stopped_at: Completed 02.1-01-PLAN.md
+last_updated: "2026-10-09T10:43:23.886Z"
 last_activity: 2026-10-09
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 40
-  completed_plans: 31
+  completed_plans: 32
   percent: 50
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-07)
 
 **Core value:** Hitting notes must feel tight and fair on each player's own machine, while torpedoes reach rivals over the network fast enough that a friend's perfect streak is felt inside the same song.
-**Current focus:** Phase 2 — Chart Import & Songs
+**Current focus:** Phase 02.1 — Instrument Extraction Tool
 
 ## Current Position
 
-Phase: 2 (Chart Import & Songs) — EXECUTING
-Plan: 5 of 6 complete (02-01..02-05 done; next 02-06)
+Phase: 02.1 (Instrument Extraction Tool) — EXECUTING
+Plan: 2 of 9
 Status: Ready to execute
 Last activity: 2026-10-09
 
@@ -60,6 +60,7 @@ Progress: [#########.] 93%
 | Phase 01 P07 | ~60min (tasks 1-2) | 2 of 3 tasks | 12 files |
 | Phase 01 P08 | ~1h | 3 tasks | 14 files |
 | Phase 01 P10 | ~35min | 2 of 3 tasks | 6 files |
+| Phase 02.1 P01 | 12 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,8 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-03: sustain ticks frame-rate independent; hit score uses pre-hit multiplier; resume restarts audio via play(paused_position) launched early by output delay
 - [Phase 01]: 01-04: Bindings serialize as <action>_key and <action>_pad; invalid or duplicate entries revert that action to default; trigger lanes press at 0.5, release at 0.4
 - [Phase 01]: 01-05: Feedback owns lane flash/text/SFX/nudge; Hud owns hull damage flash; Highway.on_sustain_end must be wired to InputJudge.sustain_end
+- [Phase 02.1]: 02.1-01: sync gate error sign is note - onset (negative = early); suggested_delay = delay - median; RESEARCH tables use the opposite sign
+- [Phase 02.1]: 02.1-01: mix-only gate gives April's plan-authored chart PASS_BASELINE (78.5%, chance 9.9%); new charts are always gated with --stem and --beats
 
 ### Pending Todos
 
@@ -98,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-09T10:29:18.287Z
-Stopped at: Phase 02.1 planned (9 plans, 7 waves); executing
+Last session: 2026-10-09T10:43:23.880Z
+Stopped at: Completed 02.1-01-PLAN.md
 Resume file: None
