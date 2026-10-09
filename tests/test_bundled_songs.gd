@@ -161,3 +161,85 @@ func test_manifest_lists_both_songs_with_existing_files() -> void:
 	assert_bool(FileAccess.file_exists("res://songs/CREDITS.txt")).is_true()
 	var credits := FileAccess.get_file_as_string("res://songs/CREDITS.txt")
 	assert_bool(credits.contains("Pro Sensory") and credits.contains("CC0")).is_true()
+
+
+# ---- library listing, audio length and Autoplay (plan 02-05 task 3) ----
+
+const LIB_D := "user://test_bundled_songs"
+const AUDIO_LEN := {"synth_wave_april": 128.0, "space_synth_wave": 192.0}
+
+
+func _lib() -> Node:
+	SongFixture.rm_tree(LIB_D)
+	SongFixture.mkdir(LIB_D + "/songs")
+	var lib: Node = load("res://src/autoload/song_library.gd").new()
+	lib.songs_root_override = LIB_D + "/songs"
+	lib.cache_path = LIB_D + "/cache.json"
+	lib.auto_scan = false
+	add_child(lib)
+	lib.rescan()
+	var t0 := Time.get_ticks_msec()
+	while lib.scanning and Time.get_ticks_msec() - t0 < 30000:
+		await get_tree().process_frame
+	return lib
+
+
+func after_test() -> void:
+	SongFixture.rm_tree(LIB_D)
+
+
+func test_library_lists_both_bundled_songs_playable() -> void:
+	var lib := await _lib()
+	assert_bool(lib.scanning).is_false()
+	for id in IDS:
+		var e: SongEntry = null
+		for x in lib.entries:
+			if x.source == "bundled" and str(x.id).ends_with(id):
+				e = x
+		assert_object(e).is_not_null()
+		assert_str(e.status).is_equal("ok")
+		assert_str(e.artist).is_equal("Pro Sensory (Alex McCulloch)")
+		assert_array(e.difficulties.map(func(d: Dictionary) -> String: return d["name"])).contains_exactly(DIFFS)
+		assert_bool(e.has_solos).is_true()
+		assert_float(e.length_sec).is_equal_approx(AUDIO_LEN[id], 0.15)
+	lib.queue_free()
+
+
+func _autoplay_all_perfect(chart: ChartData) -> Dictionary:
+	var cfg := JudgeConfig.new()
+	var judge := InputJudge.new(chart, cfg)
+	var hs := HullScore.new(cfg)
+	hs.connect_judge(judge)
+	var ap := Autoplay.new(chart, judge)
+	var last: float = chart.notes[chart.notes.size() - 1]["time"] + chart.notes[chart.notes.size() - 1]["duration"] + 3.0
+	var t := 0.0
+	while t < last:
+		t += 1.0 / 60.0
+		ap.update(t)
+		judge.tick(t)
+	return {"hs": hs, "judge": judge}
+
+
+func test_autoplay_all_perfect_every_difficulty_of_both_songs() -> void:
+	var lib := await _lib()
+	for id in IDS:
+		var e: SongEntry = null
+		for x in lib.entries:
+			if x.source == "bundled" and str(x.id).ends_with(id):
+				e = x
+		assert_object(e).is_not_null()
+		for d in DIFFS:
+			var chart: ChartData = lib.build_chart(e, d)
+			assert_object(chart).override_failure_message("%s %s: %s" % [id, d, lib.last_build_error]).is_not_null()
+			assert_object(chart.audio_stream).is_not_null()
+			assert_float(chart.audio_stream.get_length()).is_equal_approx(AUDIO_LEN[id], 0.15)
+			var r := _autoplay_all_perfect(chart)
+			var hs: HullScore = r["hs"]
+			assert_int(hs.miss_count).is_equal(0)
+			assert_int(hs.good_count).is_equal(0)
+			assert_int(hs.perfect_count).is_equal(chart.notes.size())
+			assert_bool((r["judge"] as InputJudge).is_finished()).is_true()
+			assert_int(chart.solos.size()).is_equal(1)
+			if d == "hard" or d == "expert":
+				assert_int(chart.solos[0]["note_count"]).is_greater_equal(16)
+	lib.queue_free()

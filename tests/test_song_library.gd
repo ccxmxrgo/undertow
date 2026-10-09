@@ -74,7 +74,7 @@ func test_scan_finds_dropped_folder_and_builds_playable_chart() -> void:
 	lib.progress.connect(func(d: int, t: int, l: String) -> void: progresses.append([d, t, l]))
 	lib.scan_finished.connect(func(c: int, u: int) -> void: finished.append([c, u]))
 	await _scan(lib)
-	assert_array(finished).is_equal([[1, 0]])
+	assert_array(finished).is_equal([[1 + BundledSongs.SONGS.size(), 0]])
 	assert_bool(_ids(lib).has("Ini Title")).is_true()
 	assert_bool(added.size() >= 2).is_true()  # calibration + the song
 	assert_bool(progresses.size() > 0).is_true()
@@ -120,13 +120,13 @@ func test_rescan_picks_up_new_folder_and_ignores_overlap() -> void:
 	SongFixture.make_song(SONGS + "/One")
 	var lib := _lib()
 	await _scan(lib)
-	assert_int(lib.entries.size()).is_equal(2)
+	assert_int(lib.entries.size()).is_equal(2 + BundledSongs.SONGS.size())
 	SongFixture.make_community(SONGS + "/Two")
 	lib.rescan()
 	lib.rescan()  # ignored while scanning
 	assert_bool(lib.scanning).is_true()
 	await _wait_scan(lib)
-	assert_int(lib.entries.size()).is_equal(3)
+	assert_int(lib.entries.size()).is_equal(3 + BundledSongs.SONGS.size())
 	assert_str(lib.entries[0].id).is_equal(TestCharts.HAND_CHART_ID)
 	lib.queue_free()
 
@@ -169,8 +169,8 @@ func test_opus_song_listed_broken_and_not_buildable() -> void:
 	var finished: Array = []
 	lib.scan_finished.connect(func(c: int, u: int) -> void: finished.append([c, u]))
 	await _scan(lib)
-	assert_array(finished).is_equal([[1, 1]])
-	var e: SongEntry = lib.entries[1]
+	assert_array(finished).is_equal([[1 + BundledSongs.SONGS.size(), 1]])
+	var e: SongEntry = _user_song(lib)
 	assert_str(e.status).is_equal("broken")
 	assert_str(e.error).is_equal(SongEntry.ERR_OPUS)
 	assert_object(lib.build_chart(e, "expert")).is_null()
@@ -182,7 +182,7 @@ func test_build_chart_rejects_changed_song() -> void:
 	SongFixture.make_song(SONGS + "/Changing")
 	var lib := _lib()
 	await _scan(lib)
-	var e: SongEntry = lib.entries[1]
+	var e: SongEntry = _user_song(lib)
 	SongFixture.write_text(SONGS + "/Changing/notes.chart", SongFixture.CHART.replace("768 = N 0 0", "770 = N 0 0"))
 	assert_object(lib.build_chart(e, "expert")).is_null()
 	assert_str(lib.last_build_error).contains("Rescan")
@@ -211,3 +211,11 @@ func test_songs_dir_is_absolute() -> void:
 	assert_bool(p.is_absolute_path()).is_true()
 	assert_bool(DirAccess.dir_exists_absolute(p)).is_true()
 	lib.queue_free()
+
+
+## First entry that came from the temp songs folder (bundled songs are listed too).
+func _user_song(lib: Node) -> SongEntry:
+	for e in lib.entries:
+		if e.source == "songs":
+			return e
+	return null
