@@ -103,7 +103,8 @@ Plans:
 
 **Goal:** Players can turn a song they own into a playable chart by extracting its instruments. Research comes first: study how to separate stems and how to turn a stem into notes, then build the tool.
 **Mode:** mvp
-**Requirements**: STEM-01, STEM-02, STEM-03, STEM-04, STEM-05
+**Requirements**: STEM-01, STEM-02, STEM-03, STEM-04, STEM-05, STEM-06, STEM-07
+**Spec:** `phases/02.1-instrument-extraction-tool/02.1-SPEC.md` (locked 2026-10-09: Clone Hero-style audio-driven charts; first deliverable = the user's 3 custom songs bundled and synced)
 **Research:** REQUIRED before planning (stem separation models, runtime/packaging on friends' PCs, onset/pitch-to-lane charting, quality on real songs)
 **Success Criteria** (what must be TRUE):
 
@@ -112,6 +113,7 @@ Plans:
   3. Player can chart ONE chosen instrument across the 4 lanes, or use INSTRUMENT LANES mode where each lane is a different instrument
   4. Generated charts are synced to the original song and saved into the song library like any other song
   5. The tool runs on the player's own PC without a paid service, and reports progress and failures clearly
+  6. The user's three custom songs (HRT, Sea Shanty 2, INVISIBLE) and the two existing bundled songs ship with audio-driven charts that pass the measured sync gate (median note-to-onset within ±5 ms, ≥90% of notes within ±25 ms)
 
 **Depends on:** Phase 2
 **Plans:** 5/6 plans executed

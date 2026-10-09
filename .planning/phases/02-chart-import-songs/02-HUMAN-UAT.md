@@ -115,7 +115,7 @@ Launch `build/undertow-debug.exe` (or unzip the v0.3 zip and run `undertow-debug
 |---|------|--------|
 | a | Start Dive opens SELECT SONG: both bundled songs, the credits line and the Songs folder path are visible | pending |
 | b | Highlight a song, wait about half a second: the preview fades in; move away: it stops | pending |
-| c | Play one bundled song on 2 difficulties (Easy and Expert; Expert has a solo). Do the notes feel in time with the music? | pending |
+| c | Play one bundled song on 2 difficulties (Easy and Expert; Expert has a solo). Do the notes feel in time with the music? | **FAILED** (2026-10-09, user: "i need them to be playable and to be synced in-game. not like the current state.") Root cause: charts are plan-authored, audio never analysed. Fix moved to Phase 2.1 (02.1-SPEC.md, STEM-06/07). |
 | d | Open Songs Folder (menu or Song Select), drop a real Clone Hero song folder AND a .zip of one into the Songs folder, press Rescan Library: both appear and play | pending |
 | e | An Opus-audio song shows greyed with "Opus audio not supported" (any Opus song you have) | pending |
 | f | Drop a bare .mp3: it shows "NEEDS A CHART" and cannot be started | pending |
