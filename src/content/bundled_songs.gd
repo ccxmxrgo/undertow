@@ -1,8 +1,12 @@
 class_name BundledSongs
 extends RefCounted
-## Manifest of songs shipped inside the game (filled in by plan 05).
+## Manifest of songs shipped inside the game (D-14, SONG-04).
 ## Each entry: {"id": String, "dir": "res://songs/<id>", "audio": "song.mp3" | "song.wav"}.
 ## The folder holds notes.chart (and optionally song.ini). The library reads these known
 ## paths directly instead of enumerating res:// (directory listings differ once exported).
+## Credits: songs/CREDITS.txt (Pro Sensory / Alex McCulloch, CC0, via OpenGameArt.org).
 
-const SONGS: Array[Dictionary] = []
+const SONGS: Array[Dictionary] = [
+	{"id": "synth_wave_april", "dir": "res://songs/synth_wave_april", "audio": "song.mp3"},
+	{"id": "space_synth_wave", "dir": "res://songs/space_synth_wave", "audio": "song.wav"},
+]
