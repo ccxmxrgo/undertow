@@ -1,0 +1,69 @@
+Neversoft professional baseline re-measured with the shipped gate (SPEC req 5 calibration)
+========================================================================================
+Reference: official GH3 chart 'Before I Forget' (Slipknot), C:/Users/user/Desktop/Slipknot - Before I Forget (read-only input).
+Notes: 1091 unique Expert note times (PART GUITAR 96-100, resolution 480, 324 tempo events):
+  build/autochart/venvA/Scripts/python.exe -I -B tools/autochart/mid_notes.py "C:/Users/user/Desktop/Slipknot - Before I Forget/notes.mid" build/autochart/tmp/bif_expert.json
+RESEARCH values (same D3 metric): guitar stem 54.5% (chance 37.7%), mix guitar+rhythm+song 73.5% (chance 43.1%),
+median -2.0 / +5.9 ms in RESEARCH sign (onset - note) = +2.0 / -5.9 ms in the gate's sign (note - onset).
+Acceptance: stem % within 53.5..55.5 and summed-mix % within 72.5..74.5.
+
+--- run 1: mix = song.mp3 + guitar.mp3 + rhythm.mp3 (as RESEARCH), stem = guitar.mp3 ---
+note_sync.py - "C:/Users/user/Desktop/Slipknot - Before I Forget/song.ini" "C:/Users/user/Desktop/Slipknot - Before I Forget/song.mp3" --notes-json build/autochart/tmp/bif_expert.json --extra-mix guitar.mp3 --extra-mix rhythm.mp3 --stem guitar.mp3
+NOTE SYNC expert: -
+source: notes-json build/autochart/tmp/bif_expert.json
+chart_sha256: -
+ini_delay_ms: 0
+mix: C:\Users\user\Desktop\Slipknot - Before I Forget\song.mp3 + guitar.mp3 + rhythm.mp3
+decoded_length_ms: 267244
+notes: 1091 (unique times 1091)
+mix onsets: 2559 (9.6/s), D3 delta 0.1
+mix median error (note - onset): -5.9 ms, IQR [-19.0, +8.0] ms
+mix within +-25 ms: 74.0% (chance 43.2%)
+stems: guitar.mp3 (onsets unioned: 2202)
+stem median error (note - onset): +2.0 ms, IQR [-17.0, +18.5] ms
+stem within +-25 ms: 55.3% (chance 39.7%)
+tempo: not given (--beats)
+live lag: not given (--recorded)
+suggested_delay_ms: 6
+fixed-threshold misses: median_mix -5.9 ms > +-5.0; mix 74.0% < 80.0%; stem 55.3% < 90.0%
+GATE PASS_BASELINE
+
+--- run 2: mix = song.mp3 alone, stem = guitar.mp3 ---
+NOTE SYNC expert: -
+source: notes-json build/autochart/tmp/bif_expert.json
+chart_sha256: -
+ini_delay_ms: 0
+mix: C:\Users\user\Desktop\Slipknot - Before I Forget\song.mp3
+decoded_length_ms: 267244
+notes: 1091 (unique times 1091)
+mix onsets: 1784 (6.7/s), D3 delta 0.1
+mix median error (note - onset): -4.5 ms, IQR [-17.8, +8.0] ms
+mix within +-25 ms: 70.6% (chance 28.8%)
+stems: guitar.mp3 (onsets unioned: 2202)
+stem median error (note - onset): +2.0 ms, IQR [-17.0, +18.5] ms
+stem within +-25 ms: 55.3% (chance 39.7%)
+tempo: not given (--beats)
+live lag: not given (--recorded)
+suggested_delay_ms: 5
+fixed-threshold misses: mix 70.6% < 80.0%; stem 55.3% < 90.0%
+GATE FAIL mix 70.6% < 73.5%
+
+--- run 3: union of stems (--stem guitar.mp3 --stem rhythm.mp3), summed mix ---
+NOTE SYNC expert: -
+source: notes-json build/autochart/tmp/bif_expert.json
+chart_sha256: -
+ini_delay_ms: 0
+mix: C:\Users\user\Desktop\Slipknot - Before I Forget\song.mp3 + guitar.mp3 + rhythm.mp3
+decoded_length_ms: 267244
+notes: 1091 (unique times 1091)
+mix onsets: 2559 (9.6/s), D3 delta 0.1
+mix median error (note - onset): -5.9 ms, IQR [-19.0, +8.0] ms
+mix within +-25 ms: 74.0% (chance 43.2%)
+stems: guitar.mp3, rhythm.mp3 (onsets unioned: 4903)
+stem median error (note - onset): +1.0 ms, IQR [-9.5, +12.8] ms
+stem within +-25 ms: 83.0% (chance 66.0%)
+tempo: not given (--beats)
+live lag: not given (--recorded)
+suggested_delay_ms: 6
+fixed-threshold misses: median_mix -5.9 ms > +-5.0; mix 74.0% < 80.0%; stem 83.0% < 90.0%
+GATE PASS_BASELINE

@@ -51,7 +51,56 @@ RULES
 
 SYNC GATE
 ---------
-(filled by plan 02.1-01 task 3)
+Sync is measured on the game's own decoded stream, never guessed (SPEC req 5, D-09, D-10).
+1. Decode every bundled song through the game (windowed; 48 kHz decoded WAV + 24 s live recording):
+     & $env:GODOT_BIN --path . res://tools/playtest/playtest.tscn -- align --no-boot-scan [--only=<id>,<id>]
+     -> build/playtest/align_<id>_decoded.wav, align_<id>_recorded.wav
+        (metrics <id>_decoded_s in build/playtest/align.json = real decoded length, use for song_length)
+2. Gate one chart (venv A):
+     build/autochart/venvA/Scripts/python.exe -I -B tools/autochart/note_sync.py `
+         songs/<id>/notes.chart songs/<id>/song.ini build/playtest/align_<id>_decoded.wav `
+         --stem build/autochart/<id>/stems/<stem>.wav [--stem <second charted stem>.wav] `
+         --beats build/autochart/<id>/beats.json --recorded build/playtest/align_<id>_recorded.wav `
+         [--difficulty expert] [--json build/autochart/<id>/sync.json]
+   Chart note / beat times come from the game's ChartImporter through a headless Godot dump
+   (tools/autochart/dump_chart_times.gd, GODOT_BIN), delay included. Onsets: D3 attack-start detector
+   (tools/autochart/stages/d3.py, delta 0.1). --stem is repeatable: a filled chart (e.g. other + drums)
+   is gated against the union of the onsets of every charted stem.
+   Prints n, median, IQR and % within +-25 ms vs stem and vs mix, each with "(chance X%)" (notes
+   shifted by random +-60..200 ms, seed 0, mean of 20), tempo gate vs refined and raw beats, live lag,
+   suggested_delay_ms, and a last line GATE PASS | GATE PASS_BASELINE | GATE FAIL <reasons>
+   (exit 0 / 0 / 1). --json also stores chart_sha256 and ini_delay_ms so a report can be tied to the
+   committed chart.
+   Error sign: note - onset (negative = the note comes before the sound). RESEARCH tables use the
+   opposite sign (onset - note). suggested_delay_ms = ini delay - round(median_mix).
+   Reference charts: tools/autochart/mid_notes.py <notes.mid> <out.json> (stdlib) gives unique Expert
+   note times for note_sync.py --notes-json (chart / ini become '-' placeholders); --extra-mix sums
+   more audio into the mix (Neversoft song + guitar + rhythm).
+   SPEC req 2 "tracker beats" = the refined (repaired, smoothed, phase-corrected) beat list in
+   beats.json; the raw beat_this numbers are printed too (RESEARCH Pitfall 2).
+
+Thresholds (Expert):
+  metric                               SPEC fixed (PASS)   Neversoft baseline (PASS_BASELINE)   effective
+  median note-to-onset, mix            within +-5 ms       within +-5.9 ms                      +-5.9 ms
+  % within +-25 ms of a stem onset     >= 90%              >= 54.5%                             >= 54.5%
+  % within +-25 ms of a mix onset      >= 80%              >= 73.5% with mix chance <= 45%      >= 73.5%
+  tempo: chart beats vs refined beats  med <= 10, p90 <= 20 ms (both levels)                    same
+  live recording vs decoded            |lag| <= 3 ms (both levels)                              same
+  Stem / tempo / live checks apply only when --stem / --beats / --recorded are given. PASS_BASELINE
+  songs are flagged in the phase UAT.
+
+Baseline numbers (2026-10-09, reports/ has the full printouts):
+  Neversoft "Before I Forget", 1091 Expert note times (reports/neversoft_baseline.txt):
+    mix song+guitar+rhythm  74.0% (chance 43.2%), median -5.9 ms   [RESEARCH 73.5% / 43.1%]
+    guitar stem             55.3% (chance 39.7%), median +2.0 ms   [RESEARCH 54.5% / 37.7%]
+    song.mp3 alone as mix   70.6% (chance 28.8%)
+    stems guitar + rhythm   83.0% (chance 66.0%)  (union >= guitar-only, as designed)
+  Plan-authored charts, before re-chart (reports/baseline_plan_authored.txt, UAT item c FAILED):
+    synth_wave_april  mix 78.5% (chance 9.9%), median -3.0 ms, live lag +1.33 ms  -> GATE PASS_BASELINE
+    space_synth_wave  mix 55.3% (chance 30.0%), median -1.0 ms, live lag +1.33 ms -> GATE FAIL
+  The old grid is in phase with the audio (only the notes ignore the music). Without a stem the mix
+  metric cannot tell "on the beat" from "on the instrument", so new charts are always gated with
+  --stem, and the ear check stays the final word.
 
 MODEL HASHES (SHA-256)
 ----------------------

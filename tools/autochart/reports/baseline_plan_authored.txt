@@ -1,0 +1,52 @@
+Plan-authored charts before Phase 2.1 (UAT item c FAILED)
+==========================================================
+Measured 2026-10-09 by plan 02.1-01 with the shipped sync gate, before any re-chart (STEM-07).
+Charts: author_chart.gd + section_plans.gd output (fixed 120 BPM grid, audio never analysed).
+Audio: build/playtest/align_<id>_decoded.wav / _recorded.wav from the windowed align scenario
+  ($env:GODOT_BIN --path . res://tools/playtest/playtest.tscn -- align --no-boot-scan), 48 kHz.
+Mix only (these charts have no charted stem). Error sign: note - onset (negative = note early).
+Commands:
+  build/autochart/venvA/Scripts/python.exe -I -B tools/autochart/note_sync.py songs/<id>/notes.chart \
+    songs/<id>/song.ini build/playtest/align_<id>_decoded.wav --recorded build/playtest/align_<id>_recorded.wav
+
+Reading: the grid itself is in phase with the audio (median -3.0 / -1.0 ms, live lag +1.33 ms), so the
+old delay fit was right. April's synth line is mostly on 8ths, so a fixed-grid chart still lands
+78.5% of notes on some mix attack (chance 9.9%) and only misses the fixed 80% line; Space lands 55.3%
+(chance 30.0%). The mix metric alone cannot tell 'on the beat' from 'on the instrument that plays':
+the stem metric, the chance level and the ear check are what separate the new charts from these.
+
+--- synth_wave_april ---
+NOTE SYNC expert: C:\Users\user\Documents\undertow\songs\synth_wave_april\notes.chart
+source: godot ChartImporter dump
+chart_sha256: 5694f2e46b9b284948cc1604835bdcc09cca476836de35162c846250d65d69ab
+ini_delay_ms: 48
+mix: C:\Users\user\Documents\undertow\build\playtest\align_synth_wave_april_decoded.wav
+decoded_length_ms: 128053
+notes: 423 (unique times 405)
+mix onsets: 556 (4.3/s), D3 delta 0.1
+mix median error (note - onset): -3.0 ms, IQR [-9.0, +6.0] ms
+mix within +-25 ms: 78.5% (chance 9.9%)
+stem: not given
+tempo: not given (--beats)
+live lag (recorded vs decoded, first 20 s): +1.33 ms
+suggested_delay_ms: 51
+fixed-threshold misses: mix 78.5% < 80.0%
+GATE PASS_BASELINE
+
+--- space_synth_wave ---
+NOTE SYNC expert: C:\Users\user\Documents\undertow\songs\space_synth_wave\notes.chart
+source: godot ChartImporter dump
+chart_sha256: 39488e6cd0b5621ff5e8c7946a911412dde5583a53590bb680cf8090ef30ca6e
+ini_delay_ms: 525
+mix: C:\Users\user\Documents\undertow\build\playtest\align_space_synth_wave_decoded.wav
+decoded_length_ms: 192014
+notes: 655 (unique times 627)
+mix onsets: 1055 (5.5/s), D3 delta 0.1
+mix median error (note - onset): -1.0 ms, IQR [-7.0, +6.0] ms
+mix within +-25 ms: 55.3% (chance 30.0%)
+stem: not given
+tempo: not given (--beats)
+live lag (recorded vs decoded, first 20 s): +1.33 ms
+suggested_delay_ms: 526
+fixed-threshold misses: mix 55.3% < 80.0%
+GATE FAIL mix 55.3% < 73.5%
