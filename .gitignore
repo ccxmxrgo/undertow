@@ -2,3 +2,6 @@
 build/
 reports/
 *.translation
+__pycache__/
+# tools/autochart/reports holds committed gate reports (the generic reports/ rule above is for gdUnit output)
+!tools/autochart/reports/
