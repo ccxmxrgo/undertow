@@ -2971,9 +2971,12 @@ func sc_songs() -> void:
 # ------------------------------------------------------------------------------------------------
 # align (02-06, not in run_all): bundled song audio vs chart grid. Writes, per bundled song,
 #   build/playtest/align_<id>_decoded.wav   the game's own stream, whole song, decoded offline
-#                                           (AudioStreamPlayback.mix_audio, sample exact)
+#                                           (decode_stream: AudioStreamPlayback.mix_audio, sample exact)
 #   build/playtest/align_<id>_recorded.wav  its first 24 s recorded live from a temp bus (AudioEffectRecord)
-# Analyse with: python -I tools/charting/grid_offset.py <wav> 120 <delay_ms>
+# Metrics <id>_decoded_frames / <id>_decoded_s are the real decoded length (some MP3s decode shorter than
+# get_length() promises, 02.1 RESEARCH Pitfall 4); use it for song.ini song_length.
+# Limit to chosen songs with a user arg: -- align --no-boot-scan --only=<id>[,<id>...]
+# Analyse with: tools/autochart/note_sync.py (sync gate) or tools/charting/grid_offset.py <wav> <bpm> <delay_ms>
 # ------------------------------------------------------------------------------------------------
 
 const ALIGN_SECONDS := 24.0
@@ -2993,6 +2996,42 @@ func _write_wav16(path: String, frames: PackedVector2Array, rate: int) -> void:
 	w.save_to_wav(path)
 
 
+## Decodes a whole stream offline through the same AudioStreamPlayback the player uses (02.1-01).
+## Terminates when mix_audio returns no frames or the playback stops, and never returns more than
+## ceil((get_length() + 5 s) * rate) frames, so an MP3 that decodes shorter than get_length()
+## (02.1 RESEARCH Pitfall 4) cannot loop forever.
+static func decode_stream(stream: AudioStream, rate: int) -> PackedVector2Array:
+	var frames := PackedVector2Array()
+	if stream == null:
+		return frames
+	var pb := stream.instantiate_playback()
+	if pb == null or not pb.has_method("mix_audio"):
+		return frames
+	var cap := int(ceil((stream.get_length() + 5.0) * rate))
+	pb.start(0.0)
+	while frames.size() < cap:
+		var chunk: PackedVector2Array = pb.mix_audio(1.0, mini(4096, cap - frames.size()))
+		if chunk.is_empty():
+			break
+		frames.append_array(chunk)
+		if not pb.is_playing():
+			break
+	pb.stop()
+	return frames
+
+
+## Bundled ids passed as --only=<id>[,<id>...] (empty = all songs).
+func _align_only_ids() -> PackedStringArray:
+	for a in OS.get_cmdline_user_args():
+		var arg := String(a)
+		if arg.begins_with("--only="):
+			var ids := PackedStringArray()
+			for part in arg.substr(7).split(",", false):
+				ids.append(part.strip_edges())
+			return ids
+	return PackedStringArray()
+
+
 func sc_align() -> void:
 	isolate_settings(true)
 	await wait_library_idle(60.0)
@@ -3005,7 +3044,12 @@ func sc_align() -> void:
 	var rec := AudioEffectRecord.new()
 	rec.format = AudioStreamWAV.FORMAT_16_BITS
 	AudioServer.add_bus_effect(bus, rec)
+	var only := _align_only_ids()
+	if not only.is_empty():
+		metrics["align_only"] = ",".join(only)
 	for b in BundledSongs.SONGS:
+		if not only.is_empty() and not only.has(str(b["id"])):
+			continue
 		var e := SongLibrary.find(str(b["dir"]))
 		if not check("bundled %s listed" % b["id"], e != null and e.status == "ok"):
 			continue
@@ -3016,19 +3060,17 @@ func sc_align() -> void:
 		metrics["%s_delay_ms" % b["id"]] = e.delay_ms
 		metrics["%s_stream" % b["id"]] = stream.get_class()
 		# 1. offline decode through the same AudioStreamPlayback the player uses
-		var pb := stream.instantiate_playback()
-		var n := int(ceil(stream.get_length() * rate))
-		var frames := PackedVector2Array()
-		if pb.has_method("mix_audio"):
-			pb.start(0.0)
-			while frames.size() < n:
-				frames.append_array(pb.mix_audio(1.0, mini(4096, n - frames.size())))
-			pb.stop()
+		var frames := decode_stream(stream, rate)
+		if frames.size() > 0:
 			var dpath := ProjectSettings.globalize_path("%s/align_%s_decoded.wav" % [OUT_DIR, b["id"]])
 			_write_wav16(dpath, frames, rate)
-			check("%s decoded %.1f s (whole song) to %s" % [b["id"], frames.size() / float(rate), dpath.get_file()], frames.size() >= n)
+			metrics["%s_decoded_frames" % b["id"]] = frames.size()
+			metrics["%s_decoded_s" % b["id"]] = frames.size() / float(rate)
+			metrics["%s_length_s" % b["id"]] = stream.get_length()
+			check("%s decoded %.1f s (whole song, get_length %.1f s) to %s" % [b["id"], frames.size() / float(rate),
+				stream.get_length(), dpath.get_file()], frames.size() > 0)
 		else:
-			note("AudioStreamPlayback.mix_audio not available; decoded WAV skipped")
+			check("%s decoded (decode_stream returned 0 frames; mix_audio missing or stream empty)" % b["id"], false)
 		# 2. live recording from the temp bus (start recording and playback in the same frame)
 		var player := AudioStreamPlayer.new()
 		player.stream = stream
