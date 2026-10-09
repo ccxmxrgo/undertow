@@ -11,6 +11,11 @@ const MENU_SCENE := "res://scenes/main_menu.tscn"
 const CALIBRATION_SCENE := "res://scenes/calibration.tscn"
 const ROW_H := 48.0
 const MESSAGE_SEC := 3.0
+const MUTED := Color("8A93AD")
+const ERR_DUPLICATE := "That folder is already in the list."
+const ERR_MISSING := "That folder does not exist. Pick an existing folder."
+const ERR_FULL := "You can add up to 8 library folders."
+const ERR_SONGS_DIR := "That is the Songs folder. It is always scanned already."
 const ACTION_ROWS: Array[StringName] = [
 	&"lane_1", &"lane_2", &"lane_3", &"lane_4", &"fire", &"target_cycle", &"pause",
 ]
@@ -32,6 +37,15 @@ var low_effects_button: Button
 var reset_button: Button
 var recalibrate_button: Button
 var dialog: ConfirmDialog
+## Library section (D-06). `library` defaults to the SongLibrary autoload; tests inject a fake.
+var library: Node = null
+## Test seam: when valid, Add Folder calls this instead of opening any OS/Godot dialog.
+var folder_picker: Callable = Callable()
+var add_folder_button: Button
+var open_songs_button: Button
+var library_rows: VBoxContainer
+var songs_folder_label: Label
+var library_message: Label
 
 var _messages: Dictionary = {}  # action -> Label
 var _message_timers: Dictionary = {}  # action -> SceneTreeTimer
@@ -40,6 +54,9 @@ var _volume_labels: Dictionary = {}
 var _offsets_label: Label
 var _sample_player: AudioStreamPlayer
 var _first_focus: Control
+var _folders_at_open: Array[String] = []
+var _library_timer: SceneTreeTimer
+var _folder_dialog: FileDialog
 
 
 func _ready() -> void:
@@ -52,6 +69,9 @@ func _ready() -> void:
 
 
 func _build() -> void:
+	if library == null:
+		library = SongLibrary
+	_folders_at_open = Settings.library_folders.duplicate()
 	var bg := ColorRect.new()
 	bg.color = Palette.BG
 	UiLayout.fill_rect(bg)
@@ -75,6 +95,7 @@ func _build() -> void:
 	_build_gameplay(root)
 	_build_display(root)
 	_build_audio(root)
+	_build_library(root)
 	_build_calibration(root)
 
 	var back := Button.new()
@@ -185,6 +206,198 @@ func _build_audio(root: VBoxContainer) -> void:
 	master_slider = _volume_row(root, "Master", "Master", Settings.volume_master, true)
 	music_slider = _volume_row(root, "Music", "Music", Settings.volume_music, false)
 	sfx_slider = _volume_row(root, "SFX", "SFX", Settings.volume_sfx, true)
+
+
+func _build_library(root: VBoxContainer) -> void:
+	root.add_child(_heading("LIBRARY"))
+	var row := HBoxContainer.new()
+	row.add_child(_fixed_label("Songs folder", 240.0))
+	songs_folder_label = _fixed_label(middle_truncate(_songs_dir(), 64), 760.0)
+	songs_folder_label.add_theme_font_size_override("font_size", 20)
+	songs_folder_label.add_theme_color_override("font_color", MUTED)
+	row.add_child(songs_folder_label)
+	open_songs_button = Button.new()
+	open_songs_button.text = "Open Songs Folder"
+	open_songs_button.custom_minimum_size = Vector2(300.0, ROW_H)
+	open_songs_button.pressed.connect(func() -> void:
+		if library != null and library.has_method("open_songs_folder"):
+			library.open_songs_folder())
+	row.add_child(open_songs_button)
+	root.add_child(row)
+	root.add_child(_fixed_label("Extra library folders", 360.0))
+	library_rows = VBoxContainer.new()
+	library_rows.add_theme_constant_override("separation", Palette.SP_XS)
+	root.add_child(library_rows)
+	library_message = Label.new()
+	library_message.add_theme_color_override("font_color", Palette.DESTRUCTIVE)
+	library_message.add_theme_font_size_override("font_size", 20)
+	library_message.visible = false
+	root.add_child(library_message)
+	add_folder_button = Button.new()
+	add_folder_button.text = "Add Folder"
+	add_folder_button.custom_minimum_size = Vector2(280.0, ROW_H)
+	add_folder_button.pressed.connect(request_add_folder)
+	root.add_child(add_folder_button)
+	for h in ["Extra folders are scanned where they are. Your files are never copied or changed.",
+			"Tip: add your Clone Hero songs folder.",
+			"Songs from added or removed folders update in a background scan when you leave Settings."]:
+		var hl := _hint(h)
+		hl.modulate = Color(1, 1, 1, 1)
+		hl.add_theme_color_override("font_color", MUTED)
+		root.add_child(hl)
+	rebuild_library_rows()
+
+
+func _songs_dir() -> String:
+	if library != null and library.has_method("songs_dir"):
+		return library.songs_dir()
+	return ProjectSettings.globalize_path(SongLibrary.DEFAULT_SONGS_DIR)
+
+
+## Keeps the start and the end of a long path, joined by three ASCII dots.
+static func middle_truncate(text: String, max_chars: int) -> String:
+	if text.length() <= max_chars or max_chars < 8:
+		return text
+	var keep := max_chars - 3
+	var head := int(ceil(keep / 2.0))
+	return text.left(head) + "..." + text.right(keep - head)
+
+
+func rebuild_library_rows() -> void:
+	if library_rows == null:
+		return
+	for c in library_rows.get_children():
+		c.free()
+	for f in Settings.library_folders:
+		var row := HBoxContainer.new()
+		row.custom_minimum_size = Vector2(0.0, ROW_H)
+		var path := _fixed_label(middle_truncate(f, 60), 760.0)
+		path.add_theme_font_size_override("font_size", 20)
+		row.add_child(path)
+		var status := _fixed_label(folder_status(f), 240.0)
+		status.add_theme_font_size_override("font_size", 20)
+		status.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		if status.text == "Folder not found":
+			status.add_theme_color_override("font_color", Palette.DESTRUCTIVE)
+		row.add_child(status)
+		var rm := Button.new()
+		rm.text = "Remove Folder"
+		rm.custom_minimum_size = Vector2(240.0, ROW_H)
+		# Deferred: rebuilding frees this very button, which must not happen inside its own signal.
+		rm.pressed.connect(remove_library_folder.bind(f), CONNECT_DEFERRED)
+		row.add_child(rm)
+		library_rows.add_child(row)
+	if add_folder_button != null:
+		add_folder_button.disabled = Settings.library_folders.size() >= Settings.MAX_LIBRARY_FOLDERS
+
+
+## "{n} songs" / "Not scanned yet" / "Folder not found".
+func folder_status(folder: String) -> String:
+	if not DirAccess.dir_exists_absolute(folder):
+		return "Folder not found"
+	if library == null or not (folder in library.extra_folders):
+		return "Not scanned yet"
+	var n := 0
+	var prefix := _norm_path(folder) + "/"
+	for e in library.entries:
+		if e.source == "library" and _norm_path(e.path).begins_with(prefix):
+			n += 1
+	return "%d song%s" % [n, "" if n == 1 else "s"]
+
+
+static func _norm_path(p: String) -> String:
+	return p.replace("\\", "/").simplify_path().trim_suffix("/").to_lower()
+
+
+## Validates and adds a folder. Returns "" on success or the exact inline error text.
+func add_library_folder(path: String) -> String:
+	var p := path.replace("\\", "/").simplify_path().trim_suffix("/")
+	if p == "" or p.length() > Settings.MAX_PATH_LEN or not DirAccess.dir_exists_absolute(p):
+		return ERR_MISSING
+	var key := _norm_path(p)
+	for f in Settings.library_folders:
+		if _norm_path(f) == key:
+			return ERR_DUPLICATE
+	if Settings.library_folders.size() >= Settings.MAX_LIBRARY_FOLDERS:
+		return ERR_FULL
+	if _norm_path(_songs_dir()) == key:
+		return ERR_SONGS_DIR
+	Settings.library_folders.append(p)
+	Settings.save_to(Settings.save_path)
+	rebuild_library_rows()
+	return ""
+
+
+## Forgets the path only; nothing on disk changes.
+func remove_library_folder(path: String) -> void:
+	var i := Settings.library_folders.find(path)
+	if i < 0:
+		return
+	Settings.library_folders.remove_at(i)
+	Settings.save_to(Settings.save_path)
+	rebuild_library_rows()
+	if add_folder_button != null and is_inside_tree():
+		add_folder_button.grab_focus()
+
+
+func folders_changed() -> bool:
+	return Settings.library_folders != _folders_at_open
+
+
+## Add Folder pressed: injected picker, else native directory dialog, else Godot FileDialog.
+func request_add_folder() -> void:
+	if Settings.library_folders.size() >= Settings.MAX_LIBRARY_FOLDERS:
+		show_library_message(ERR_FULL)
+		return
+	if folder_picker.is_valid():
+		folder_picker.call(_on_folder_picked)
+		return
+	if DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
+		var cb := func(ok: bool, paths: PackedStringArray, _filter: int) -> void:
+			if ok and not paths.is_empty():
+				_on_folder_picked.call_deferred(paths[0])
+		DisplayServer.file_dialog_show("Add library folder", _songs_dir(), "", false,
+			DisplayServer.FILE_DIALOG_MODE_OPEN_DIR, PackedStringArray(), cb)
+		return
+	if _folder_dialog == null:
+		_folder_dialog = FileDialog.new()
+		_folder_dialog.file_mode = FileDialog.FILE_MODE_OPEN_DIR
+		_folder_dialog.access = FileDialog.ACCESS_FILESYSTEM
+		_folder_dialog.use_native_dialog = false
+		_folder_dialog.title = "Add library folder"
+		_folder_dialog.dir_selected.connect(_on_folder_picked)
+		add_child(_folder_dialog)
+	_folder_dialog.popup_centered_ratio(0.6)
+
+
+func _on_folder_picked(path: String) -> void:
+	var err := add_library_folder(path)
+	if err != "":
+		show_library_message(err)
+	else:
+		clear_library_message()
+
+
+func show_library_message(text: String) -> void:
+	library_message.text = "! " + text
+	library_message.visible = true
+	if is_inside_tree():
+		var t := get_tree().create_timer(MESSAGE_SEC)
+		_library_timer = t
+		t.timeout.connect(func() -> void:
+			if _library_timer == t:
+				clear_library_message())
+
+
+func clear_library_message() -> void:
+	if library_message != null:
+		library_message.visible = false
+		library_message.text = ""
+	_library_timer = null
+
+
+func library_message_text() -> String:
+	return library_message.text if library_message != null and library_message.visible else ""
 
 
 func _build_calibration(root: VBoxContainer) -> void:
@@ -353,6 +566,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_pressed() and not (event is InputEventMouse):
 		for a in ACTION_ROWS:
 			clear_message(a)  # "or next input"
+		clear_library_message()
 	if dialog == null and event.is_action_pressed(&"ui_cancel"):
 		get_viewport().set_input_as_handled()
 		back_pressed()
@@ -364,6 +578,10 @@ func back_pressed() -> void:
 		if (c as RebindCell).listening:
 			(c as RebindCell).cancel_listen()
 	Settings.save_to(Settings.save_path)
+	if folders_changed():
+		_folders_at_open = Settings.library_folders.duplicate()
+		if library != null and library.has_method("rescan"):
+			library.rescan()
 	if overlay:
 		closed.emit()
 	else:

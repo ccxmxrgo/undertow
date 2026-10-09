@@ -21,10 +21,19 @@ const DRAIN_BUDGET_USEC := 8000
 
 var entries: Array[SongEntry] = []
 var scanning: bool = false
-## Absolute extra library folders (plan 04 wires these from Settings).
+## Absolute extra library folders. In the running game these mirror Settings.library_folders
+## (refreshed at the start of every rescan); tests assign them directly.
 var extra_folders: Array[String] = []
-var last_song_id: String = ""
-var last_difficulty: String = ""
+## Last played song/difficulty. Backed by Settings when settings_ref is bound (production),
+## plain fields otherwise (tests). Same names and types as before plan 04.
+var last_song_id: String = "":
+	set(v):
+		last_song_id = v
+		_persist_last()
+var last_difficulty: String = "":
+	set(v):
+		last_difficulty = v
+		_persist_last()
 ## Non-empty when an extra folder is missing; never blocks the scan.
 var folder_error: String = ""
 var last_build_error: String = ""
@@ -37,6 +46,9 @@ var songs_root_override: String = ""
 var cache_path: String = CACHE_PATH
 var auto_scan: bool = true
 var shell_opener: Callable = Callable()
+## Settings node that persists library folders and last played. Bound to the Settings autoload
+## in _ready only when auto_scan is true (the real game); tests leave it null or inject a fake.
+var settings_ref: Node = null
 
 static var _calibration_cache: SongEntry
 
@@ -46,9 +58,15 @@ var _task_id: int = -1
 var _cancel: bool = false
 var _calibration: SongEntry
 var _ids := {}
+var _loading_last: bool = false
 
 
 func _ready() -> void:
+	if settings_ref == null and auto_scan:
+		settings_ref = Settings
+	if settings_ref != null:
+		extra_folders.assign(settings_ref.library_folders)
+		_load_last(settings_ref.last_song_id, settings_ref.last_difficulty)
 	_calibration = calibration_entry()
 	entries = [_calibration]
 	_ids = {_calibration.id: true}
@@ -61,6 +79,19 @@ func _exit_tree() -> void:
 	if _task_id != -1:
 		WorkerThreadPool.wait_for_task_completion(_task_id)
 		_task_id = -1
+
+
+func _load_last(sid: String, diff: String) -> void:
+	# Loading must not write back to Settings.
+	_loading_last = true
+	last_song_id = sid
+	last_difficulty = diff
+	_loading_last = false
+
+
+func _persist_last() -> void:
+	if not _loading_last and settings_ref != null and settings_ref.has_method("set_last_played"):
+		settings_ref.set_last_played(last_song_id, last_difficulty)
 
 
 # ---- public API ----
@@ -91,6 +122,8 @@ func rescan() -> void:
 	if _calibration == null:
 		_calibration = calibration_entry()
 	folder_error = ""
+	if settings_ref != null:
+		extra_folders.assign(settings_ref.library_folders)
 	var roots: Array = [{"path": songs_dir(), "source": "songs", "library_name": ""}]
 	for f in extra_folders:
 		if f == "":
