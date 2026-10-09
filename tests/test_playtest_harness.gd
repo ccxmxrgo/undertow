@@ -36,3 +36,30 @@ func test_export_filter_packs_charts_and_ini() -> void:
 		assert_bool(inc.split(",").has(pat)).is_true()
 	var exc: String = cfg.get_value("preset.0", "exclude_filter", "")
 	assert_bool(exc.contains("tests/*") and exc.contains("tools/*")).is_true()
+
+
+# decode_stream (02.1-01, RESEARCH Pitfall 4): the align harness decode loop must terminate even when
+# an MP3 playback returns fewer frames than get_length() promises.
+func test_decode_stream_bundled_mp3_whole_song() -> void:
+	var s: GDScript = load("res://tools/playtest/playtest_driver.gd")
+	var stream: AudioStream = load("res://songs/synth_wave_april/song.mp3")
+	assert_object(stream).is_not_null()
+	var rate := 44100
+	var frames: PackedVector2Array = s.call("decode_stream", stream, rate)
+	var got_s := frames.size() / float(rate)
+	assert_float(got_s).is_between(stream.get_length() - 0.2, stream.get_length() + 0.2)
+
+
+func test_decode_stream_terminates_and_respects_cap() -> void:
+	var s: GDScript = load("res://tools/playtest/playtest_driver.gd")
+	var rate := 44100
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.stereo = false
+	w.mix_rate = rate
+	var data := PackedByteArray()
+	data.resize(rate * 2)  # 1 s of 16-bit silence (resize zero-fills)
+	w.data = data
+	var frames: PackedVector2Array = s.call("decode_stream", w, rate)
+	assert_int(frames.size()).is_less_equal(int(ceil((1.0 + 5.0) * rate)))
+	assert_int(frames.size()).is_greater(0)
