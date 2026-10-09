@@ -1,11 +1,11 @@
-UNDERTOW - early playtest build (v0.2, 2026-10-08)
+UNDERTOW - early playtest build (v0.3, 2026-10-09)
 =================================================
 
 You're a submarine sinking into a deep-sea trench. This build is still the
-single-player core: it's for checking that timing and the new look feel
-good. Torpedoes and online versus come later.
+single-player core: it's for checking that timing, the look and now real
+songs feel good. Torpedoes and online versus come later.
 
-This update is based on your v0.1 feedback. Thank you!
+v0.3 adds real songs: two bundled tracks and your own Clone Hero songs.
 
 
 HOW TO RUN
@@ -42,12 +42,83 @@ notes and lanes stay fully bright.
 Played v0.1? Your keys move to 1 2 3 4 automatically, unless you had
 changed them yourself. Settings > Reset Controls always gives you 1 2 3 4.
 
-Menu: "Start Dive" plays the test song. "Practice Dive (No-Fail)" plays it
-without being able to sink. Settings lets you rebind keys, change scroll
-speed and volume, and turn on No-Fail.
+Menu: "Start Dive" opens SELECT SONG, where you pick a song and a
+difficulty. "Practice Dive (No-Fail)" does the same, but you can't sink.
+Settings lets you rebind keys, change scroll speed and volume, turn on
+No-Fail and add Clone Hero song folders (see SONGS below).
 
-The music is still generated test audio, not real songs yet. Real songs
-(Clone Hero charts) come in a later update.
+SELECT SONG controls:
+  Song ............. Up / Down      (1 / 2 also work while the search is
+                                     empty; 3 / 4 jump a page)
+  Difficulty ....... Left / Right
+  Dive ............. Enter
+  Search ........... just type (title or artist); Esc clears it
+  Sort ............. F2
+  Rescan Library ... F5
+  Open Songs Folder  F6
+  Back ............. Esc
+Highlight a song for half a second to hear a preview.
+
+
+WHAT'S NEW IN v0.3
+------------------
+- Real songs! Two bundled tracks with Easy, Medium, Hard and Expert charts:
+  "Synth Wave April 3, 2022" and "Space Synth Wave" (both have a solo).
+- SELECT SONG screen: a list of every song with length, difficulties and
+  your best depth, a detail panel, a short audio preview, search and sort.
+- Play your own Clone Hero songs: drop them into the Songs folder (see
+  SONGS below). Zips work too.
+- Your best is saved per song AND per difficulty.
+- The main menu has a new "Open Songs Folder" item.
+- The old test song is still there as "Calibration Track" (marked TEST).
+
+
+SONGS
+-----
+Where is the Songs folder?
+  %APPDATA%\Godot\app_userdata\UNDERTOW\songs
+  (for example C:\Users\<you>\AppData\Roaming\Godot\app_userdata\UNDERTOW\songs)
+  You don't have to find it yourself: "Open Songs Folder" in the main menu
+  or in SELECT SONG opens it, even before you have any songs. The path is
+  also shown at the bottom right of SELECT SONG.
+
+How to add songs:
+  1. Get a Clone Hero song you own. A song is a folder with a notes.chart
+     file, usually a song.ini, and the audio (song.ogg, song.mp3 or
+     song.wav; split stems like guitar.ogg + drums.ogg also work).
+  2. Drop the whole folder into the Songs folder. A .zip of the folder
+     works too: just drop the .zip in, no need to unpack it.
+  3. In SELECT SONG press "Rescan Library" (F5). The song shows up.
+  Already have a Clone Hero songs folder? Settings > Library > Add Folder
+  reads it where it is. Your files are never copied or changed.
+
+An audio file without a chart (for example a bare .mp3) is listed as
+"NEEDS A CHART". You can't play it yet; a tool that charts songs for you
+comes in a later update.
+
+How 5-fret charts become 4 lanes (the same for every song):
+  Green  = lane 1
+  Red    = lane 2
+  Yellow = lane 3
+  Blue   = lane 4
+  Orange = lane 4 too, merged with Blue (the longest sustain is kept)
+  Open notes = lanes 2 and 3 together
+  HOPO and tap markers are ignored (every note is a normal hit).
+  All four difficulties are playable. Only lead guitar charts are used.
+
+Not supported (shown greyed out with the reason, so you know why):
+  - Opus audio ("Opus audio not supported"). Convert it to OGG Vorbis,
+    MP3 or WAV.
+  - .mid charts (only .chart files work for now).
+
+The game does not include any copyrighted songs. Only use songs you own.
+
+
+MUSIC CREDITS
+-------------
+"Synth Wave April 3, 2022" and "Space Synth Wave" by Pro Sensory
+(Alex McCulloch), released as CC0 (public domain), via OpenGameArt.org.
+Thank you!
 
 
 WHAT'S NEW IN v0.2
@@ -69,8 +140,8 @@ WHAT'S NEW IN v0.2
 - Notes only light up when you can actually hit them. Dim = too early,
   bright = hit it now.
 - A big streak counter, with popups at 10, 25, 50 and 100 in a row.
-- Your best score is saved for each song and shown on the menu and on the
-  results screen. Practice, Autoplay and No-Fail dives never set a record.
+- Your best score is saved and shown on the results screen. Practice,
+  Autoplay and No-Fail dives never set a record.
 - "Practice Dive (No-Fail)" in the main menu, right under Start Dive.
 
 
@@ -92,5 +163,10 @@ FEEDBACK WE NEED (reply in Discord or on WhatsApp)
 11. Can you read the notes at your scroll speed? Which speed did you use?
 12. Does the new look feel like UNDERTOW and not like a guitar game?
 13. Did the frame rate stay smooth?
+14. Do the notes of the two bundled songs feel in time with the music?
+    Which song and difficulty did you play?
+15. Did your own Clone Hero songs import? Name any song that didn't, and
+    what SELECT SONG said about it.
+16. Was it clear where the Songs folder is and how to add songs?
 
 Thanks for diving!

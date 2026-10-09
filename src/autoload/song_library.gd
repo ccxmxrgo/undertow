@@ -49,6 +49,11 @@ var shell_opener: Callable = Callable()
 ## Settings node that persists library folders and last played. Bound to the Settings autoload
 ## in _ready only when auto_scan is true (the real game); tests leave it null or inject a fake.
 var settings_ref: Node = null
+## Harness-only throttle (tools/playtest "songs" scenario): the scan worker sleeps this many ms
+## after every progress step so a windowed run can photograph the mid-scan state. Always 0 in the game.
+var test_scan_throttle_msec: int = 0
+## True while the `--selftest-bundled` user argument runs (exported-build smoke test).
+var selftest_bundled: bool = false
 
 static var _calibration_cache: SongEntry
 
@@ -62,7 +67,14 @@ var _loading_last: bool = false
 
 
 func _ready() -> void:
-	if settings_ref == null and auto_scan:
+	var user_args := OS.get_cmdline_user_args()
+	# `--no-boot-scan`: the windowed harness points the library at temp folders itself, so the boot
+	# scan must not read the player's real Songs folder or write the real song cache.
+	if user_args.has("--no-boot-scan"):
+		auto_scan = false
+	if user_args.has("--selftest-bundled"):
+		_begin_selftest()
+	if settings_ref == null and (auto_scan or selftest_bundled):
 		settings_ref = Settings
 	if settings_ref != null:
 		extra_folders.assign(settings_ref.library_folders)
@@ -70,7 +82,7 @@ func _ready() -> void:
 	_calibration = calibration_entry()
 	entries = [_calibration]
 	_ids = {_calibration.id: true}
-	if auto_scan and DisplayServer.get_name() != "headless":
+	if selftest_bundled or (auto_scan and DisplayServer.get_name() != "headless"):
 		rescan()
 
 
@@ -243,10 +255,14 @@ func _scan_task(roots: Array) -> void:
 			all.append(e)
 	if not bundled.is_empty():
 		_push({"t": "batch", "v": bundled})
+	var throttle := test_scan_throttle_msec
+	var on_progress := func(done: int, total: int, label: String) -> void:
+		_push({"t": "progress", "done": done, "total": total, "label": label})
+		if throttle > 0:
+			OS.delay_msec(throttle)
 	var found := scanner.scan(roots, cache,
 			func(batch: Array) -> void: _push({"t": "batch", "v": batch}),
-			func(done: int, total: int, label: String) -> void:
-				_push({"t": "progress", "done": done, "total": total, "label": label}),
+			on_progress,
 			cancel)
 	all.append_array(found)
 	if not _cancel:
@@ -327,3 +343,57 @@ func _apply(item: Dictionary) -> void:
 				if e.source != "test" and e.status != "ok":
 					unplayable += 1
 			scan_finished.emit(entries.size() - 1, unplayable)
+
+
+# ---- exported-build self test (`--selftest-bundled`) ----
+
+const SELFTEST_SONGS_DIR := "user://selftest_songs"
+const SELFTEST_CACHE := "user://selftest_song_cache.json"
+
+
+## Uses throwaway paths so the player's Songs folder and song cache are never read or written.
+func _begin_selftest() -> void:
+	selftest_bundled = true
+	songs_root_override = SELFTEST_SONGS_DIR
+	cache_path = SELFTEST_CACHE
+	scan_finished.connect(_run_selftest, CONNECT_ONE_SHOT)
+
+
+## Every bundled song and difficulty must build with real audio longer than 1 s.
+## Prints `BUNDLED_OK <n>` or `BUNDLED_FAIL <reason>` and quits with 0 / 1.
+func _run_selftest(_count: int, _unplayable: int) -> void:
+	var fails: Array[String] = []
+	var ok_count := 0
+	var listed := 0
+	for e in entries:
+		if e.source != "bundled":
+			continue
+		listed += 1
+		if e.status != "ok":
+			fails.append("%s: %s" % [e.title, e.error])
+			continue
+		for d in e.difficulties:
+			var diff: String = d["name"]
+			var chart := build_chart(e, diff)
+			if chart == null:
+				fails.append("%s %s: %s" % [e.title, diff, last_build_error])
+			elif chart.audio_stream == null or chart.audio_stream.get_length() <= 1.0:
+				fails.append("%s %s: audio missing or too short" % [e.title, diff])
+			elif chart.notes.is_empty():
+				fails.append("%s %s: no notes" % [e.title, diff])
+			else:
+				ok_count += 1
+	if listed != BundledSongs.SONGS.size():
+		fails.append("bundled songs listed %d of %d" % [listed, BundledSongs.SONGS.size()])
+	if ok_count == 0 and fails.is_empty():
+		fails.append("no bundled difficulties found")
+	var abs_cache := ProjectSettings.globalize_path(SELFTEST_CACHE)
+	if FileAccess.file_exists(abs_cache):
+		DirAccess.remove_absolute(abs_cache)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(SELFTEST_SONGS_DIR))
+	if fails.is_empty():
+		print("BUNDLED_OK %d" % ok_count)
+	else:
+		print("BUNDLED_FAIL %s" % "; ".join(fails))
+	if is_inside_tree():
+		get_tree().quit(0 if fails.is_empty() else 1)

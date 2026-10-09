@@ -13,6 +13,15 @@ extends Node
 ## Scenario "immersion" (Phase 1.2): first-person lens-mask intro frames and timing, Space skip,
 ## QUICK retry, flat-line Trench board at 0.5x/1x/3x, HUD streak / HULL CRITICAL, Low effects and reduce motion,
 ## screen-edge cleanliness and fps. Non-intro scenarios run with Gameplay.pending_intro = NONE.
+##
+## Scenario "songs" (Phase 2): Song Select with 2 bundled + 30 generated fixture songs in a temp songs
+## root (never the player's Songs folder): layout, overflow, footer, insert stability during a
+## throttled rescan, broken / Needs-a-chart rows, filter, empty / onboarding states, Settings >
+## LIBRARY, Low effects / Reduce motion, preview gate, difficulty snap, sort, dive to results.
+## Since 02-03 every menu dive goes through Song Select: start_dive_from_menu() picks the
+## Calibration Track (the hand chart) there so the Phase 1 scenarios keep their chart.
+## run_all.ps1 passes --no-boot-scan so SongLibrary never scans the real Songs folder; every
+## scenario points the library at user://playtest_library (removed at the end).
 
 const OUT_DIR := "res://build/playtest"
 const TEMP_SETTINGS := "user://playtest_settings.cfg"
@@ -26,9 +35,15 @@ const GAMEPLAY := "res://scenes/gameplay.tscn"
 const CALIB := "res://scenes/calibration.tscn"
 const SETTINGS_SCENE := "res://scenes/settings.tscn"
 const DRIFT := "res://scenes/drift_harness.tscn"
+const SONG_SELECT := "res://scenes/song_select.tscn"
+## Temp library root for every scenario (songs roots, cache, zip cache). Never user://songs.
+const LIB_ROOT := "user://playtest_library"
+const FIXTURE_SONGS := LIB_ROOT + "/songs"
+const EMPTY_SONGS := LIB_ROOT + "/empty_songs"
 const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
-	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0, "immersion": 240.0}
+	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0, "immersion": 240.0,
+	"songs": 360.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note. Values stay >= 5 ms
 ## from window edges (35 / 70 / 100 ms) so frame jitter cannot flip the expected judgment.
 const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
@@ -92,6 +107,7 @@ func _run() -> void:
 		"layout": await sc_layout()
 		"polish": await sc_polish()
 		"immersion": await sc_immersion()
+		"songs": await sc_songs()
 		_: check("known scenario", false, scenario)
 	_finish()
 
@@ -111,6 +127,22 @@ func isolate_settings(calibrated: bool) -> void:
 	if calibrated:
 		Settings.save_calibration(0.0, 0.0)
 		MainMenu.boot_handled = true
+	isolate_library(EMPTY_SONGS)
+
+
+## Points SongLibrary at a temp songs root, cache and zip cache, then starts a rescan (bundled
+## songs + Calibration Track + whatever is in songs_root). Extra folders come from the temp settings.
+func isolate_library(songs_root: String) -> void:
+	SongFixture.mkdir(songs_root)
+	SongLibrary.songs_root_override = songs_root
+	SongLibrary.cache_path = LIB_ROOT + "/cache.json"
+	SongScanner.zip_cache_root = LIB_ROOT + "/zipcache"
+	SongLibrary._load_last(Settings.last_song_id, Settings.last_difficulty)
+	SongLibrary.rescan()
+
+
+func wait_library_idle(timeout: float = 20.0) -> bool:
+	return await wait_until(func() -> bool: return not SongLibrary.scanning, timeout)
 
 
 func _use_temp_scores(path: String) -> void:
@@ -182,6 +214,10 @@ func _finish() -> void:
 	if ScoreStore.default_path != REAL_SCORES:
 		_use_temp_scores(ScoreStore.default_path)
 	ScoreStore.default_path = REAL_SCORES
+	SongLibrary.test_scan_throttle_msec = 0
+	if not SongLibrary.scanning:
+		SongFixture.rm_tree(LIB_ROOT)
+	SongScanner.zip_cache_root = "user://song_cache/zips"
 	print("[playtest] scenario=%s result=%s" % [scenario, "PASS" if ok else "FAIL"])
 	get_tree().quit(0 if ok else 1)
 
@@ -331,6 +367,7 @@ func _gone_or_stopped(gw: WeakRef) -> bool:
 	return g == null or g.state != Gameplay.State.RUNNING
 
 
+## Main menu -> Song Select -> Calibration Track (the hand chart the Phase 1 scenarios assert on).
 func start_dive_from_menu(autoplay: bool, intro: bool = false) -> Gameplay:
 	Gameplay.pending_intro = IntroTimeline.Mode.FULL if intro else IntroTimeline.Mode.NONE
 	if not scene_is(MENU):
@@ -340,17 +377,48 @@ func start_dive_from_menu(autoplay: bool, intro: bool = false) -> Gameplay:
 	if m == null:
 		check("main menu shown", false, cur())
 		return null
-	m.start_button.grab_focus()
-	if autoplay:
-		# Menu order since 01.1-01: Start, Practice, Autoplay, Calibrate, Settings, Quit.
-		await press_key(KEY_DOWN)
-		await press_key(KEY_DOWN)
-	check("menu focus on %s" % ("Autoplay Dive (test)" if autoplay else "Start Dive"),
-		focus_owner() == (m.autoplay_button if autoplay else m.start_button), focus_owner())
+	await menu_focus(m, m.autoplay_button if autoplay else m.start_button)
 	await press_key(KEY_ENTER)
-	var ok: bool = await wait_until(func() -> bool: return cur() is Gameplay, 5.0)
+	return await dive_from_song_select(TestCharts.HAND_CHART_ID, "expert")
+
+
+## Moves menu focus from Start Dive down to `target` with real Down presses (02-03 order: Start,
+## Practice, Calibrate, Settings, Autoplay, Open Songs Folder, Quit).
+func menu_focus(m: MainMenu, target: Control) -> bool:
+	m.start_button.grab_focus()
+	await frame()
+	var n := 0
+	while focus_owner() != target and n < 8:
+		await press_key(KEY_DOWN)
+		n += 1
+	return check("menu focus on %s" % (target as Button).text, focus_owner() == target, focus_owner())
+
+
+## On Song Select: select `id`, step to `diff` with Left / Right, press Enter, wait for Gameplay.
+func dive_from_song_select(id: String, diff: String) -> Gameplay:
+	var ok: bool = await wait_until(func() -> bool: return cur() is SongSelect, 5.0)
+	if not check("Song Select opened", ok, cur()):
+		return null
+	var ss := cur() as SongSelect
+	await wait_library_idle()
+	await frame()
+	ss.select_for_test(id)
+	await _set_difficulty(ss, diff)
+	var st := ss.debug_state()
+	check("Song Select: %s / %s selected" % [id.get_file(), diff], st["selected"] == id and st["difficulty"] == diff, st)
+	await press_key(KEY_ENTER)
+	ok = await wait_until(func() -> bool: return cur() is Gameplay, 5.0)
 	check("gameplay scene loaded", ok)
 	return cur() as Gameplay
+
+
+func _set_difficulty(ss: SongSelect, diff: String) -> void:
+	var order: Array = SongListModel.DIFFICULTY_ORDER
+	var n := 0
+	while ss.debug_state()["difficulty"] != diff and n < 6:
+		var cur_i: int = order.find(ss.debug_state()["difficulty"])
+		await press_key(KEY_RIGHT if order.find(diff) > cur_i else KEY_LEFT)
+		n += 1
 
 
 func wait_for_began(g: Gameplay, timeout: float = 8.0) -> bool:
@@ -601,10 +669,7 @@ func sc_a() -> void:
 	await shot("menu_after_calibration")
 
 	# Re-run from the menu with the offset applied. Same simulated player (40 ms behind heard audio).
-	m.start_button.grab_focus()
-	for i in range(3):  # Start -> Practice -> Autoplay -> Calibrate (01.1-01 menu order)
-		await press_key(KEY_DOWN)
-	check("menu focus on Calibrate Sonar", focus_owner() == m.calibrate_button, focus_owner())
+	await menu_focus(m, m.calibrate_button)
 	await press_key(KEY_ENTER)
 	ok = await wait_until(func() -> bool: return cur() is CalibrationWizard, 5.0)
 	check("Calibrate Sonar opens wizard", ok)
@@ -1113,10 +1178,7 @@ func sc_g() -> void:
 	await goto(MENU)
 	await wait(0.3)
 	var m := cur() as MainMenu
-	m.start_button.grab_focus()
-	for i in range(4):  # Start -> Practice -> Autoplay -> Calibrate -> Settings
-		await press_key(KEY_DOWN)
-	check("menu focus on Settings", focus_owner() == m.settings_button, focus_owner())
+	await menu_focus(m, m.settings_button)
 	await press_key(KEY_ENTER)
 	var ok: bool = await wait_until(func() -> bool: return cur() is SettingsScreen, 5.0)
 	if not check("Settings scene opens", ok):
@@ -1772,10 +1834,9 @@ func sc_polish() -> void:
 	await press_key(KEY_DOWN)
 	check("Down from Start Dive focuses Practice Dive", focus_owner() == m.practice_button, focus_owner())
 	await press_key(KEY_ENTER)
-	var ok: bool = await wait_until(func() -> bool: return cur() is Gameplay, 5.0)
-	if not check("Practice Dive opens gameplay", ok, cur()):
+	var pg: Gameplay = await dive_from_song_select(TestCharts.HAND_CHART_ID, "expert")
+	if not check("Practice Dive opens gameplay (through Song Select)", pg != null, cur()):
 		return
-	var pg := cur() as Gameplay
 	await wait_until(func() -> bool: return pg.conductor.song_time() > 2.0, 10.0)
 	check("practice run: Gameplay.practice, score.no_fail on, persisted Settings.no_fail untouched",
 		pg.practice and pg.score.no_fail and not Settings.no_fail,
@@ -2366,3 +2427,538 @@ func sc_immersion() -> void:
 		check("HULL CRITICAL caption shown at low hull",
 			g.hud.hull_caption.visible and g.hud.hull_caption.text == "HULL CRITICAL", g.hud.hull_caption.text)
 	Settings.set_scroll_speed(orig_speed)
+
+
+
+# ------------------------------------------------------------------------------------------------
+# songs (Phase 2): Song Select, fixtures, states, Settings > LIBRARY, dives from Song Select
+# ------------------------------------------------------------------------------------------------
+
+const LONG_TITLE := "The Extraordinarily Long Title Of A Progressive Rock Epic That Never Ends Part IV (Live At The Trench)"
+const CJK_TITLE := "深海の歌 Глубина"
+const CJK_ARTIST := "Морской Оркестр 海"
+const FIXTURE_NAMES := ["Abyssal Echo", "Ballast", "Coral Static", "Depth Charge", "Ebb Tide", "Fathom Line",
+	"Gyre", "Hadal Zone", "Ink Cloud", "Jetsam", "Kelp Forest", "Lantern Fish", "Maelstrom", "Nautilus",
+	"Oarfish", "Pressure Hull", "Quiet Running", "Riptide", "Sonar Ping", "Thermocline", "Upwelling",
+	"Vent Field", "Whale Fall"]
+const HINT_KEYS := "UP DOWN SONG  ·  LEFT RIGHT DIFFICULTY  ·  ENTER DIVE  ·  F5 RESCAN  ·  ESC BACK"
+const HINT_FILTER := "TYPE TO FILTER  ·  BACKSPACE EDIT  ·  ESC CLEAR FILTER  ·  UP DOWN SONG  ·  ENTER DIVE"
+const HINT_PAD := "D-PAD SONG  ·  LEFT RIGHT DIFFICULTY  ·  A DIVE  ·  Y SORT  ·  X RESCAN  ·  B BACK"
+
+
+func _ini(title: String, artist: String) -> String:
+	return "[song]\nname = %s\nartist = %s\ncharter = Playtest Fixture\ndelay = 0\n" % [title, artist]
+
+
+func _fixture_song(dir: String, title: String, artist: String, seconds: float = 2.0) -> void:
+	SongFixture.mkdir(dir)
+	SongFixture.write_text(dir.path_join("notes.chart"), SongFixture.CHART)
+	SongFixture.write_text(dir.path_join("song.ini"), _ini(title, artist))
+	SongFixture.make_wav(dir.path_join("song.wav"), seconds)
+
+
+## 30 user songs: 23 plain, Opus (broken), bare WAV (Needs a chart), long title, CJK/Cyrillic title,
+## community stems folder, zip, and a 6 s "Dive Test Song" for the full autoplay dive.
+func _make_fixture_library() -> void:
+	SongFixture.rm_tree(FIXTURE_SONGS)
+	SongFixture.mkdir(FIXTURE_SONGS)
+	for i in FIXTURE_NAMES.size():
+		_fixture_song(FIXTURE_SONGS.path_join(FIXTURE_NAMES[i]), FIXTURE_NAMES[i], "Deep Band %02d" % (i + 1))
+	var opus := FIXTURE_SONGS.path_join("Opus Broken Song")
+	_fixture_song(opus, "Opus Broken Song", "Codec Crew")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(opus.path_join("song.wav")))
+	SongFixture.write_bytes(opus.path_join("song.ogg"), SongFixture.opus_bytes())
+	SongFixture.make_wav(FIXTURE_SONGS.path_join("Lonely Audio.wav"), 2.0)
+	_fixture_song(FIXTURE_SONGS.path_join("Long Title"), LONG_TITLE, "An Artist With A Remarkably Long Name And Several Featured Guests")
+	_fixture_song(FIXTURE_SONGS.path_join("CJK Title"), CJK_TITLE, CJK_ARTIST)
+	SongFixture.make_community(FIXTURE_SONGS.path_join("Community Pack"))
+	var zsrc := LIB_ROOT.path_join("zip_src")
+	_fixture_song(zsrc, "Zipped Song", "Zip Band")
+	SongFixture.zip_folder(zsrc, FIXTURE_SONGS.path_join("Zipped Song.zip"), "Zipped Song")
+	SongFixture.rm_tree(zsrc)
+	_fixture_song(FIXTURE_SONGS.path_join("Dive Test Song"), "Dive Test Song", "Harness Band", 6.0)
+
+
+func _entry_titled(title: String) -> SongEntry:
+	for e in SongLibrary.entries:
+		if e.title == title:
+			return e
+	return null
+
+
+func _song_select() -> SongSelect:
+	return cur() as SongSelect
+
+
+## Screen row (0..8) of the selection, -1 when it is not visible.
+func _sel_row(ss: SongSelect) -> int:
+	var st := ss.debug_state()
+	return (st["rows"] as Array).find(st["selected"])
+
+
+## Every visible row: title (+ badge) ends before the best-depth column, the second line ends
+## before the length text, and nothing passes the row's right edge (x 1008).
+func _check_rows_fit(ss: SongSelect, label: String) -> void:
+	var st := ss.debug_state()
+	var bad: Array = []
+	var truncated: Array = []
+	for id in st["rows"]:
+		if id == "":
+			continue
+		var e: SongEntry = null
+		for x in ss._all:
+			if (x as SongEntry).id == id:
+				e = x
+		if e == null:
+			continue
+		var sel: bool = id == st["selected"]
+		var badge := "TEST" if e.source == "test" else ("NEEDS A CHART" if e.status == "needs_chart" else "")
+		var bw := ss._w(badge, Palette.SIZE_LABEL) if badge != "" else 0.0
+		var title_max := 776.0 - (bw + 24.0 if badge != "" else 0.0)
+		var title := e.title if e.title != "" else "Untitled"
+		var shown := ss._fit(title, Palette.SIZE_BODY, title_max, sel)
+		if shown != title:
+			truncated.append(shown)
+		var title_end := 112.0 + ss._w(shown, Palette.SIZE_BODY, sel) + (bw + 24.0 if badge != "" else 0.0)
+		var best_left := 992.0 - ss._w("99999 m", Palette.SIZE_LABEL)
+		var second_end: float
+		var second_limit := 904.0
+		if e.status == "broken":
+			second_end = 128.0 + ss._w(ss._fit(e.error, Palette.SIZE_LABEL, 740.0), Palette.SIZE_LABEL)
+		else:
+			var second := SongSelect.NEEDS_HINT_ROW if e.status == "needs_chart" else (e.artist if e.artist != "" else "Unknown artist")
+			second_end = 112.0 + ss._w(ss._fit(second, Palette.SIZE_LABEL, 700.0), Palette.SIZE_LABEL)
+			if e.length_sec > 0.0:
+				second_limit = 904.0 - ss._w(SongListModel.fmt_length(e.length_sec), Palette.SIZE_LABEL) - 8.0
+		if title_end > best_left - 8.0 or second_end > second_limit or title_end > 1008.0:
+			bad.append("%s title_end %.0f (limit %.0f) second_end %.0f (limit %.0f)" % [title, title_end,
+				best_left - 8.0, second_end, second_limit])
+	metrics["%s_truncated_titles" % label] = truncated
+	check("%s: no row text overflows its column (%d rows)" % [label, (st["rows"] as Array).size()], bad.is_empty(), bad)
+
+
+## Footer: keyboard hint fits x <= 1040 untruncated, Songs path starts at x >= 1056, credits clear the
+## scan-status column.
+func _check_footer(ss: SongSelect, label: String) -> void:
+	var widths := {}
+	var ok := true
+	for pair in [["keys", HINT_KEYS], ["filter", HINT_FILTER], ["pad", HINT_PAD]]:
+		var w := ss._w(pair[1], Palette.SIZE_LABEL)
+		widths[pair[0]] = snappedf(64.0 + w, 0.1)
+		ok = ok and 64.0 + w <= 1040.0
+	check("%s: every hint line ends at x <= 1040 without truncation" % label, ok, widths)
+	var full := "Songs folder: " + SongListModel.truncate_middle(SongLibrary.songs_dir(), 66 - "Songs folder: ".length())
+	var path_x := 1856.0 - ss._w(full, Palette.SIZE_LABEL)
+	metrics["%s_path_left_x" % label] = path_x
+	check("%s: Songs folder path right-aligned, starts at x >= 1056 (clear of the hint)" % label, path_x >= 1056.0,
+		"%.1f" % path_x)
+	var credits_x := 1856.0 - ss._w(SongSelect.CREDITS, Palette.SIZE_LABEL)
+	check("%s: credits line starts right of the scan-status column (x >= 1184)" % label, credits_x >= 1184.0,
+		"%.1f" % credits_x)
+
+
+## Brightest channel inside the outer 32 px band (sampled every 6 px). Only the Arena vignette may
+## show there, so it must stay dark like the gameplay edges (<= 0.35, 1.2 rule).
+func _check_outer_band(img: Image, label: String) -> void:
+	var worst := 0.0
+	var at := Vector2.ZERO
+	var pts: Array = []
+	var x := 2.0
+	while x < 1920.0:
+		for y in [2.0, 14.0, 28.0, 1052.0, 1066.0, 1078.0]:
+			pts.append(Vector2(x, y))
+		x += 6.0
+	var y2 := 2.0
+	while y2 < 1080.0:
+		for xx in [2.0, 14.0, 28.0, 1892.0, 1906.0, 1918.0]:
+			pts.append(Vector2(xx, y2))
+		y2 += 6.0
+	for p in pts:
+		var v := _chan_max(_img_px(img, p))
+		if v > worst:
+			worst = v
+			at = p
+	metrics["%s_outer_band_max" % label] = {"max": snappedf(worst, 0.001), "at": str(at)}
+	check("%s: nothing bright in the outer 32 px (max channel <= 0.35)" % label, worst <= 0.35,
+		"%.3f at %s" % [worst, at])
+
+
+## Glyphs the font stack cannot render (tofu): shaped glyphs without a font.
+func _tofu(ss: SongSelect, text: String, size: int) -> int:
+	var tl := TextLine.new()
+	tl.add_string(text, ss._font, size)
+	var ts := TextServerManager.get_primary_interface()
+	var n := 0
+	for g in ts.shaped_text_get_glyphs(tl.get_rid()):
+		if not (g["font_rid"] as RID).is_valid() and String.chr(int(g["index"])) != " ":
+			n += 1
+	return n
+
+
+func _view_statuses(ss: SongSelect) -> Array:
+	var out: Array = []
+	for e in ss._view:
+		if e != null:
+			out.append((e as SongEntry).status)
+	return out
+
+
+## Sorted view: every playable song before any needs-chart / broken one, broken last.
+func _unplayable_last(statuses: Array) -> bool:
+	var seen_needs := false
+	var seen_broken := false
+	for s in statuses:
+		if s == "ok" and (seen_needs or seen_broken):
+			return false
+		if s == "needs_chart" and seen_broken:
+			return false
+		seen_needs = seen_needs or s == "needs_chart"
+		seen_broken = seen_broken or s == "broken"
+	return true
+
+
+func sc_songs() -> void:
+	isolate_settings(true)
+	await wait_library_idle()
+	_make_fixture_library()
+	isolate_library(FIXTURE_SONGS)
+	var t_scan := Time.get_ticks_msec()
+	if not check("fixture scan finished", await wait_library_idle(60.0)):
+		return
+	metrics["fixture_scan_s"] = _since(t_scan)
+	var counts := {"ok": 0, "broken": 0, "needs_chart": 0, "bundled": 0}
+	for e in SongLibrary.entries:
+		counts[e.status] = int(counts.get(e.status, 0)) + 1
+		if e.source == "bundled":
+			counts["bundled"] += 1
+	metrics["library_counts"] = counts
+	check("library: Calibration Track + 2 bundled + 30 fixtures (33 entries)", SongLibrary.entries.size() == 33,
+		"%d entries %s" % [SongLibrary.entries.size(), counts])
+	var opus := _entry_titled("Opus Broken Song")
+	var bare := _entry_titled("Lonely Audio")
+	var long_e := _entry_titled(LONG_TITLE)
+	var cjk := _entry_titled(CJK_TITLE)
+	var comm := _entry_titled("Community Song")
+	var zipped := _entry_titled("Zipped Song")
+	var dive_e := _entry_titled("Dive Test Song")
+	var april := _entry_titled("Synth Wave April 3, 2022")
+	var ebb := _entry_titled("Ebb Tide")
+	check("Opus song listed broken with 'Opus audio not supported'",
+		opus != null and opus.status == "broken" and opus.error == SongEntry.ERR_OPUS, opus.error if opus else null)
+	check("bare WAV listed as Needs a chart", bare != null and bare.status == "needs_chart", bare.status if bare else null)
+	check("community stems folder and zip import as playable", comm != null and comm.status == "ok"
+		and zipped != null and zipped.status == "ok", [comm.status if comm else null, zipped.status if zipped else null])
+	check("long, CJK, dive-test and bundled April entries playable", long_e != null and long_e.status == "ok"
+		and cjk != null and cjk.status == "ok" and dive_e != null and dive_e.status == "ok" and april != null
+		and april.status == "ok" and april.difficulties.size() == 4, [long_e, cjk, dive_e, april])
+	if opus == null or bare == null or long_e == null or cjk == null or dive_e == null or april == null or ebb == null:
+		return
+
+	# --- (1) Start Dive -> Song Select, mid-list selection ------------------------------------------
+	await goto(MENU)
+	await wait(0.3)
+	var m := cur() as MainMenu
+	await menu_focus(m, m.start_button)
+	await press_key(KEY_ENTER)
+	if not check("Start Dive opens Song Select", await wait_until(func() -> bool: return cur() is SongSelect, 5.0), cur()):
+		return
+	var ss := _song_select()
+	await wait(0.4)
+	for i in 14:
+		await press_key(KEY_DOWN)
+	await wait(0.6)
+	var st := ss.debug_state()
+	metrics["midlist_state"] = st
+	check("exactly 9 rows drawn with a 33-row list", (st["rows"] as Array).size() == 9 and int(st["view_size"]) == 33,
+		"%d rows, view %d" % [(st["rows"] as Array).size(), st["view_size"]])
+	check("mid-list selection scrolled (offset > 0, selected row visible)", int(st["offset"]) > 0 and _sel_row(ss) >= 0,
+		"offset %d row %d" % [st["offset"], _sel_row(ss)])
+	check("no onboarding row once imported songs exist",
+		not bool(st["onboarding"]), st)
+	_check_rows_fit(ss, "midlist")
+	_check_footer(ss, "midlist")
+	await shot("library_midlist")
+	_check_outer_band(last_img, "midlist")
+
+	# --- preview gate: none before 0.4 s after the last highlight change ------------------------------
+	var left_pending := [-1]
+	await press_key(KEY_DOWN)
+	var change_ms: int = ss._preview_change_msec
+	var sel_e := ss._selected()
+	await wait_until(func() -> bool:
+		if left_pending[0] < 0 and ss.debug_state()["preview_state"] != "pending":
+			left_pending[0] = Time.get_ticks_msec()
+		return ss.debug_state()["preview_state"] == "playing", 4.0)
+	var gate_ms: int = left_pending[0] - change_ms
+	metrics["preview_gate_ms"] = gate_ms
+	check("preview starts no sooner than 0.4 s after the highlight change", gate_ms >= 400 and gate_ms < 1500,
+		"%d ms (%s)" % [gate_ms, sel_e.title if sel_e else "?"])
+	check("preview plays the highlighted song on the Music bus", ss.debug_state()["preview_state"] == "playing"
+		and ss._preview_player.playing and ss._preview_player.bus == "Music", ss.debug_state()["preview_state"])
+	await wait(0.5)
+	await shot("preview_playing")
+
+	# --- (3) throttled rescan with rows inserted above the selection ---------------------------------
+	for nm in ["AAA New Arrival", "AAB New Arrival", "AAC New Arrival"]:
+		_fixture_song(FIXTURE_SONGS.path_join(nm), nm, "Late Band")
+	var before_row := _sel_row(ss)
+	var before_id: String = ss.debug_state()["selected"]
+	var before_off: int = ss.debug_state()["offset"]
+	SongLibrary.test_scan_throttle_msec = 150
+	await press_key(KEY_F5)
+	check("F5 starts a rescan", SongLibrary.scanning)
+	await wait_until(func() -> bool:
+		return (ss.debug_state()["scan_text"] as String).begins_with("Scanning") and ss._scan_done > 2, 10.0)
+	await wait(0.2)
+	var mid := ss.debug_state()
+	metrics["mid_scan_state"] = mid
+	await shot("mid_scan_progress")
+	check("mid-scan: progress text 'Scanning n / total' and the Rescan button disabled",
+		(mid["scan_text"] as String).begins_with("Scanning") and SongLibrary.scanning, mid["scan_text"])
+	var bar_px := _chan_max(_patch(last_img, Vector2(706, 940), 1))
+	check("mid-scan: progress bar fill visible at x 704, y 936", bar_px > 0.5, "%.3f" % bar_px)
+	await wait_library_idle(60.0)
+	SongLibrary.test_scan_throttle_msec = 0
+	await wait(0.5)
+	var after := ss.debug_state()
+	metrics["insert_stability"] = {"before_row": before_row, "after_row": _sel_row(ss), "before_offset": before_off,
+		"after_offset": after["offset"], "selected": after["selected"]}
+	check("rescan inserting 3 rows above keeps the selected song", after["selected"] == before_id, after["selected"])
+	check("rescan inserting 3 rows above keeps the selected row at the same screen y",
+		_sel_row(ss) == before_row and int(after["offset"]) == before_off + 3,
+		"row %d -> %d, offset %d -> %d" % [before_row, _sel_row(ss), before_off, after["offset"]])
+	check("library now 36 entries", int(after["view_size"]) == 36, after["view_size"])
+
+	# --- (2) broken Opus and Needs-a-chart rows ---------------------------------------------------------
+	ss.select_for_test(opus.id)
+	await wait(0.7)
+	st = ss.debug_state()
+	check("broken Opus song selectable, Start disabled, no preview", st["selected"] == opus.id
+		and not bool(st["start_enabled"]) and st["preview_state"] == "none", st)
+	_check_rows_fit(ss, "broken")
+	await shot("broken_opus")
+	await press_key(KEY_ENTER)
+	await wait(0.3)
+	check("Enter on the broken row does nothing", cur() == ss and not bool(ss.debug_state()["diving"]))
+	ss.select_for_test(bare.id)
+	await wait(0.3)
+	check("Needs-a-chart row selectable, Start disabled", not bool(ss.debug_state()["start_enabled"])
+		and ss._start_label(bare) == "Needs a chart", ss._start_label(bare))
+	_check_rows_fit(ss, "needs_chart")
+	await shot("needs_chart")
+	await press_key(KEY_ENTER)
+	await wait(0.3)
+	check("Enter on the Needs-a-chart row does nothing", cur() == ss and not bool(ss.debug_state()["diving"]))
+
+	# --- (7) long and CJK titles --------------------------------------------------------------------------
+	ss.select_for_test(long_e.id)
+	await wait(0.3)
+	var long_shown := ss._fit(LONG_TITLE, Palette.SIZE_BODY, 776.0, true)
+	check("long title truncated in the row with three ASCII dots", long_shown.ends_with("...") and long_shown != LONG_TITLE,
+		long_shown)
+	_check_rows_fit(ss, "long_title")
+	await shot("long_title")
+	ss.select_for_test(cjk.id)
+	await wait(0.3)
+	var tofu := _tofu(ss, CJK_TITLE, Palette.SIZE_BODY) + _tofu(ss, CJK_ARTIST, Palette.SIZE_LABEL) \
+		+ _tofu(ss, CJK_TITLE.to_upper(), Palette.SIZE_HEADING)
+	check("CJK / Cyrillic title and artist render without missing glyphs (system font fallback)", tofu == 0,
+		"%d missing glyphs" % tofu)
+	_check_rows_fit(ss, "cjk")
+	await shot("cjk_title")
+
+	# --- difficulty snap -----------------------------------------------------------------------------------
+	ss.select_for_test(april.id)
+	await _set_difficulty(ss, "medium")
+	var d_april: String = ss.debug_state()["difficulty"]
+	ss.select_for_test(ebb.id)
+	await frame()
+	var d_fixture: String = ss.debug_state()["difficulty"]
+	ss.select_for_test(april.id)
+	await frame()
+	var d_back: String = ss.debug_state()["difficulty"]
+	check("difficulty snap: Medium wanted -> Easy on an Easy/Expert song, Medium again on April",
+		d_april == "medium" and d_fixture == "easy" and d_back == "medium", [d_april, d_fixture, d_back])
+
+	# --- sort orders, broken last ---------------------------------------------------------------------------
+	var sorts := {}
+	var sort_ok := true
+	for i in 3:
+		var stat := _view_statuses(ss)
+		sorts[SongListModel.sort_label(ss._sort)] = _unplayable_last(stat)
+		sort_ok = sort_ok and _unplayable_last(stat) and stat[stat.size() - 1] == "broken"
+		await press_key(KEY_F2)
+	check("every sort order (title, artist, best) keeps Needs-a-chart then broken rows last", sort_ok, sorts)
+	check("F2 cycles back to SORT: TITLE after 3 presses", ss._sort == SongListModel.SortMode.TITLE, ss._sort)
+
+	# --- (4) filter with no match, (6) filter with count, digits, Esc order -----------------------------------
+	ss.select_for_test(ebb.id)
+	await frame()
+	var idx0 := ss._sel_index()
+	await press_key(KEY_2)
+	check("digit 2 moves down one row while the filter is empty", ss._sel_index() == idx0 + 1 and ss._filter == "",
+		"%d -> %d" % [idx0, ss._sel_index()])
+	ss.type_for_test("zzqx")
+	await wait(0.2)
+	check("no-match filter shows NO MATCHES", ss.debug_state()["empty_state"] == "no_matches", ss.debug_state())
+	await shot("filter_no_match")
+	await press_key(KEY_ESCAPE)
+	check("Esc clears the filter first and stays on Song Select", cur() == ss and ss._filter == "", ss._filter)
+	ss.type_for_test("tide")
+	await wait(0.2)
+	st = ss.debug_state()
+	check("filter 'tide' shows 2 matches (Ebb Tide, Riptide)", int(st["view_size"]) == 2, st)
+	ss.press_key_for_test(KEY_1, 49)
+	check("digit 1 types into a non-empty filter instead of navigating", ss._filter == "tide1", ss._filter)
+	ss.press_key_for_test(KEY_BACKSPACE)
+	await wait(0.2)
+	await shot("filter_count")
+	_check_footer(ss, "filter")
+	await press_key(KEY_ESCAPE)
+	check("Esc with a filter clears it", ss._filter == "" and cur() == ss, ss._filter)
+
+	# --- (9) Low effects and Reduce motion ---------------------------------------------------------------------
+	ss.select_for_test(april.id)
+	await wait(0.5)
+	var rows_full: Array = ss.debug_state()["rows"]
+	Settings.low_effects = true
+	Settings.settings_changed.emit()
+	await wait(0.5)
+	await shot("low_effects")
+	_check_outer_band(last_img, "low_effects")
+	check("Low effects: same rows and selection", ss.debug_state()["rows"] == rows_full)
+	Settings.low_effects = false
+	Settings.reduce_motion = true
+	Settings.settings_changed.emit()
+	await wait(0.5)
+	await shot("reduce_motion")
+	_check_outer_band(last_img, "reduce_motion")
+	check("Reduce motion: same rows, scroll snapped (no smooth scroll)",
+		ss.debug_state()["rows"] == rows_full and is_equal_approx(ss._scroll_vis, float(ss._offset)))
+	Settings.reduce_motion = false
+	Settings.settings_changed.emit()
+	await wait(0.3)
+	await press_key(KEY_ESCAPE)
+	check("Esc with an empty filter returns to the main menu",
+		await wait_until(func() -> bool: return cur() is MainMenu, 5.0), cur())
+
+	# --- (8) Settings > LIBRARY with two folders (one missing) ---------------------------------------------------
+	var extra := ProjectSettings.globalize_path(LIB_ROOT.path_join("extra_lib"))
+	var missing := ProjectSettings.globalize_path(LIB_ROOT.path_join("missing_lib"))
+	_fixture_song(extra.path_join("Library Song"), "Library Song", "Shelf Band")
+	Settings.library_folders.assign([extra, missing])
+	SongLibrary.rescan()
+	await wait_library_idle(30.0)
+	check("extra folder scanned read-in-place, missing folder reported", _entry_titled("Library Song") != null
+		and _entry_titled("Library Song").source == "library" and SongLibrary.folder_error.contains("missing_lib"),
+		SongLibrary.folder_error)
+	m = cur() as MainMenu
+	await menu_focus(m, m.settings_button)
+	await press_key(KEY_ENTER)
+	if not check("Settings opens", await wait_until(func() -> bool: return cur() is SettingsScreen, 5.0)):
+		return
+	var sset := cur() as SettingsScreen
+	await wait(0.3)
+	sset.add_folder_button.grab_focus()
+	await wait(0.5)
+	var statuses: Array = []
+	for row in sset.library_rows.get_children():
+		statuses.append((row.get_child(1) as Label).text)
+	metrics["settings_library_status"] = statuses
+	check("Settings > LIBRARY lists both folders: '1 song' and red 'Folder not found'", statuses.size() == 2
+		and (statuses[0] as String).begins_with("1 song") and statuses[1] == "Folder not found", statuses)
+	await shot("settings_library")
+	await press_key(KEY_ESCAPE)
+	await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
+	Settings.library_folders.clear()
+
+	# --- (5) onboarding (bundled only) and empty library -----------------------------------------------------------
+	isolate_library(EMPTY_SONGS)
+	await wait_library_idle(30.0)
+	await goto(SONG_SELECT)
+	ss = _song_select()
+	await wait(0.6)
+	st = ss.debug_state()
+	check("only bundled songs: onboarding row shown, footer shows the Songs path", bool(st["onboarding"])
+		and int(st["view_size"]) == 4, st)
+	await shot("onboarding_bundled_only")
+	_check_outer_band(last_img, "onboarding")
+	var fake: Node = load("res://src/autoload/song_library.gd").new()
+	fake.auto_scan = false
+	fake.songs_root_override = EMPTY_SONGS
+	fake.cache_path = LIB_ROOT + "/fake_cache.json"
+	add_child(fake)
+	fake.entries.clear()
+	var empty_ss: SongSelect = load(SONG_SELECT).instantiate()
+	empty_ss.library = fake
+	var old := cur()
+	get_tree().root.add_child(empty_ss)
+	get_tree().current_scene = empty_ss
+	old.queue_free()
+	await wait(0.6)
+	st = empty_ss.debug_state()
+	check("empty library: NO SONGS FOUND with the exact Songs folder path, Start disabled",
+		st["empty_state"] == "no_songs" and not bool(st["start_enabled"]), st)
+	metrics["empty_state_path"] = fake.songs_dir()
+	await shot("empty_library")
+	await goto(MENU)
+	fake.queue_free()
+	await frame()
+
+	# --- dive from Song Select: Autoplay on the 6 s fixture, to the results ---------------------------------------
+	isolate_library(FIXTURE_SONGS)
+	await wait_library_idle(30.0)
+	await goto(MENU)
+	await wait(0.3)
+	m = cur() as MainMenu
+	await menu_focus(m, m.autoplay_button)
+	await press_key(KEY_ENTER)
+	await wait_until(func() -> bool: return cur() is SongSelect, 5.0)
+	ss = _song_select()
+	await wait_library_idle()
+	dive_e = _entry_titled("Dive Test Song")
+	ss.select_for_test(dive_e.id)
+	await _set_difficulty(ss, "expert")
+	await wait(1.2)
+	var pv_before: String = ss.debug_state()["preview_state"]
+	await press_key(KEY_ENTER)
+	check("dive stops the preview", pv_before == "playing" and ss.debug_state()["preview_state"] != "playing"
+		and bool(ss.debug_state()["diving"]), "before %s after %s" % [pv_before, ss.debug_state()["preview_state"]])
+	var ok: bool = await wait_until(func() -> bool: return cur() is Gameplay, 5.0)
+	if not check("Song Select dive reaches Gameplay", ok, cur()):
+		return
+	var g := cur() as Gameplay
+	var fp: String = dive_e.difficulty("expert")["fingerprint"]
+	check("Gameplay runs the chosen chart (fingerprint id) with Autoplay", g.chart.id == fp and g.autoplay,
+		"%s vs %s" % [g.chart.id, fp])
+	ok = await wait_until(func() -> bool: return g.state == Gameplay.State.DONE, 30.0)
+	await wait(0.6)
+	check("autoplay dive on the imported song finishes P>0 M0", ok and g.score.perfect_count > 0
+		and g.score.miss_count == 0, "P%d G%d M%d" % [g.score.perfect_count, g.score.good_count, g.score.miss_count])
+	await shot("fixture_results")
+
+	# --- gameplay on a bundled song (Autoplay, Expert) --------------------------------------------------------------
+	await goto(MENU)
+	await wait(0.3)
+	m = cur() as MainMenu
+	await menu_focus(m, m.autoplay_button)
+	await press_key(KEY_ENTER)
+	g = await dive_from_song_select(april.id, "expert")
+	if g == null:
+		return
+	check("bundled April runs with its fingerprint chart and real audio",
+		g.chart.id == april.difficulty("expert")["fingerprint"] and g.chart.audio_stream != null
+		and g.chart.audio_stream.get_length() > 120.0, g.chart.id)
+	await wait_until(func() -> bool: return g.conductor.song_time() > 22.0, 40.0)
+	var fps0 := Engine.get_frames_drawn()
+	var t0 := Time.get_ticks_msec()
+	await wait(2.0)
+	var fps := (Engine.get_frames_drawn() - fps0) / maxf(0.001, _since(t0))
+	metrics["bundled_fps"] = fps
+	await shot("bundled_gameplay", g)
+	check("bundled song autoplay: all judged notes Perfect so far", g.score.miss_count == 0 and g.score.good_count == 0
+		and g.score.perfect_count > 20, "P%d G%d M%d" % [g.score.perfect_count, g.score.good_count, g.score.miss_count])
+	check("bundled gameplay frame rate >= 60 fps", fps >= 60.0, "%.1f fps" % fps)
+	await goto(MENU)
+	await wait(0.3)
+	metrics["real_songs_dir"] = ProjectSettings.globalize_path("user://songs")
