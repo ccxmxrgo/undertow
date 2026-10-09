@@ -93,3 +93,57 @@ func test_roundtrip_display_flags() -> void:
 	b.load_from(PATH)
 	assert_bool(b.fullscreen).is_false()
 	assert_bool(b.low_effects).is_true()
+
+
+func test_library_roundtrip() -> void:
+	var a: Node = auto_free(SettingsScript.new())
+	a.library_folders = ["C:/songs/one", "D:/ch"] as Array[String]
+	a.last_song_id = "u1.abc.x"
+	a.last_difficulty = "hard"
+	assert_int(a.save_to(PATH)).is_equal(OK)
+	var b: Node = auto_free(SettingsScript.new())
+	b.load_from(PATH)
+	assert_array(b.library_folders).is_equal(["C:/songs/one", "D:/ch"])
+	assert_str(b.last_song_id).is_equal("u1.abc.x")
+	assert_str(b.last_difficulty).is_equal("hard")
+	b.reset_defaults()
+	assert_array(b.library_folders).is_empty()
+	assert_str(b.last_song_id).is_equal("")
+	assert_str(b.last_difficulty).is_equal("")
+
+
+func test_old_config_without_library_loads_defaults() -> void:
+	_write("[gameplay]\nscroll_speed=1.5\n")
+	var s: Node = auto_free(SettingsScript.new())
+	s.load_from(PATH)
+	assert_array(s.library_folders).is_empty()
+	assert_str(s.last_difficulty).is_equal("")
+	assert_float(s.scroll_speed).is_equal_approx(1.5, 1e-9)
+
+
+func test_garbage_library_section_is_sanitised() -> void:
+	_write("[gameplay]\nscroll_speed=2.0\n[library]\nfolders=5\nlast_song_id=[1,2]\nlast_difficulty=\"nightmare\"\n")
+	var s: Node = auto_free(SettingsScript.new())
+	s.load_from(PATH)
+	assert_array(s.library_folders).is_empty()
+	assert_str(s.last_song_id).is_equal("")
+	assert_str(s.last_difficulty).is_equal("")
+	assert_float(s.scroll_speed).is_equal_approx(2.0, 1e-9)
+
+
+func test_library_list_caps_and_filters() -> void:
+	var items := ["1", 2, "", "x".repeat(1025)]
+	for i in range(12):
+		items.append("C:/f%d" % i)
+	var cfg := ConfigFile.new()
+	cfg.set_value("library", "folders", items)
+	cfg.set_value("library", "last_song_id", "y".repeat(2000))
+	cfg.set_value("library", "last_difficulty", "expert")
+	cfg.save(PATH)
+	var s: Node = auto_free(SettingsScript.new())
+	s.load_from(PATH)
+	assert_int(s.library_folders.size()).is_equal(8)
+	assert_str(s.library_folders[0]).is_equal("1")
+	assert_str(s.library_folders[1]).is_equal("C:/f0")
+	assert_str(s.last_song_id).is_equal("")
+	assert_str(s.last_difficulty).is_equal("expert")

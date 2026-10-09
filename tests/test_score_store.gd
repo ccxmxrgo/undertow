@@ -111,15 +111,49 @@ func test_hostile_values() -> void:
 
 func test_section_cap() -> void:
 	var text := ""
-	for i in range(1000):
-		text += "[chart:c%d]\nbest_depth=%d.0\n\n" % [i, i + 1]
+	var total := ScoreStore.MAX_SECTIONS + 50
+	for i in range(total):
+		text += "[chart:c%d]
+best_depth=%d.0
+
+" % [i, i + 1]
 	_write(text)
 	var s := ScoreStore.new(P)
 	s.load()
 	assert_bool(s.best("c0").is_empty()).is_false()
-	assert_bool(s.best("c255").is_empty()).is_false()
-	assert_bool(s.best("c256").is_empty()).is_true()
-	assert_bool(s.best("c999").is_empty()).is_true()
+	assert_bool(s.best("c%d" % (ScoreStore.MAX_SECTIONS - 1)).is_empty()).is_false()
+	assert_bool(s.best("c%d" % (total - 1)).is_empty()).is_true()
+
+
+func test_thousand_fingerprint_records_survive_reload() -> void:
+	var s := ScoreStore.new(P)
+	for i in range(1200):
+		var fid := "u1.%024x.x" % (i * 7919 + 1)
+		s.submit(fid, float(i + 1), 90.0, 10, true, "2026-10-09")
+	var t := ScoreStore.new(P)
+	t.load()
+	var lost := 0
+	for i in range(1200):
+		var b := t.best("u1.%024x.x" % (i * 7919 + 1))
+		if b.is_empty() or absf(b.depth - float(i + 1)) > 0.01:
+			lost += 1
+	assert_int(lost).is_equal(0)
+
+
+func test_difficulties_of_one_song_are_independent() -> void:
+	var c := TestCharts.click_chart(120.0, 16)
+	var fx := ChartImporter.fingerprint(c, "expert", 30.0)
+	var fe := ChartImporter.fingerprint(c, "easy", 30.0)
+	assert_str(fx).is_not_equal(fe)
+	var s := ScoreStore.new(P)
+	s.submit(fx, 300.0, 95.0, 50, true)
+	s.submit(fe, 100.0, 99.0, 20, true)
+	s.submit(TestCharts.HAND_CHART_ID, 10.0, 80.0, 5, true)
+	var t := ScoreStore.new(P)
+	t.load()
+	assert_float(t.best(fx).depth).is_equal_approx(300.0, 0.01)
+	assert_float(t.best(fe).depth).is_equal_approx(100.0, 0.01)
+	assert_float(t.best("test.hand_chart.v1").depth).is_equal_approx(10.0, 0.01)
 
 
 func test_sanitize_id() -> void:

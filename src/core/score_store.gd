@@ -5,7 +5,9 @@ extends RefCounted
 ## section count capped, ids sanitized. Saves are atomic (tmp then rename). Local file by design,
 ## no anti-cheat.
 
-const MAX_SECTIONS := 256
+## 8192: one record per song+difficulty fingerprint, 4 difficulties x large Clone Hero libraries
+## (RESEARCH Pitfall 9). Still a hard cap so a hostile file cannot exhaust memory (T-02-20).
+const MAX_SECTIONS := 8192
 const MAX_ID_LEN := 64
 const MAX_DEPTH := 1.0e7
 const MAX_COMBO := 1.0e6

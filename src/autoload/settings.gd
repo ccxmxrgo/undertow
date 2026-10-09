@@ -11,6 +11,9 @@ const OFFSET_LIMIT := 0.5
 const SCROLL_MIN := 0.5
 const SCROLL_MAX := 3.0
 const WINDOWED_SIZE := Vector2i(1600, 900)
+const MAX_LIBRARY_FOLDERS := 8
+const MAX_PATH_LEN := 1024
+const DIFFICULTIES: Array[String] = ["easy", "medium", "hard", "expert"]
 
 ## Seconds. Positive audio_offset = player taps late, song_time is reduced by it.
 var audio_offset: float = 0.0
@@ -34,6 +37,11 @@ var low_effects: bool = false
 var volume_master: float = 1.0
 var volume_music: float = 0.8
 var volume_sfx: float = 0.8
+## D-06: extra library folders (absolute paths, scanned read-only). Persisted in [library].
+var library_folders: Array[String] = []
+## Last played song id / difficulty (easy|medium|hard|expert|""). Song Select reopens on them.
+var last_song_id: String = ""
+var last_difficulty: String = ""
 var bindings := BindingStore.new()
 ## Where set_* mutators persist to (tests override this).
 var save_path: String = DEFAULT_PATH
@@ -60,6 +68,9 @@ func reset_defaults() -> void:
 	volume_master = 1.0
 	volume_music = 0.8
 	volume_sfx = 0.8
+	library_folders = []
+	last_song_id = ""
+	last_difficulty = ""
 	bindings.reset_defaults()
 
 
@@ -173,6 +184,9 @@ func save_to(path: String = DEFAULT_PATH) -> int:
 	cfg.set_value("audio", "master", volume_master)
 	cfg.set_value("audio", "music", volume_music)
 	cfg.set_value("audio", "sfx", volume_sfx)
+	cfg.set_value("library", "folders", PackedStringArray(library_folders))
+	cfg.set_value("library", "last_song_id", last_song_id)
+	cfg.set_value("library", "last_difficulty", last_difficulty)
 	bindings.to_config(cfg)
 	# Atomic save (WR-08): write a temp file, then rename over the target, so a crash mid-write
 	# cannot leave a truncated settings file.
@@ -221,9 +235,42 @@ func load_from(path: String = DEFAULT_PATH) -> void:
 	var sig: Variant = cfg.get_value("calibration", "output_signature", "")
 	output_device_signature = sig.left(512) if typeof(sig) == TYPE_STRING else ""
 	calibration_done = _bool(cfg, "calibration", "done", false)
+	_load_library(cfg)
 	apply_window()
 	apply_audio()
 	settings_changed.emit()
+
+
+## T-02-18: every [library] value is untrusted. Non-strings dropped, list capped, strings capped.
+func _load_library(cfg: ConfigFile) -> void:
+	var folders: Variant = cfg.get_value("library", "folders", [])
+	var out: Array[String] = []
+	if typeof(folders) == TYPE_ARRAY or typeof(folders) == TYPE_PACKED_STRING_ARRAY:
+		for item in folders:
+			if out.size() >= MAX_LIBRARY_FOLDERS:
+				break
+			if typeof(item) != TYPE_STRING:
+				continue
+			var p: String = item
+			if p == "" or p.length() > MAX_PATH_LEN or out.has(p):
+				continue
+			out.append(p)
+	library_folders = out
+	var sid: Variant = cfg.get_value("library", "last_song_id", "")
+	last_song_id = sid if typeof(sid) == TYPE_STRING and sid.length() <= MAX_PATH_LEN else ""
+	var diff: Variant = cfg.get_value("library", "last_difficulty", "")
+	last_difficulty = diff if typeof(diff) == TYPE_STRING and DIFFICULTIES.has(diff) else ""
+
+
+## Remembers the last played song/difficulty (called by SongLibrary); saves only on change.
+func set_last_played(song_id: String, difficulty: String) -> void:
+	var d := difficulty if DIFFICULTIES.has(difficulty) else ""
+	var s := song_id.left(MAX_PATH_LEN)
+	if s == last_song_id and d == last_difficulty:
+		return
+	last_song_id = s
+	last_difficulty = d
+	save_to(save_path)
 
 
 func _bool(cfg: ConfigFile, section: String, key: String, def: bool) -> bool:
