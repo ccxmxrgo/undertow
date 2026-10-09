@@ -4,7 +4,8 @@ extends GdUnitTestSuite
 ## overlap sustains. Reads the committed res://songs files only; no user:// access.
 
 const IDS: Array[String] = ["synth_wave_april", "space_synth_wave"]
-const DELAYS := {"synth_wave_april": 17, "space_synth_wave": 372}
+## Measured in 02-06 against the game's own decoded audio (tools/charting/README.txt).
+const DELAYS := {"synth_wave_april": 48, "space_synth_wave": 525}
 const BARS := {"synth_wave_april": 64, "space_synth_wave": 96}
 const BANDS := {
 	"easy": [0.6, 1.4], "medium": [1.2, 2.2], "hard": [2.0, 3.2], "expert": [3.0, 4.6],
@@ -243,3 +244,23 @@ func test_autoplay_all_perfect_every_difficulty_of_both_songs() -> void:
 			if d == "hard" or d == "expert":
 				assert_int(chart.solos[0]["note_count"]).is_greater_equal(16)
 	lib.queue_free()
+
+
+## 02-06: bundled signatures follow chart / ini content, so a same-size delay change in a game
+## update (exported res:// files report mtime 0) cannot leave a stale cache entry behind.
+func test_bundled_signature_follows_ini_content() -> void:
+	for id in IDS:
+		var dir := "res://songs/%s" % id
+		var sig: String = load("res://src/autoload/song_library.gd").bundled_signature(dir, dir.path_join("song.ini"))
+		assert_str(sig).contains("song.ini=" + FileAccess.get_md5(dir.path_join("song.ini")))
+		assert_str(sig).contains("notes.chart=" + FileAccess.get_md5(dir.path_join("notes.chart")))
+	var d := LIB_D + "_sig"
+	SongFixture.rm_tree(d)
+	SongFixture.write_text(d + "/song.ini", "[song]\ndelay = 17\n")
+	SongFixture.write_text(d + "/notes.chart", SongFixture.CHART)
+	var lib_script: GDScript = load("res://src/autoload/song_library.gd")
+	var s1: String = lib_script.bundled_signature(d, d + "/song.ini")
+	SongFixture.write_text(d + "/song.ini", "[song]\ndelay = 48\n")
+	var s2: String = lib_script.bundled_signature(d, d + "/song.ini")
+	assert_str(s2).is_not_equal(s1)
+	SongFixture.rm_tree(d)

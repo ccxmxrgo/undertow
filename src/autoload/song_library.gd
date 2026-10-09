@@ -279,7 +279,7 @@ func _import_bundled(b: Dictionary, cache: SongCache) -> SongEntry:
 	if not dir.begins_with("res://") or audio == "" or audio.contains("/") or audio.contains(".."):
 		return null
 	var audio_path := dir.path_join(audio)
-	var sig := SongScanner.folder_signature(dir, [audio_path])
+	var sig := bundled_signature(dir, audio_path)
 	var id := SongScanner.norm(dir)
 	var hit := cache.lookup(id, sig)
 	if hit != null:
@@ -289,6 +289,19 @@ func _import_bundled(b: Dictionary, cache: SongCache) -> SongEntry:
 	e.id = id
 	e.signature = sig
 	return e
+
+
+## Inside an exported .pck the modified time of res:// files is 0, so a game update that changes a
+## bundled song.ini or chart without changing its size (e.g. delay 17 -> 48) would keep a stale cache
+## entry whose fingerprint no longer matches ("Song changed since the last scan" forever). The MD5 of
+## the small chart / ini files makes the signature follow the content.
+static func bundled_signature(dir: String, audio_path: String) -> String:
+	var parts: Array[String] = [SongScanner.folder_signature(dir, [audio_path])]
+	for f in DirAccess.get_files_at(dir):
+		var ext := f.get_extension().to_lower()
+		if ext == "chart" or ext == "ini":
+			parts.append("%s=%s" % [f, FileAccess.get_md5(dir.path_join(f))])
+	return "|".join(parts)
 
 
 func _push(item: Dictionary) -> void:

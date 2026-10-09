@@ -43,7 +43,7 @@ const EMPTY_SONGS := LIB_ROOT + "/empty_songs"
 const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
 	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0, "immersion": 240.0,
-	"songs": 360.0}
+	"songs": 360.0, "align": 150.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note. Values stay >= 5 ms
 ## from window edges (35 / 70 / 100 ms) so frame jitter cannot flip the expected judgment.
 const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
@@ -108,6 +108,7 @@ func _run() -> void:
 		"polish": await sc_polish()
 		"immersion": await sc_immersion()
 		"songs": await sc_songs()
+		"align": await sc_align()
 		_: check("known scenario", false, scenario)
 	_finish()
 
@@ -134,6 +135,8 @@ func isolate_settings(calibrated: bool) -> void:
 ## songs + Calibration Track + whatever is in songs_root). Extra folders come from the temp settings.
 func isolate_library(songs_root: String) -> void:
 	SongFixture.mkdir(songs_root)
+	# --no-boot-scan leaves settings_ref unbound; the game binds it to Settings (now the temp file).
+	SongLibrary.settings_ref = Settings
 	SongLibrary.songs_root_override = songs_root
 	SongLibrary.cache_path = LIB_ROOT + "/cache.json"
 	SongScanner.zip_cache_root = LIB_ROOT + "/zipcache"
@@ -2962,3 +2965,86 @@ func sc_songs() -> void:
 	await goto(MENU)
 	await wait(0.3)
 	metrics["real_songs_dir"] = ProjectSettings.globalize_path("user://songs")
+
+
+
+# ------------------------------------------------------------------------------------------------
+# align (02-06, not in run_all): bundled song audio vs chart grid. Writes, per bundled song,
+#   build/playtest/align_<id>_decoded.wav   the game's own stream, whole song, decoded offline
+#                                           (AudioStreamPlayback.mix_audio, sample exact)
+#   build/playtest/align_<id>_recorded.wav  its first 24 s recorded live from a temp bus (AudioEffectRecord)
+# Analyse with: python -I tools/charting/grid_offset.py <wav> 120 <delay_ms>
+# ------------------------------------------------------------------------------------------------
+
+const ALIGN_SECONDS := 24.0
+
+
+func _write_wav16(path: String, frames: PackedVector2Array, rate: int) -> void:
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.stereo = true
+	w.mix_rate = rate
+	var data := PackedByteArray()
+	data.resize(frames.size() * 4)
+	for i in frames.size():
+		data.encode_s16(i * 4, clampi(int(round(frames[i].x * 32767.0)), -32768, 32767))
+		data.encode_s16(i * 4 + 2, clampi(int(round(frames[i].y * 32767.0)), -32768, 32767))
+	w.data = data
+	w.save_to_wav(path)
+
+
+func sc_align() -> void:
+	isolate_settings(true)
+	await wait_library_idle(60.0)
+	var rate := int(AudioServer.get_mix_rate())
+	metrics["mix_rate"] = rate
+	var bus := AudioServer.bus_count
+	AudioServer.add_bus(bus)
+	AudioServer.set_bus_name(bus, "AlignRecord")
+	AudioServer.set_bus_send(bus, "Master")
+	var rec := AudioEffectRecord.new()
+	rec.format = AudioStreamWAV.FORMAT_16_BITS
+	AudioServer.add_bus_effect(bus, rec)
+	for b in BundledSongs.SONGS:
+		var e := SongLibrary.find(str(b["dir"]))
+		if not check("bundled %s listed" % b["id"], e != null and e.status == "ok"):
+			continue
+		var chart := SongLibrary.build_chart(e, "expert")
+		if not check("bundled %s builds" % b["id"], chart != null and chart.audio_stream != null):
+			continue
+		var stream: AudioStream = chart.audio_stream
+		metrics["%s_delay_ms" % b["id"]] = e.delay_ms
+		metrics["%s_stream" % b["id"]] = stream.get_class()
+		# 1. offline decode through the same AudioStreamPlayback the player uses
+		var pb := stream.instantiate_playback()
+		var n := int(ceil(stream.get_length() * rate))
+		var frames := PackedVector2Array()
+		if pb.has_method("mix_audio"):
+			pb.start(0.0)
+			while frames.size() < n:
+				frames.append_array(pb.mix_audio(1.0, mini(4096, n - frames.size())))
+			pb.stop()
+			var dpath := ProjectSettings.globalize_path("%s/align_%s_decoded.wav" % [OUT_DIR, b["id"]])
+			_write_wav16(dpath, frames, rate)
+			check("%s decoded %.1f s (whole song) to %s" % [b["id"], frames.size() / float(rate), dpath.get_file()], frames.size() >= n)
+		else:
+			note("AudioStreamPlayback.mix_audio not available; decoded WAV skipped")
+		# 2. live recording from the temp bus (start recording and playback in the same frame)
+		var player := AudioStreamPlayer.new()
+		player.stream = stream
+		player.bus = "AlignRecord"
+		add_child(player)
+		await frame()
+		rec.set_recording_active(true)
+		player.play(0.0)
+		await wait(ALIGN_SECONDS + 0.3)
+		rec.set_recording_active(false)
+		player.stop()
+		player.queue_free()
+		var wav := rec.get_recording()
+		var rpath := ProjectSettings.globalize_path("%s/align_%s_recorded.wav" % [OUT_DIR, b["id"]])
+		if check("%s recorded" % b["id"], wav != null and wav.data.size() > 0):
+			wav.save_to_wav(rpath)
+			metrics["%s_recorded_s" % b["id"]] = wav.get_length()
+		await wait(0.3)
+	AudioServer.remove_bus(bus)
