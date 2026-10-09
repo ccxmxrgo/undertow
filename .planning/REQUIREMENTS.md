@@ -31,7 +31,7 @@
 
 - [x] **SONG-01**: Player can import Clone Hero `.chart` songs (with `song.ini` and OGG/MP3/WAV audio) from a folder
 - [x] **SONG-02**: Imported 5-fret charts are mapped to 4 lanes by a documented, consistent rule (HOPO/tap become plain notes)
-- [ ] **SONG-03**: Player can browse the song library and pick a song and difficulty with an audio preview
+- [x] **SONG-03**: Player can browse the song library and pick a song and difficulty with an audio preview
 - [ ] **SONG-04**: Game ships with at least 2 bundled royalty-free/original songs with charts
 - [x] **SONG-05**: Each song has a stable hash so peers can confirm they have the identical chart
 - [x] **SONG-06**: Unsupported or broken songs show a readable error instead of crashing
@@ -172,7 +172,7 @@
 | TORP-02 | Phase 3 | Pending |
 | PAY-02 | Phase 3 | Pending |
 | MATCH-02 | Phase 3 | Pending |
-| SONG-03 | Phase 2 | Pending |
+| SONG-03 | Phase 2 | Complete |
 | TORP-03 | Phase 3 | Pending |
 | PAY-03 | Phase 3 | Pending |
 | MATCH-03 | Phase 3 | Pending |
