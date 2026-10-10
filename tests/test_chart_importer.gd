@@ -152,3 +152,120 @@ func test_hostile_fixture_imports_safely() -> void:
 	var c := ChartImporter.build(_load("hostile.chart"), "expert")
 	assert_int(c.notes.size()).is_equal(1)
 	assert_bool(c.notes[0]["time"] >= 0.0).is_true()
+
+
+# ---- sections and time signatures (D-10, D-18) ----
+
+func _with_events(events: String, sync: String = "  0 = B 120000\n") -> ParsedChart:
+	var txt := "[Song]\n{\n  Resolution = 192\n}\n[SyncTrack]\n{\n%s}\n[Events]\n{\n%s}\n[ExpertSingle]\n{\n  0 = N 0 0\n  1536 = N 1 0\n}\n" % [sync, events]
+	return ChartParser.parse_bytes(txt.to_utf8_buffer())
+
+
+func test_sections_from_events() -> void:
+	var pc := _with_events("  0 = E \"section Intro\"\n  768 = E \"section Verse 1\"\n  900 = E \"solo\"\n")
+	var c := ChartImporter.build(pc, "expert")
+	assert_int(c.sections.size()).is_equal(2)
+	assert_float(c.sections[0]["time"]).is_equal_approx(0.0, 1e-6)
+	assert_str(c.sections[0]["name"]).is_equal("Intro")
+	assert_float(c.sections[1]["time"]).is_equal_approx(2.0, 1e-6)
+	assert_str(c.sections[1]["name"]).is_equal("Verse 1")
+
+
+func test_sections_follow_delay_and_clamp() -> void:
+	var pc := _with_events("  0 = E \"section Intro\"\n  768 = E \"section Verse 1\"\n")
+	var c := ChartImporter.build(pc, "expert", 100)
+	assert_float(c.sections[0]["time"]).is_equal_approx(0.1, 1e-6)
+	assert_float(c.sections[1]["time"]).is_equal_approx(2.1, 1e-6)
+	var neg := ChartImporter.build(pc, "expert", -500)
+	assert_float(neg.sections[0]["time"]).is_equal_approx(0.0, 1e-6)
+	assert_float(neg.sections[1]["time"]).is_equal_approx(1.5, 1e-6)
+
+
+func test_sections_sorted_dedup_and_sanitized() -> void:
+	var long_name := "x".repeat(100)
+	var pc := _with_events("")
+	pc.events.append({"tick": 768, "text": "section Chorus"})
+	pc.events.append({"tick": 0, "text": "section   Big \t  Intro  "})
+	pc.events.append({"tick": 768, "text": "section Chorus"})
+	pc.events.append({"tick": 384, "text": "section "})
+	pc.events.append({"tick": 400, "text": "section " + long_name})
+	var c := ChartImporter.build(pc, "expert")
+	assert_int(c.sections.size()).is_equal(3)
+	assert_str(c.sections[0]["name"]).is_equal("Big Intro")
+	assert_int(String(c.sections[1]["name"]).length()).is_equal(64)
+	assert_str(c.sections[2]["name"]).is_equal("Chorus")
+	for i in range(1, c.sections.size()):
+		assert_bool(c.sections[i]["time"] >= c.sections[i - 1]["time"]).is_true()
+
+
+func test_sections_strip_control_chars() -> void:
+	var pc := _with_events("  0 = E \"section Intro\"\n")
+	pc.events.append({"tick": 192, "text": "section Br" + char(1) + "id" + char(7) + "ge" + char(127)})
+	pc.events.append({"tick": 384, "text": "section " + char(2) + char(3)})
+	var c := ChartImporter.build(pc, "expert")
+	assert_int(c.sections.size()).is_equal(2)
+	assert_str(c.sections[1]["name"]).is_equal("Bridge")
+
+
+func test_sections_capped_at_256() -> void:
+	var pc := _with_events("")
+	for i in 400:
+		pc.events.append({"tick": i * 10, "text": "section S%d" % i})
+	var c := ChartImporter.build(pc, "expert")
+	assert_int(c.sections.size()).is_equal(256)
+
+
+func test_time_sigs() -> void:
+	var c := ChartImporter.build(_with_events("", "  0 = B 120000\n  0 = TS 3\n  1152 = TS 4\n"), "expert")
+	assert_int(c.time_sigs.size()).is_equal(2)
+	assert_float(c.time_sigs[0]["time"]).is_equal_approx(0.0, 1e-6)
+	assert_int(c.time_sigs[0]["num"]).is_equal(3)
+	assert_int(c.time_sigs[0]["den"]).is_equal(4)
+	assert_float(c.time_sigs[1]["time"]).is_equal_approx(3.0, 1e-6)
+	assert_int(c.time_sigs[1]["num"]).is_equal(4)
+	assert_int(c.time_sigs[1]["den"]).is_equal(4)
+
+
+func test_time_sig_denominator_and_default() -> void:
+	var c := ChartImporter.build(_with_events("", "  0 = B 120000\n  0 = TS 6 3\n"), "expert")
+	assert_int(c.time_sigs[0]["num"]).is_equal(6)
+	assert_int(c.time_sigs[0]["den"]).is_equal(8)
+	var d := ChartImporter.build(_with_events(""), "expert")
+	assert_int(d.time_sigs.size()).is_equal(1)
+	assert_float(d.time_sigs[0]["time"]).is_equal_approx(0.0, 1e-6)
+	assert_int(d.time_sigs[0]["num"]).is_equal(4)
+	assert_int(d.time_sigs[0]["den"]).is_equal(4)
+
+
+func test_time_sigs_clamped() -> void:
+	var c := ChartImporter.build(_with_events("", "  0 = B 120000\n  0 = TS 99 9\n"), "expert")
+	assert_int(c.time_sigs[0]["num"]).is_equal(32)
+	assert_int(c.time_sigs[0]["den"]).is_equal(32)
+
+
+func test_time_sigs_capped_at_256() -> void:
+	var pc := _with_events("")
+	for i in 400:
+		pc.time_sigs.append({"tick": i * 192, "num": 3 + (i % 2), "exp": 2})
+	var c := ChartImporter.build(pc, "expert")
+	assert_bool(c.time_sigs.size() <= 256).is_true()
+
+
+func test_fingerprint_ignores_sections_and_time_sigs() -> void:
+	var c := ChartImporter.build(_with_events("  0 = E \"section Intro\"\n", "  0 = B 120000\n  0 = TS 3\n"), "expert")
+	var before := ChartImporter.fingerprint(c, "expert", 10.0)
+	c.sections.append({"time": 5.0, "name": "Extra"})
+	c.time_sigs.append({"time": 5.0, "num": 7, "den": 8})
+	assert_str(ChartImporter.fingerprint(c, "expert", 10.0)).is_equal(before)
+	c.sections.clear()
+	c.time_sigs.clear()
+	assert_str(ChartImporter.fingerprint(c, "expert", 10.0)).is_equal(before)
+
+
+func test_bundled_charts_have_sections() -> void:
+	for id in ["hrt", "invisible", "sea_shanty_2", "space_synth_wave", "synth_wave_april"]:
+		var pc := ChartParser.parse_bytes(FileAccess.get_file_as_bytes("res://songs/%s/notes.chart" % id))
+		var diffs := ChartImporter.difficulties(pc)
+		var c := ChartImporter.build(pc, diffs[diffs.size() - 1])
+		assert_int(c.sections.size()).override_failure_message(id).is_between(6, 10)
+		assert_bool(c.time_sigs.size() >= 1).is_true()
