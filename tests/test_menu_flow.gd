@@ -430,3 +430,56 @@ func test_glow_hidden_when_built_in_low_effects() -> void:
 	var m := _main_menu()
 	assert_bool(m.logo.glow.visible).is_false()
 	assert_int(int((m.get_child(0) as AbyssBackdrop).effect_counts()["snow"])).is_equal(30)
+
+
+# ---- 02.2 plan 07: last-dive card ----
+
+func test_last_dive_card_hidden_without_a_last_song() -> void:
+	Settings.last_song_id = ""
+	var m := _main_menu()
+	assert_object(m.last_dive_card).is_not_null()
+	assert_bool(m.last_dive_card.visible).is_false()
+	Settings.last_song_id = "no/such/song"
+	Settings.last_difficulty = "expert"
+	var m2 := _main_menu()
+	assert_bool(m2.last_dive_card.visible).is_false()
+
+
+func test_last_dive_card_shows_title_and_no_record() -> void:
+	Settings.last_song_id = TestCharts.HAND_CHART_ID
+	Settings.last_difficulty = "expert"
+	var m := _main_menu()
+	var card: MainMenu.LastDiveCard = m.last_dive_card
+	assert_bool(card.visible).is_true()
+	assert_vector(card.position).is_equal(Vector2(1376.0, 840.0))
+	assert_vector(card.size).is_equal(Vector2(480.0, 160.0))
+	assert_str(card.caption_label.text).is_equal("LAST DIVE")
+	assert_str(card.title_label.text).is_equal("Calibration Track")
+	assert_str(card.chip_text).is_equal("EXPERT")
+	assert_int(card.chip_lane).is_equal(3)
+	assert_str(card.length_label.text).contains(":")
+	assert_bool(card.empty_label.visible).is_true()
+	assert_str(card.empty_label.text).is_equal("No record yet.")
+	assert_bool(card.best_value_label.visible).is_false()
+
+
+func test_last_dive_card_shows_best_depth_in_gold() -> void:
+	var store := ScoreStore.new(SCORES_TMP)
+	store.submit(TestCharts.HAND_CHART_ID, 1240.0, 96.0, 50, true, "2026-10-08")
+	Settings.last_song_id = TestCharts.HAND_CHART_ID
+	Settings.last_difficulty = "expert"
+	var m := _main_menu()
+	var card: MainMenu.LastDiveCard = m.last_dive_card
+	assert_bool(card.best_value_label.visible).is_true()
+	assert_str(card.best_value_label.text).is_equal("1,240 M")
+	assert_bool(card.empty_label.visible).is_false()
+	assert_that(card.best_value_label.get_theme_color("font_color")).is_equal(Palette.REWARD_GOLD)
+	# Right edge of the depth sits at x 1832 (card-local 456).
+	assert_float(card.best_value_label.position.x + card.best_value_label.size.x).is_equal_approx(456.0, 0.5)
+
+
+func test_last_dive_card_difficulty_lanes() -> void:
+	assert_int(MainMenu.difficulty_lane("easy")).is_equal(0)
+	assert_int(MainMenu.difficulty_lane("medium")).is_equal(1)
+	assert_int(MainMenu.difficulty_lane("hard")).is_equal(2)
+	assert_int(MainMenu.difficulty_lane("expert")).is_equal(3)
