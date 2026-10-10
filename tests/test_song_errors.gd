@@ -86,12 +86,12 @@ func test_old_zip_cache_marker_reextracts_once() -> void:
 	var roots := [{"path": lib, "source": "test", "library_name": "Lib"}]
 	var first := SongScanner.new().scan_sync(roots, null)
 	assert_str(first[0].status).is_equal("ok")
-	var dirs := DirAccess.get_directories_at(ProjectSettings.globalize_path(D + "/zipcache"))
-	assert_int(dirs.size()).is_equal(1)
-	var dest := (D + "/zipcache").path_join(dirs[0])
+	# The entry's own extraction folder (not a directory count: another suite's background
+	# library scan may still be unpacking into the shared static zip_cache_root).
+	var dest: String = first[0].chart_path.get_base_dir()
+	assert_str(dest.get_base_dir()).is_equal(D + "/zipcache")
 	assert_str(FileAccess.get_file_as_string(dest + "/.done")).is_equal(SongScanner.EXTRACT_VERSION)
 	assert_bool(FileAccess.file_exists(dest + "/album.png")).is_true()
-	assert_str(first[0].chart_path.get_base_dir()).is_equal(dest)
 	# Simulate a cache written by the old extractor: "ok" marker, images dropped.
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(dest + "/album.png"))
 	SongFixture.write_text(dest + "/.done", "ok")

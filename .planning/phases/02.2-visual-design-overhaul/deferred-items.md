@@ -32,3 +32,14 @@
   secondary (180 Hz) monitor, so it is environmental (bot spin-wait / OS scheduling), not the HUD.
   All judgment checks in b pass. Fix candidate: judge the bot on p99 instead of the single max, or
   allow one outlier.
+
+## Found in 02.2-17
+
+- **Scenario songs "nothing bright in the outer 32 px (max channel <= 0.35)" fails at a random
+  edge point (midlist and/or reduce_motion shot).** It fails the same way at the pre-plan-17 commit
+  050b19d (reproduced in a clean checkout on 2026-10-10 under xvfb: 0.420 at (524, 2)), so it comes
+  from the Song Select backdrop decoration, not the detail panel. RESEARCH Pitfall 9 already lists
+  `_check_outer_band` as a check to replace (clean-edge rule retired). Plan 18 moves Song Select to
+  the `table` AbyssBackdrop; replace the check there with the keep-out style check.
+- **Scenario songs "bundled gameplay frame rate >= 60 fps"** reads about 18 fps under xvfb software
+  GL (same at 050b19d). Environment only; re-check on the Windows PC.
