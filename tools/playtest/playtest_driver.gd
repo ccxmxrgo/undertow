@@ -2268,8 +2268,10 @@ func sc_polish() -> void:
 	metrics["results_menu_band_luma"] = lum
 	check("no menu text behind results", not menu_rects.is_empty() and int(lum["samples"]) > 0
 		and float(lum["max"]) < 0.35, lum)
-	check("results backdrop uniform where the menu text was (max luma <= backdrop + 0.02)",
-		float(lum["max"]) <= _luma(Palette.BG) + 0.02, [lum, _luma(Palette.BG)])
+	# 02.2-15: the results backdrop is the calm abyss (snow, panel and grade glows), no longer a flat
+	# fill, so "uniform" means: where the menu text was, nothing reaches half the dimmest text token.
+	check("results backdrop where the menu text was stays below half of TEXT_LO luma",
+		float(lum["max"]) < _luma(Palette.TEXT_LO) * 0.5, [lum, _luma(Palette.TEXT_LO) * 0.5])
 	await release_overlay(rs)
 	var ps := HullScore.new(cfgj)
 	ps.no_fail = true

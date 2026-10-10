@@ -47,6 +47,7 @@ const ROW_BASES: Array[float] = [552.0, 600.0, 648.0]
 const COUNT_RIGHT := 1216.0
 const CHIP_GAP := 8.0
 const EMBLEM_DELAY := 0.2
+const ACCURACY_CAPTION_Y := 532.0
 
 var retry_button: Button
 var song_select_button: Button
@@ -199,7 +200,7 @@ func _build_header(run_info: Dictionary, not_recorded: bool) -> void:
 	if not chip_texts.is_empty():
 		right_left = minf(right_left, placed[0].position.x)
 	if not_recorded:
-		note_label = _label("NotRecorded", NOT_RECORDED_TEXT, _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO,
+		note_label = _label("NotRecorded", NOT_RECORDED_TEXT, Palette.font(), Palette.SIZE_LABEL, Palette.TEXT_LO,
 			Vector2(RIGHT_X, 136.0), HORIZONTAL_ALIGNMENT_RIGHT)
 		right_left = minf(right_left, note_label.position.x)
 	else:
@@ -233,7 +234,9 @@ func _build_grade_panel(is_record: bool) -> void:
 	grade_emblem.set_grade(grade_letter)
 	_layout.add_child(grade_emblem)
 	var cx := GRADE_RECT.get_center().x
-	_label("AccuracyCaption", "ACCURACY", _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO, Vector2(cx, 520.0),
+	# Baseline 532, not the spec's 520: at 520 the caption's cap height touches the emblem's 3 px
+	# bottom edge (y 504). Visual-review fix; the accuracy numeral keeps baseline 616.
+	_label("AccuracyCaption", "ACCURACY", _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO, Vector2(cx, ACCURACY_CAPTION_Y),
 		HORIZONTAL_ALIGNMENT_CENTER)
 	_label("Accuracy", accuracy_text, Palette.display_font(), Palette.SIZE_DISPLAY, Palette.TEXT_HI,
 		Vector2(cx, 616.0), HORIZONTAL_ALIGNMENT_CENTER)
@@ -261,7 +264,9 @@ func _build_stats_panel(score: HullScore, record_info: Dictionary, is_record: bo
 		elif best >= 0.0:
 			text = "PREVIOUS BEST %s M" % Palette.fmt_depth(int(best))
 		if text != "":
-			previous_label = _label("PreviousBest", text, _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO,
+			# Captions are spaced UPPERCASE; the first-record sentence keeps plain spacing.
+			var pf := _caption() if text.begins_with("PREVIOUS") else Palette.font()
+			previous_label = _label("PreviousBest", text, pf, Palette.SIZE_LABEL, Palette.TEXT_LO,
 				Vector2(x0, 372.0))
 	var col2 := 944.0
 	_label("ComboCaption", "MAX COMBO", _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO, Vector2(x0, 436.0))
