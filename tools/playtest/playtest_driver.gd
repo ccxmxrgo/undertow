@@ -1909,6 +1909,21 @@ func _free_strip_depth(g: Gameplay, lanes: Array) -> float:
 	return 0.5
 
 
+## Median luma of the halo/rim zone of a gem at depth d: two diagonal rays up-left and up-right
+## (away from the hit line, popups and the neighbouring receptors) from 1.3 r to 1.6 r, where the
+## ready halo (additive glow / Low ring) sits and a far gem shows only the lane strip.
+func _halo_luma(img: Image, center: Vector2, d: float) -> float:
+	var r := Trench.note_radius(Trench.scale_at(d))
+	var vals: Array = []
+	for sx in [-1.0, 1.0]:
+		var dir := Vector2(sx, -1.0).normalized()
+		var k := 1.3
+		while k <= 1.6:
+			vals.append(_luma(_img_px(img, center + dir * r * k)))
+			k += 0.05
+	vals.sort()
+	return float(vals[vals.size() / 2]) if not vals.is_empty() else 0.0
+
 func _far_note(vis: Array, lane: int = -1) -> Dictionary:
 	for v in vis:
 		if float(v["dt"]) > 0.30 and float(v["d"]) > 0.15 and (lane < 0 or int(v["lane"]) == lane):
@@ -2138,15 +2153,20 @@ func sc_polish() -> void:
 		var ref: Dictionary = far_same if not far_same.is_empty() else far_sample
 		var rc: Color = ready_sample["color"]
 		var fc: Color = ref.get("color", Color.BLACK)
-		var ratio := _chan_max(rc) / maxf(_chan_max(fc), 0.001)
+		# Since the gem redesign (UI-SPEC 4.15, rule 13.1) the core is always the full lane colour,
+		# so readiness is compared on the halo/rim zone just outside the gem instead of the core.
+		var ready_halo := _halo_luma(last_img, ready_sample["center"], float(ready_sample["d"]))
+		var far_halo := _halo_luma(last_img, ref["center"], float(ref["d"])) if ref.has("center") else 0.0
+		var ratio := ready_halo / maxf(far_halo, 0.001)
 		metrics["ready_vs_far"] = {"ready_note": ready_sample["i"], "ready_lane": ready_sample["lane"],
 			"ready_dt_ms": float(ready_sample["dt"]) * 1000.0, "ready_center": rc.to_html(false),
 			"far_note": ref.get("i", -1), "far_lane": ref.get("lane", -1), "far_center": fc.to_html(false),
-			"same_lane_same_frame": not far_same.is_empty(), "ratio": ratio}
-		note("ready note #%d lane %d dt %.1f ms center %s vs far note lane %d center %s -> x%.2f" % [
+			"same_lane_same_frame": not far_same.is_empty(), "ready_halo": ready_halo, "far_halo": far_halo, "ratio": ratio}
+		note("ready note #%d lane %d dt %.1f ms center %s vs far note lane %d center %s -> halo x%.2f" % [
 			ready_sample["i"], ready_sample["lane"], float(ready_sample["dt"]) * 1000.0, rc.to_html(false),
 			int(ref.get("lane", -1)), fc.to_html(false), ratio])
-		check("in-window note center is >= 20% brighter than a far note (brightest channel)", ratio >= 1.2, "x%.2f" % ratio)
+		check("in-window note halo/rim zone is >= 20% brighter than a far note's (median luma)", ratio >= 1.2,
+			"x%.2f (%.3f vs %.3f)" % [ratio, ready_halo, far_halo])
 	# Receptors with a visible pulse.
 	var pulsed: bool = await wait_until(func() -> bool:
 		return _gone_or_stopped(gw) or (last_press[0] > 0 and Time.get_ticks_usec() - last_press[0] < 30000), 10.0)
@@ -3623,7 +3643,112 @@ func sc_visual() -> void:
 		await _visual_trench(g)
 	if ok and is_instance_valid(g):
 		await _visual_bursts(g)
+	await _visual_hud()
 	await goto(MENU)
+
+
+## 02.2-14: the HUD screenshot set (UI-SPEC 15): streak 0 / 25 / 100, hull 100 / 40 / critical
+## and a section change, on an Autoplay dive of INVISIBLE (Expert, it has section events).
+## Hull states are set on a frozen board (conductor paused) by injecting misses into HullScore,
+## as sc_immersion does, so the run cannot fail mid-sequence.
+func _visual_hud() -> void:
+	var dir := ""
+	for b in BundledSongs.SONGS:
+		if str(b["id"]) == "invisible":
+			dir = str(b["dir"])
+	if not check("INVISIBLE is bundled for the HUD shots", dir != "", dir):
+		return
+	await goto(MENU)
+	SongSelect.run_autoplay = true
+	Gameplay.pending_intro = IntroTimeline.Mode.NONE
+	await goto(SONG_SELECT)
+	var g := await dive_from_song_select(dir, "expert")
+	if g == null or not await wait_for_began(g):
+		check("HUD dive began", false)
+		return
+	var first := INF
+	for n in g.chart.notes:
+		first = minf(first, float(n["time"]))
+	await frame()
+	await frame()
+	# Streak 0, before the first note.
+	check("accuracy shows --.-% before the first note",
+		g.hud.accuracy_label.text == "--.-%" and g.conductor.song_time() < first,
+		{"text": g.hud.accuracy_label.text, "t": snappedf(g.conductor.song_time(), 0.01), "first": first})
+	var box0 := g.hud.depth_box()
+	var acc0 := g.hud.accuracy_label.get_global_rect()
+	await shot("hud_streak_0", g)
+	# Streak 25 (the milestone popup is up).
+	var gw: WeakRef = weakref(g)
+	var got: bool = await wait_until(func() -> bool: return _gone_or_stopped(gw) or g.score.combo >= 25, 60.0)
+	if not check("autoplay reached streak 25", got and not _gone_or_stopped(gw), g.score.combo if is_instance_valid(g) else -1):
+		return
+	await wait(0.15)
+	await shot("hud_streak_25", g)
+	# Streak 100 (x4, MAX chip, SONAR_PALE + glow numeral) with hull 100.
+	got = await wait_until(func() -> bool: return _gone_or_stopped(gw) or g.score.combo >= 100, 120.0)
+	if _gone_or_stopped(gw):
+		check("HUD dive still running at streak 100", false)
+		return
+	if not got:
+		note("streak 100 not reached by autoplay in 120 s; showing the counters through the HUD bind path")
+		g.score.combo = 100
+		g.score.combo_changed.emit(100)
+	check("autoplay reached streak 100", g.score.combo >= 100, g.score.combo)
+	await wait(0.8)  # past the milestone pop
+	await shot("hud_streak_100", g)
+	await shot("hud_hull_100", g)
+	check("depth value box did not move",
+		g.score.depth() > 0.0 and g.hud.depth_box() == box0 and g.hud.accuracy_label.get_global_rect().position == acc0.position,
+		{"box0": box0, "box": g.hud.depth_box(), "depth": g.score.depth()})
+	# Section change: the next section that the banner announces.
+	var song_len := ProgressTrack.song_length_of(g.chart)
+	var now := g.conductor.song_time()
+	var sec_t := -1.0
+	var sec_name := ""
+	for s in g.chart.sections:
+		var st := float(s["time"])
+		if st > now + 0.6 and SectionBanner.should_show(st, song_len):
+			sec_t = st
+			sec_name = str(s["name"])
+			break
+	if not check("a later section exists for the banner shot", sec_t > 0.0, {"now": now, "sections": g.chart.sections.size()}):
+		return
+	await _wait_song_time(g, sec_t + 0.3, sec_t - now + 20.0)
+	if _gone_or_stopped(gw):
+		check("HUD dive still running at the section change", false)
+		return
+	var b: SectionBanner = g.hud.section_banner
+	var alpha_at := b.modulate.a
+	var dt := g.conductor.song_time() - sec_t
+	await shot("hud_section_change", g)
+	check("section banner visible at a section change",
+		b.visible and alpha_at > 0.9 and dt <= 0.4 and b.shown_text() == SectionBanner.display_name(sec_name),
+		{"alpha": snappedf(alpha_at, 0.01), "dt": snappedf(dt, 0.01), "text": b.shown_text(), "want": sec_name,
+			"track_section": g.hud.progress_track.section_label.text})
+	var track_text := g.hud.progress_track.section_label.text
+	check("progress track names the current section",
+		track_text != "" and sec_name.to_upper().begins_with(track_text.trim_suffix("...")), track_text)
+	# Hull 40 and critical, on a frozen board.
+	g.conductor.pause()
+	g.lane_input.enabled = false
+	g._autoplay_player = null
+	var n := 0
+	while g.score.hull > 40.0 and n < 20:
+		g.score.on_judged(0, -1, InputJudge.Judgment.MISS, 0.0)
+		n += 1
+	await wait(0.6)  # past the damage flash + shrink
+	check("hull at about 40% for the hull shot", g.score.hull <= 40.0 and g.score.hull > 30.0, g.score.hull)
+	await shot("hud_hull_40", g)
+	n = 0
+	while not g.hud.is_critical() and n < 20:
+		g.score.on_judged(0, -1, InputJudge.Judgment.MISS, 0.0)
+		n += 1
+	await wait(0.6)
+	await shot("hud_hull_critical", g)
+	check("HULL CRITICAL caption shown at <= 30",
+		g.score.hull <= 30.0 and g.hud.hull_caption.visible and g.hud.hull_caption.text == "HULL CRITICAL",
+		{"hull": g.score.hull, "caption": g.hud.hull_caption.text})
 
 
 func grab() -> Image:
