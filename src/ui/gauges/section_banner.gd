@@ -30,7 +30,7 @@ const BRACKET_ALPHA := 0.8
 const RULE_GAP := 12.0
 const RULE_LEN := 72.0
 const RULE_ALPHA := 0.45
-const SWEEP_SEC := 0.45
+const SWEEP_SEC := 0.26  # done before the banner settles, so stills never catch it
 const SWEEP_ALPHA := 0.35
 const SWEEP_W := 3.0
 

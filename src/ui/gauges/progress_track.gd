@@ -7,7 +7,7 @@ extends Control
 ## the 4 px track x 480..1440 at y 60 (ABYSS_500 60% / SONAR fill), section ticks and the time
 ## remaining ("-2:31", Label 20 TEXT_LO at x 1456, baseline 68).
 ## Polish (identical in all modes, UI-SPEC 4.8 Low/Reduce row): a stroke glow under the filled
-## part, a SONAR_PALE playhead at the fill end, hairline end caps, and ticks of sections already
+## part, a SONAR_PALE playhead (bar + diamond) at the fill end, hairline end caps, and ticks of sections already
 ## reached drawn in SONAR so the track reads as a route with stops.
 ## Read-only: polls Conductor.song_time() each frame and never drives it.
 
@@ -39,6 +39,7 @@ const PLAYHEAD_W := 2.0
 const CAP_Y := Vector2(56.0, 68.0)
 const CAP_ALPHA := 0.5
 const PASSED_TICK_ALPHA := 0.9
+const PLAYHEAD_DIAMOND := 5.0
 
 var title_label: Label
 var section_label: Label
@@ -274,3 +275,6 @@ func _draw() -> void:
 	# Playhead at the fill end.
 	if _len > 0.0:
 		draw_rect(Rect2(fx - PLAYHEAD_W * 0.5, PLAYHEAD_Y.x, PLAYHEAD_W, PLAYHEAD_Y.y - PLAYHEAD_Y.x), Palette.SONAR_PALE)
+		var dm := PLAYHEAD_DIAMOND
+		draw_colored_polygon(PackedVector2Array([Vector2(fx, cy - dm), Vector2(fx + dm, cy), Vector2(fx, cy + dm),
+			Vector2(fx - dm, cy)]), Palette.SONAR_PALE)
