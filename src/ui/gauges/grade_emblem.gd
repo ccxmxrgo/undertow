@@ -106,6 +106,13 @@ func step(dt: float) -> void:
 	_redraw()
 
 
+## Jumps to the final state (results entrance skipped): full size, fully visible, no ring.
+func finish() -> void:
+	_playing = false
+	_t = _end_time()
+	_redraw()
+
+
 func _end_time() -> float:
 	if _reduce:
 		return FADE_REDUCED

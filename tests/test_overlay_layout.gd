@@ -387,7 +387,8 @@ func test_results_three_buttons_geometry_and_signals() -> void:
 	r.song_select_button.pressed.emit()
 	r.menu_button.pressed.emit()
 	assert_array(got).is_equal(["retry", "song", "menu"])
-	# Esc / B = Back to Menu.
+	# Esc / B = Back to Menu (once the entrance is over: during it, any press only skips; 02.2-16).
+	r.skip_entrance()
 	var esc := InputEventAction.new()
 	esc.action = "ui_cancel"
 	esc.pressed = true
@@ -406,6 +407,7 @@ func test_results_buttons_form_closed_focus_loop() -> void:
 	gp._finish()
 	await _frames(3)
 	var rs: ResultsScreen = gp.results
+	rs.skip_entrance()  # 02.2-16: presses during the entrance only skip it
 	var order: Array[Button] = [rs.retry_button, rs.song_select_button, rs.menu_button]
 	for i in order.size():
 		var a := order[i]
@@ -542,6 +544,7 @@ func test_results_grade_panel_reward_brackets_on_record() -> void:
 	assert_str(rec.grade_panel_variant).is_equal("reward")
 	var plain := _results_run(_score(10, 0, 0), {"eligible": true, "new_record": false})
 	assert_str(plain.grade_panel_variant).is_equal("default")
+	rec.skip_entrance()  # 02.2-16: the panels rise 16 px during the entrance
 	assert_object(rec.grade_emblem.get_global_rect()).is_equal(Rect2(224, 280, 224, 224))
 
 

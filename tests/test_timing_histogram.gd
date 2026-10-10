@@ -85,7 +85,8 @@ func test_bar_geometry_and_centre_line() -> void:
 			.is_equal(Rect2(1314.0 + 17.0 * i, 600.0 - hh, 13.0, hh))
 	assert_float(TimingHistogram.CENTER_X).is_equal(1552.0)
 	assert_float(TimingHistogram.BASELINE_Y).is_equal(600.0)
-	assert_float(TimingHistogram.CHART_X + 28 * 17.0 - 4.0).is_equal(1790.0)
+	assert_float(TimingHistogram.CHART_X + 28 * 17.0).is_equal(TimingHistogram.CHART_RIGHT)
+	assert_float(TimingHistogram.CHART_RIGHT).is_equal(1790.0)
 	# Placed in the timing panel at the 1920x1080 layout.
 	assert_object(h.get_global_rect()).is_equal(Rect2(1280, 208, 544, 480))
 

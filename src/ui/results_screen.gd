@@ -8,12 +8,18 @@ extends Control
 ##   grade panel x 96..576, y 208..688: GRADE, GradeEmblem, ACCURACY (reward brackets on a record)
 ##   stats panel x 608..1248: DEPTH + NEW RECORD chip + previous best, MAX COMBO / FINAL HULL,
 ##               PERFECT / GOOD / MISS rows with proportional bars and counts
-##   timing panel x 1280..1824: TIMING caption (the histogram arrives in plan 16)
+##   timing panel x 1280..1824: TIMING caption + TimingHistogram (UI-SPEC 4.12) of run_info.offsets
 ##   buttons     y 752..816: Retry Dive (primary, initial focus), Song Select, Back to Menu; every
 ##               direction wraps within the three; Esc / B = Back to Menu
 ## Public API kept for tests and the harness: retry_button, menu_button, flags, rows, record_banner,
 ## note_label, retry_pressed, menu_pressed. Added: song_select_button, song_select_pressed,
-## grade_letter, accuracy_text, grade_emblem, header_chips, bar_widths.
+## grade_letter, accuracy_text, grade_emblem, header_chips, bar_widths. Plan 16: histogram,
+## panel_groups, entrance_running(), skip_entrance(), apply_entrance(t), bar_fill(i).
+## Entrance (UI-SPEC 8, one Tween over ENTRANCE_SEC <= 0.9 s): the grade, stats and timing panels
+## fade + rise 16 px (DUR_BASE, STAGGER_RESULTS apart); the grade pops at EMBLEM_DELAY; the NEW
+## RECORD chip pops after it; the judgment bars fill (DUR_SLOW, 60 ms stagger) and the histogram
+## grows from FILL_AT. Any key / joypad / mouse button / action press while it runs jumps to the
+## final state and is consumed (never activates a button). Reduce motion: fades only.
 
 signal retry_pressed
 signal menu_pressed
@@ -48,6 +54,11 @@ const COUNT_RIGHT := 1216.0
 const CHIP_GAP := 8.0
 const EMBLEM_DELAY := 0.2
 const ACCURACY_CAPTION_Y := 532.0
+## Entrance timeline (seconds from the screen appearing).
+const PANEL_RISE := 16.0
+const FILL_AT := 0.32
+const RECORD_AT := EMBLEM_DELAY + Palette.DUR_SLOW
+const ENTRANCE_SEC := FILL_AT + TimingHistogram.GROW_SEC  # 0.89 s, the longest track
 
 var retry_button: Button
 var song_select_button: Button
@@ -73,11 +84,22 @@ var accuracy_text: String = "--.-%"
 var bar_widths: Array[float] = [0.0, 0.0, 0.0]
 ## "reward" on a new record (gold brackets on the grade panel), else "default".
 var grade_panel_variant: String = "default"
+var histogram: TimingHistogram
+## Grade, stats and timing panel groups (each holds its panel and contents; animated together).
+var panel_groups: Array[Control] = []
 
 var _backdrop: AbyssBackdrop
 var _layout: Control
 var _caption_font: FontVariation
 var _head_caption_font: FontVariation
+var _into: Control
+var _bar_nodes: Array[Control] = []
+var _bar_k: Array[float] = [1.0, 1.0, 1.0]
+var _entrance_tween: Tween
+var _entrance_running: bool = false
+var _record_popped: bool = false
+var _record_tween: Tween
+var _reduce: bool = false
 
 
 ## A non-interactive canvas that draws with a callable (panels, chips, bars).
@@ -105,6 +127,12 @@ func setup(score: HullScore, autoplay_used: bool, record_info: Dictionary = {},
 	_layout.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UiLayout.fill_rect(_layout)
 	add_child(_layout)
+	_into = _layout
+	panel_groups.clear()
+	_bar_nodes.clear()
+	_bar_k = [1.0, 1.0, 1.0]
+	_kill_entrance()
+	_entrance_running = false
 
 	var p := score.perfect_count
 	var g := score.good_count
@@ -142,9 +170,13 @@ func setup(score: HullScore, autoplay_used: bool, record_info: Dictionary = {},
 		rows.append(["Previous best", "%s m" % Palette.fmt_depth(int(prev)) if prev >= 0.0 else "none"])
 
 	_build_header(run_info, not_recorded)
+	_begin_group("GradeGroup")
 	_build_grade_panel(is_record)
+	_begin_group("StatsGroup")
 	_build_stats_panel(score, record_info, is_record, eligible)
-	_build_timing_panel()
+	_begin_group("TimingGroup")
+	_build_timing_panel(run_info)
+	_into = _layout
 	_build_buttons()
 	_label("Hint", HINT, _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO, Vector2(PAD_X, 872.0))
 	if is_inside_tree():
@@ -232,7 +264,7 @@ func _build_grade_panel(is_record: bool) -> void:
 	grade_emblem.name = "GradeEmblem"
 	grade_emblem.position = EMBLEM_POS
 	grade_emblem.set_grade(grade_letter)
-	_layout.add_child(grade_emblem)
+	_into.add_child(grade_emblem)
 	var cx := GRADE_RECT.get_center().x
 	# Baseline 532, not the spec's 520: at 520 the caption's cap height touches the emblem's 3 px
 	# bottom edge (y 504). Visual-review fix; the accuracy numeral keeps baseline 616.
@@ -292,12 +324,18 @@ func _build_stats_panel(score: HullScore, record_info: Dictionary, is_record: bo
 		d.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		d.position = Vector2(x0, y - Palette.EDGE * 0.5)
 		d.size = Vector2(COUNT_RIGHT - x0, Palette.EDGE)
-		_layout.add_child(d)
+		_into.add_child(d)
 
 
-func _build_timing_panel() -> void:
+func _build_timing_panel(run_info: Dictionary) -> void:
 	_panel("TimingPanel", TIMING_RECT, Palette.alpha(Palette.SONAR, BRACKET_ALPHA))
 	_label("TimingCaption", "TIMING", _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO, Vector2(1312.0, 248.0))
+	histogram = TimingHistogram.new()
+	histogram.name = "TimingHistogram"
+	var offs: Variant = run_info.get("offsets", PackedFloat32Array())
+	var packed := PackedFloat32Array(offs) if (offs is PackedFloat32Array or offs is Array) else PackedFloat32Array()
+	histogram.set_offsets(packed, float(run_info.get("perfect_window", -1.0)))
+	_into.add_child(histogram)
 
 
 func _build_buttons() -> void:
@@ -377,7 +415,7 @@ func _label(node_name: String, text: String, font: Font, font_size: int, color: 
 		x -= w * 0.5
 	l.position = Vector2(x, at.y - font.get_ascent(font_size))
 	l.size = Vector2(ceilf(w), ceilf(h))
-	_layout.add_child(l)
+	_into.add_child(l)
 	return l
 
 
@@ -388,7 +426,7 @@ func _painter(node_name: String, rect: Rect2, fn: Callable) -> Painter:
 	c.position = rect.position
 	c.size = rect.size
 	c.painter = fn
-	_layout.add_child(c)
+	_into.add_child(c)
 	return c
 
 
@@ -428,24 +466,128 @@ func _chip(text: String, variant: String, rect: Rect2, lane: int = -1) -> Label:
 	return l
 
 
-## Judgment bar: track ABYSS_500 60% across BAR_MAX, fill `width` in `color`.
+## Judgment bar: track ABYSS_500 60% across BAR_MAX, fill `width` x the entrance fill in `color`.
 func _bar(node_name: String, rect: Rect2, width: float, color: Color) -> void:
-	_painter(node_name, rect, func(ci: CanvasItem) -> void:
+	var idx := _bar_nodes.size()
+	var node := _painter(node_name, rect, func(ci: CanvasItem) -> void:
 		ci.draw_rect(Rect2(Vector2.ZERO, rect.size), Palette.alpha(Palette.ABYSS_500, TRACK_ALPHA))
-		if width > 0.0:
-			ci.draw_rect(Rect2(0.0, 0.0, width, rect.size.y), color))
+		var w := width * _bar_k[idx]
+		if w > 0.0:
+			ci.draw_rect(Rect2(0.0, 0.0, w, rect.size.y), color))
+	_bar_nodes.append(node)
 
+
+## Starts a panel group: a full-screen, input-transparent Control at (0, 0) that holds one panel
+## and its contents, so the entrance can fade and raise them together. At rest it changes no
+## global position.
+func _begin_group(node_name: String) -> void:
+	var gp := Control.new()
+	gp.name = node_name
+	gp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	UiLayout.fill_rect(gp)
+	_layout.add_child(gp)
+	panel_groups.append(gp)
+	_into = gp
+
+
+## Current width of judgment bar i (0 PERFECT, 1 GOOD, 2 MISS) during the entrance.
+func bar_fill(i: int) -> float:
+	return bar_widths[i] * _bar_k[i]
+
+
+# ---- entrance --------------------------------------------------------------------------
 
 func _start_animation() -> void:
+	_reduce = UiKit.reduce_motion()
+	UiKit.register_fx(self)
+	_record_popped = false
 	if grade_emblem != null:
 		grade_emblem.play(EMBLEM_DELAY)
+	_kill_entrance()
+	_entrance_running = true
+	apply_entrance(0.0)
+	_entrance_tween = create_tween()
+	_entrance_tween.tween_method(apply_entrance, 0.0, ENTRANCE_SEC, ENTRANCE_SEC)
+	_entrance_tween.tween_callback(func() -> void: _entrance_running = false)
+
+
+func entrance_running() -> bool:
+	return _entrance_running
+
+
+## Puts every entrance element in its state `t` seconds after the screen appeared (the Tween
+## drives this; tests call it directly). The grade emblem runs its own pop from play().
+func apply_entrance(t: float) -> void:
+	for i in panel_groups.size():
+		var k := _ease_out(clampf((t - i * Palette.STAGGER_RESULTS) / Palette.DUR_BASE, 0.0, 1.0))
+		var gp := panel_groups[i]
+		gp.modulate.a = k
+		gp.position.y = 0.0 if _reduce else PANEL_RISE * (1.0 - k)
+	for i in _bar_nodes.size():
+		var k := _ease_out(clampf((t - FILL_AT - i * Palette.STAGGER_RESULTS) / Palette.DUR_SLOW, 0.0, 1.0))
+		_bar_k[i] = 1.0 if _reduce else k
+		_bar_nodes[i].modulate.a = k if _reduce else 1.0
+		_bar_nodes[i].queue_redraw()
+	if histogram != null:
+		histogram.grow(clampf((t - FILL_AT) / TimingHistogram.GROW_SEC, 0.0, 1.0))
 	if record_banner != null:
-		var chip := record_banner.get_parent() as CanvasItem
-		if UiKit.reduce_motion():
-			return
-		var tw := create_tween()
-		tw.tween_interval(EMBLEM_DELAY + Palette.DUR_SLOW)
-		tw.tween_callback(func() -> void: UiKit.pop_in(chip))
+		var chip := record_banner.get_parent() as Control
+		if _reduce:
+			chip.modulate.a = clampf((t - RECORD_AT) / Palette.DUR_BASE, 0.0, 1.0)
+		else:
+			chip.modulate.a = 1.0 if t >= RECORD_AT else 0.0
+			if t >= RECORD_AT and not _record_popped and t < ENTRANCE_SEC:
+				_record_popped = true
+				_record_tween = UiKit.pop_in(chip)
+
+
+## Jumps every entrance element to its final state (any input while the entrance runs).
+func skip_entrance() -> void:
+	_kill_entrance()
+	_record_popped = true
+	apply_entrance(ENTRANCE_SEC)
+	if _record_tween != null and _record_tween.is_valid():
+		_record_tween.kill()
+	if record_banner != null:
+		(record_banner.get_parent() as Control).scale = Vector2.ONE
+	if grade_emblem != null:
+		grade_emblem.finish()
+	_entrance_running = false
+
+
+func _kill_entrance() -> void:
+	if _entrance_tween != null and _entrance_tween.is_valid():
+		_entrance_tween.kill()
+	_entrance_tween = null
+
+
+static func _ease_out(k: float) -> float:
+	return 1.0 - pow(1.0 - k, 3.0)
+
+
+## Effect contract: Reduce motion switched on mid-entrance jumps to the final state.
+func apply_effect_settings() -> void:
+	var was := _reduce
+	_reduce = UiKit.reduce_motion()
+	if _reduce and not was and _entrance_running:
+		skip_entrance()
+
+
+func effect_counts() -> Dictionary:
+	return {"rise": not _reduce, "bar_grow": not _reduce}
+
+
+static func _is_skip_press(event: InputEvent) -> bool:
+	if event.is_echo() or not event.is_pressed():
+		return false
+	return event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton \
+		or event is InputEventAction or event is InputEventScreenTouch
+
+
+func _input(event: InputEvent) -> void:
+	if _entrance_running and _is_skip_press(event):
+		skip_entrance()
+		get_viewport().set_input_as_handled()
 
 
 func _ready() -> void:
