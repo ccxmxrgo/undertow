@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-05-PLAN.md
-last_updated: "2026-10-10T11:05:53.161Z"
+stopped_at: Completed 02.2-06-PLAN.md
+last_updated: "2026-10-10T11:30:25.872Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 45
+  completed_plans: 46
   percent: 56
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 6 of 25
+Plan: 7 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
@@ -74,6 +74,7 @@ Progress: [#########.] 93%
 | Phase 02.2 P03 | 35min | 2 tasks | 8 files |
 | Phase 02.2 P04 | 12 min | 2 tasks | 13 files |
 | Phase 02.2 P05 | 10min | 2 tasks | 4 files |
+| Phase 02.2 P06 | 25 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -122,6 +123,8 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-04: Theme is generated from Palette tokens by UiKit.build_theme() and saved by tools/make_theme.gd; a sync test fails if ui/undertow_theme.tres drifts. Low effects uses build_theme(true) (no glow shadows)
 - [Phase 02.2]: 02.2-04: Oxanium[wght].ttf kept with brackets (imports fine); weight 700 via integer name_to_tag("wght"); legacy Palette aliases now point at abyss/sonar tokens until plan 24
 - [Phase 02.2]: Effect nodes register via UiKit.register_fx (FX_GROUP, apply_effect_settings, effect_counts); FocusMarker is a top_level child of each screen root
+- [Phase 02.2]: AbyssBackdrop splits layers: Gradient/Shafts children behind (show_behind_parent), scene on the node, additive Searchlight child on top; reuse variant table/calm on later screens
+- [Phase 02.2]: Menu searchlight cone follows the mockup (57 deg below horizontal) instead of the literal 25 deg; Reduce motion keeps the static logo glow (UI-SPEC 11)
 
 ### Pending Todos
 
@@ -137,6 +140,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T11:05:53.155Z
-Stopped at: Completed 02.2-05-PLAN.md
+Last session: 2026-10-10T11:30:25.867Z
+Stopped at: Completed 02.2-06-PLAN.md
 Resume file: None

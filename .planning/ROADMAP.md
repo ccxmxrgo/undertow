@@ -116,7 +116,7 @@ Plans:
 
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 5/25 plans executed
+**Plans:** 6/25 plans executed
 
 Plans:
 
@@ -125,7 +125,7 @@ Plans:
 - [x] 02.2-03-PLAN.md — Wave 0: ChartData sections/time_sigs (D-18), BeatClock.beats_between, RunStats (D-08/D-09), HitOffsetRecorder
 - [x] 02.2-04-PLAN.md — Design system: Oxanium (D-21) and token-built theme (aliases flip)
 - [x] 02.2-05-PLAN.md — Design system: UiKit components, effect-settings contract, FocusMarker, UiIcons
-- [ ] 02.2-06-PLAN.md — Living title screen: AbyssBackdrop, wordmark + shimmer, icon menu layout
+- [x] 02.2-06-PLAN.md — Living title screen: AbyssBackdrop, wordmark + shimmer, icon menu layout
 - [ ] 02.2-07-PLAN.md — Menu music + Preview bus + setting, last-dive card, menu evidence + visual review
 - [ ] 02.2-08-PLAN.md — Board: NotePainter gems, HighwaySurface/HighwayNotes split, strips, receptors
 - [ ] 02.2-09-PLAN.md — Board: beat/bar lines (TS), sustain tubes, sonar CRT surface, streak tiers + visual review
