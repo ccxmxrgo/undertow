@@ -16,7 +16,7 @@ UNDERTOW is a competitive online rhythm game made in Godot, inspired by Guitar H
 - **Platform**: Windows desktop first. The developer is on Windows 11, and friends are presumed to be on PCs.
 - **Networking**: 2-4 players online, peer-hosted (one friend hosts). No paid dedicated servers expected.
 - **Timing**: hit judgment accurate to the ~±50ms window range, with audio clock as the source of truth (not frame time).
-- **Content/legal**: no copyrighted music bundled. Content comes from imports.
+- **Content/legal**: public builds: no copyrighted music bundled; content comes from imports. Friends-only build override per D-13 (user, 2026-10-08/09): the user's own songs (HRT, Sea Shanty 2, Duran Duran INVISIBLE) are bundled; licences are not a concern for this private build (02.1-NOTES.md).
 - **Team**: solo/hobby developer with AI assistance. Scope must stay small enough to actually play with friends soon.
 
 <!-- GSD:project-end -->

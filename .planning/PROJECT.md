@@ -88,7 +88,7 @@ Hitting notes must feel tight and fair on each player's own machine, while torpe
 
 - Plastic guitar controllers / real instruments: keyboard + gamepad only for v1. Instrument support adds hardware-specific input work. Revisit if the group owns them.
 - Public matchmaking, ranked play, accounts: this is for one friend group. Invite/join-by-code is enough.
-- Shipping copyrighted songs: players import their own. Bundled tracks must be royalty-free or original.
+- Shipping copyrighted songs in public builds: players import their own. Bundled tracks in public builds must be royalty-free or original. Override (2026-10-08/09, user): the friends-only build bundles the user's own songs (HRT, Sea Shanty 2, Duran Duran INVISIBLE); licences are not a concern for this private build (02.1-NOTES.md, Phase 2.1 D-13).
 - Mobile/console builds: target the desktop PCs the friends use.
 - Song/chart editor: importing existing charts covers content. An editor is a later milestone at most.
 - Story/campaign mode: the game is about friends playing against each other.
@@ -107,7 +107,7 @@ Hitting notes must feel tight and fair on each player's own machine, while torpe
 - **Platform**: Windows desktop first. The developer is on Windows 11, and friends are presumed to be on PCs.
 - **Networking**: 2-4 players online, peer-hosted (one friend hosts). No paid dedicated servers expected.
 - **Timing**: hit judgment accurate to the ~±50ms window range, with audio clock as the source of truth (not frame time).
-- **Content/legal**: no copyrighted music bundled. Content comes from imports.
+- **Content/legal**: public builds: no copyrighted music bundled; content comes from imports. Override (2026-10-08/09, user): the friends-only build bundles the user's own songs (HRT, Sea Shanty 2, Duran Duran INVISIBLE); licences are not a concern for this private build (02.1-NOTES.md, Phase 2.1 D-13).
 - **Team**: solo/hobby developer with AI assistance. Scope must stay small enough to actually play with friends soon.
 
 ## Key Decisions
