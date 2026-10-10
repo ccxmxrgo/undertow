@@ -26,8 +26,8 @@ func test_dim_keeps_alpha_and_scales_rgb() -> void:
 
 
 func test_core_colors_unchanged() -> void:
-	assert_that(Palette.DESTRUCTIVE).is_equal(Color("FF4A3D"))
-	assert_that(Palette.ACCENT).is_equal(Color("39FF14"))
+	assert_that(Palette.DESTRUCTIVE).is_equal(Palette.WARNING_RED)
+	assert_that(Palette.ACCENT).is_equal(Palette.SONAR)
 
 
 func test_shape_mapping_unchanged() -> void:
