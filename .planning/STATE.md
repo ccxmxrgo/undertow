@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.1-08-PLAN.md
-last_updated: "2026-10-10T02:21:47.659Z"
+stopped_at: "02.1-09 Task 2: end-of-phase human UAT checkpoint (v0.4 zip built, automated checks green)"
+last_updated: "2026-10-10T02:38:23.493Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 40
-  completed_plans: 39
+  completed_plans: 40
   percent: 50
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 
 Phase: 02.1 (Instrument Extraction Tool) — EXECUTING
 Plan: 9 of 9
-Status: Ready to execute
+Status: Awaiting human checkpoint (02.1-09 Task 2, end-of-phase UAT)
 Last activity: 2026-10-10
 
 Progress: [#########.] 93%
@@ -68,6 +68,7 @@ Progress: [#########.] 93%
 | Phase 02.1 P06 | 35 min | 3 tasks | 17 files |
 | Phase 02.1 P07 | 50 min | 2 tasks | 21 files |
 | Phase 02.1 P08 | 75min | 3 tasks | 15 files |
+| Phase 02.1 P09 | 20min (task 1; checkpoint pending) | 1 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,7 @@ Recent decisions affecting current work:
 - [Phase 02.1]: 02.1-08: STEM-02/04 ship as a dev-PC command (extract_song.ps1 -> autochart.py extract); in-game screen deferred
 - [Phase 02.1]: 02.1-08: instrument lanes order bass, drums, other, vocals (left to right); same-tick stems -> 2-lane chord of the two strongest
 - [Phase 02.1]: 02.1-08: pick_preview skips sections in the first 10 s and < 30 s before the end; previews hrt 22322, invisible 49867, space 80440; charts unchanged
+- [Phase 02.1]: 02.1-09: v0.4 friend README credits all 5 bundled songs and asks friends not to share (D-13); old 'no copyrighted songs' line removed
 
 ### Pending Todos
 
@@ -123,6 +125,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T02:21:47.653Z
-Stopped at: Completed 02.1-08-PLAN.md
-Resume file: None
+Last session: 2026-10-10T02:38:23.255Z
+Stopped at: 02.1-09 Task 2: end-of-phase human UAT checkpoint (v0.4 zip built, automated checks green)
+Resume file: .planning/phases/02.1-instrument-extraction-tool/02.1-HUMAN-UAT.md
