@@ -5,11 +5,11 @@ extends GdUnitTestSuite
 ## sync-gate report (tools/autochart/reports/<id>.sync.json) and chart statistics
 ## (<id>.chart_stats.json), plus library listing, Autoplay and fingerprint stability.
 
-const AUTOCHART_IDS: Array[String] = ["sea_shanty_2", "hrt", "invisible"]
+const AUTOCHART_IDS: Array[String] = ["synth_wave_april", "space_synth_wave", "sea_shanty_2", "hrt", "invisible"]
 ## Ids allowed to ship at PASS_BASELINE (SPEC req 5, flagged in UAT).
 const BASELINE_OK: Array[String] = []
 ## Minimum Expert melody direction match (SPEC req 4).
-const MELODY_IDS := {"sea_shanty_2": 0.70, "hrt": 0.70, "invisible": 0.70}
+const MELODY_IDS := {"synth_wave_april": 0.70, "space_synth_wave": 0.70, "sea_shanty_2": 0.70, "hrt": 0.70, "invisible": 0.70}
 
 const DIFFS: Array[String] = ["easy", "medium", "hard", "expert"]
 const TRACKS := {"easy": "EasySingle", "medium": "MediumSingle", "hard": "HardSingle", "expert": "ExpertSingle"}

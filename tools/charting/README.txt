@@ -1,11 +1,26 @@
-Bundled song charts (plan 02-05)
-================================
-author_chart.gd   Deterministic .chart generator. Input is the hand-written per-bar plan in
-                  section_plans.gd (the creative part); the audio is never analysed.
-                  Run from the repo root:
+Bundled song charts
+===================
+SOURCE OF TRUTH (D-04): the committed songs/<id>/notes.chart and song.ini are the source of truth
+for every bundled song. Tests (tests/test_bundled_songs.gd, tests/test_autochart_songs.gd) check the
+committed charts and their recorded gate reports and never re-run ML or any generator. Regenerating
+with tools/autochart from the same build/autochart/<id>/ intermediates is byte-identical (verified in
+plans 02.1-05..07). Since plan 02.1-07 all five bundled charts are audio-driven (charter
+"UNDERTOW autochart"); see tools/autochart/README.txt.
+
+LEGACY: author_chart.gd / section_plans.gd (plan 02-05)
+------------------------------------------------------
+Moved to tools/charting/legacy/ in plan 02.1-07. legacy/.gdignore keeps them out of the Godot project
+(class_name SectionPlans no longer exists) and out of every export; they are kept for history only.
+Replaced by tools/autochart in Phase 2.1 after Phase 2 UAT item c failed: the plan-authored notes
+followed a hand-written per-bar plan and ignored the music.
+author_chart.gd   Deterministic .chart generator. Input was the hand-written per-bar plan in
+                  section_plans.gd; the audio was never analysed. It no longer runs from res://
+                  (the folder is ignored); copy both files back out of legacy/ to run it again:
                     godot --headless --path . --script res://tools/charting/author_chart.gd -- all
-                  Add --stats to print notes and notes/s per difficulty instead of writing.
-                  Same input gives byte-identical output (fixed seeds); tests regenerate and compare.
+                  No test regenerates or compares its output any more.
+
+Still in use
+------------
 measure_grid.py   Beat-grid check, Python standard library only, always run isolated:
                     python -I tools/charting/measure_grid.py <file.wav> <bpm> [delay_ms ...]
 grid_offset.py    1 ms beat-grid / attack-start error of a chart delay (stdlib, run isolated):
@@ -17,12 +32,12 @@ Decoded audio     The game's own streams are written by the windowed harness sce
                   sample exact, 48 kHz) and align_<id>_recorded.wav (first 24 s recorded live from a
                   temp bus with AudioEffectRecord, a cross-check of the playback path).
 
-Charts: 120 BPM, 4/4, Resolution 192, bar = 768 ticks = 2 s. Expert is authored from the plan
+LEGACY charts (plan-authored, replaced in 02.1-07): 120 BPM, 4/4, Resolution 192, bar = 768 ticks = 2 s. Expert was authored from the plan
 (8ths/16ths by intensity, stairs/zig/trill/pulse lane families, accent chords on every 4th
 bar); Hard/Medium/Easy are derived from Expert by thinning. Each difficulty carries the same
 solo bar span (April bars 40-48, Space bars 48-56), >= 16 notes in Hard and Expert.
 
-Delay evidence (song.ini delay; chart time = tick time + delay, so bar 0 starts at audio
+LEGACY delay evidence for the plan-authored charts (song.ini delay; chart time = tick time + delay, so bar 0 starts at audio
 time delay/1000 s)
 -------------------------------------------------------------------------------------
 Space Synth Wave (song.wav, 192.010 s, 120 BPM):
@@ -66,3 +81,32 @@ FINAL (plan 02-06, 2026-10-09), measured on the game's own decoded audio (align 
     8017 / 16035 / 32070 ms come from a free-running dotted-eighth echo, not the song tempo.)
     The last Space note (tick 73536) now lands 15 ms after the audio ends (192.025 vs 192.010 s);
     song time keeps running past the end of the stream, so it is judged normally.
+
+AUDIO-DRIVEN RE-CHART (plan 02.1-07, 2026-10-10, STEM-07)
+--------------------------------------------------------
+Both songs keep their folders, audio files and ids; only notes.chart and song.ini were rewritten
+(best scores reset because the chart hash changed, SPEC req 8). The old delays 48 / 525 were fitted
+to the plan-authored grid and are not reused. Godot decode lag vs the soundfile decode is +0.148 ms
+(April, MP3) and +0.158 ms (Space, WAV/QOA): the +31 ms MP3 padding seen in 02-06 does not affect the
+new pipeline because the analysis decodes the same stream the game plays.
+
+Stem choice, measured by tools/autochart/stem_rank.py (Expert target 3.0 n/s, mix = decoded.wav D3
+delta 0.1, chance = random +-60..200 ms shifts; rule: highest mix % among stems with pitched >= 0.3
+and >= 1.5 n/s):
+  synth_wave_april   notes  n/s   on-grid  mix % (chance)  pitched  energy
+    other            350    2.73  88.6%    92.0 (8.2)      63.1%    31.5%   <- recommended
+    drums            350    2.73  80.3%    90.3 (6.9)      23.7%    33.5%
+    bass             382    2.98  87.7%    86.9 (5.8)      91.9%    35.1%
+    vocals           345    2.69  75.9%    88.7 (5.9)      52.5%     0.0%   (instrumental; leakage)
+  space_synth_wave
+    other            465    2.42  87.5%    97.2 (22.4)     89.0%    17.7%   <- recommended
+    drums            537    2.80  88.4%    99.3 (14.5)      7.6%    79.7%
+    bass             281    1.46  52.0%    66.5 (22.3)     60.9%     2.6%
+    vocals           488    2.54  81.3%    93.7 (17.6)     41.4%     0.0%   (instrumental; leakage)
+
+Sync gate (Expert, game's decoded stream, tools/autochart/note_sync.py --stem --beats --recorded):
+  song              stem   target  Expert n/s  median mix  mix % (chance)  stem % (chance)  tempo med/p90  live lag  delay  verdict
+  synth_wave_april  other  3.5     2.95        +0.3 ms     89.7 (9.8)      100.0 (33.1)     0.0 / 0.0 ms   +1.33 ms  58     PASS
+  space_synth_wave  other  3.5     2.70        +0.0 ms     95.6 (22.0)     100.0 (27.5)     2.0 / 2.0 ms   +1.33 ms  164    PASS
+  Before (plan-authored, reports/baseline_plan_authored.txt): April 78.5% PASS_BASELINE, Space 55.3% FAIL.
+  Full numbers: tools/autochart/reports/<id>.sync.json and <id>.chart_stats.json.
