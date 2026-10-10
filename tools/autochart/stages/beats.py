@@ -140,6 +140,14 @@ def snap_downbeats(downbeats, beats):
     return b[np.unique(nearest)]
 
 
+def drop_before_zero(beats, downbeats):
+    """Phase correction can move a beat that beat_this put at 0.0 s slightly before the audio start; such
+    beats (and downbeats snapped to them) cannot be charted, so they are removed."""
+    b = np.asarray(beats, dtype=np.float64)
+    d = np.asarray(downbeats, dtype=np.float64)
+    return b[b >= 0.0], d[d >= 0.0]
+
+
 def _r(a):
     return [round(float(v), 6) for v in a]
 
@@ -162,6 +170,7 @@ def beats_stage(work: Path) -> dict:
     refined = phase_correct(base, mix_on, constant)
     shift_ms = float(np.median(refined - base) * 1000.0)
     downs = snap_downbeats(raw_d, refined)
+    refined, downs = drop_before_zero(refined, downs)
     bpm = 60.0 / float(np.median(np.diff(refined)))
     info = {"beats": _r(refined), "downbeats": _r(downs), "beats_raw": _r(raw_b), "downbeats_raw": _r(raw_d),
             "constant_tempo": bool(constant), "bpm": round(bpm, 4), "phase_shift_ms": round(shift_ms, 3),

@@ -29,7 +29,6 @@ from stages.errors import AutochartError  # noqa: E402
 BUILD = (ROOT / "build" / "autochart").resolve()
 ID_RE = re.compile(r"^[a-z0-9_]{1,48}$")
 STAGES = ["decode", "separate", "beats", "onsets", "pitch"]
-WIRED = 4  # stages wired so far (plan 02.1-04 tasks 1-3)
 DEFAULT_STEMS = ["other", "drums", "bass", "vocals"]
 
 
@@ -79,7 +78,7 @@ def cmd_analyze(args) -> int:
     if first > 0 and not (work / "decode.json").is_file():
         raise AutochartError(args.from_stage, f"{work / 'decode.json'} is missing; start from decode")
     n = len(STAGES)
-    for k, name in enumerate(STAGES[first:WIRED], start=first + 1):
+    for k, name in enumerate(STAGES[first:], start=first + 1):
         print(f"[{k}/{n}] {name} ...", flush=True)
         t0 = time.perf_counter()
         msg = _run_stage(name, args, work)

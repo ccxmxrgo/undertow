@@ -89,6 +89,11 @@ class DownbeatTest(unittest.TestCase):
         out = B.snap_downbeats(np.array([beats[4] - 0.01, beats[4] + 0.01, beats[8]]), beats)
         np.testing.assert_allclose(out, [beats[4], beats[8]], atol=1e-12)
 
+    def test_beats_before_zero_dropped(self):
+        b, d = B.drop_before_zero(np.array([-0.0011, 0.7, 1.4, 2.1]), np.array([-0.0011, 2.1]))
+        np.testing.assert_allclose(b, [0.7, 1.4, 2.1])
+        np.testing.assert_allclose(d, [2.1])
+
 
 if __name__ == "__main__":
     unittest.main()
