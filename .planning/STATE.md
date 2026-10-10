@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-12-PLAN.md
-last_updated: "2026-10-10T17:07:27.740Z"
+stopped_at: Completed 02.2-13-PLAN.md
+last_updated: "2026-10-10T17:23:45.687Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 52
+  completed_plans: 53
   percent: 56
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 13 of 25
+Plan: 14 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
@@ -81,6 +81,7 @@ Progress: [#########.] 93%
 | Phase 02.2 P10 | 75 min | 2 tasks | 10 files |
 | Phase 02.2 P11 | 125min | 2 tasks | 9 files |
 | Phase 02.2 P12 | 17 min | 2 tasks | 10 files |
+| Phase 02.2 P13 | 35 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,8 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-11: Arena colonies live on side-wall/ceiling vertices only, culled 18 px outside the expanded note path (analytic half-plane test), 64 px from screen edges and out of the console corners; creature seeded by chart id, first crossing at 15..45 s then every 45..75 s
 - [Phase 02.2]: 02.2-11: visual review raised band fills to a gradient lip 0.06+0.16n (spec 0.03+0.05n was invisible), doubled colony halos with a 0.5 floor, lantern fish cyan/pink school that swims; board-slice perf Full p95 2.53 ms, no cut step
 - [Phase 02.2]: 02.2-12: Console bracket at SONAR 40% (keeps x<32 dark); perfect value right-aligned in 264..356 drawn by Hud; StreakCounter.right_x() is the constant 368; gauges are sized Controls drawing in screen coords
+- [Phase 02.2]: 02.2-13: Mode chips use fixed slots (NO-FAIL y 824, AUTOPLAY y 864); depth right-aligned in a fixed '99,999' box with the M unit at the box edge
+- [Phase 02.2]: 02.2-13: Hull damage is sequential (200 ms red flash holds, then ~150 ms shrink); Bathymeter.estimate_max_depth replays HullScore rules and matches an Autoplay run within 1 m
 
 ### Pending Todos
 
@@ -157,6 +160,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T17:07:27.735Z
-Stopped at: Completed 02.2-12-PLAN.md
+Last session: 2026-10-10T17:23:45.681Z
+Stopped at: Completed 02.2-13-PLAN.md
 Resume file: None

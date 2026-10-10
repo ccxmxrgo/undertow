@@ -23,3 +23,13 @@
   suite.** It waits 1500 ms, which is exactly the 3-beat lead-in at 120 BPM, then asserts
   song_time > 0 (seen -0.0066). It passes when rerun alone. Fix candidate: wait 1800 ms, or wait
   until song_time > 0 with a timeout.
+
+## Found in 02.2-13
+
+- **Polish "in-window note center is >= 20% brighter than a far note" fails (x1.00) whenever the
+  flaky "captured a pending note inside the Good window" capture succeeds.** The check only runs
+  after that capture. It compares the gem core colour of a ready note with a far note, but since the
+  UI-SPEC 4.15 gem redesign the core is always the full lane colour (rule 13.1), and readiness is
+  shown by the rim and halo instead. Both samples read #22D3EE, so the ratio is 1.00 by design.
+  This is not caused by the HUD work (plan 13 touches only the consoles and hull arc). Fix
+  candidate: sample the rim or halo, or compare against `Palette.rim_ready` vs `rim_far`.
