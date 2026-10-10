@@ -7,7 +7,7 @@ analyze: decode -> separate -> beats -> onsets -> pitch. Every stage writes an i
 intermediate under build/autochart/<id>/ (D-02). Progress: `[k/5] <stage> ...` / `[k/5] <stage> done (X.X s)`.
 Errors: `AUTOCHART_ERROR <stage>: <message>` on stderr, exit 2. Last line on success: `ANALYZE_OK <id>`.
 
-  build/autochart/venvA/Scripts/python.exe -I -B tools/autochart/autochart.py chart       --id <id> --out <song_dir> --stem <name> [--fill-stem <name>] [--target-nps 3.5]       --name <s> --artist <s> --genre <s> [--delay-ms <int>] [--song-length-ms <int>]       [--godot-wav <wav>] [--stats-dir <dir>]
+  build/autochart/venvA/Scripts/python.exe -I -B tools/autochart/autochart.py chart       --id <id> --out <song_dir> --stem <name> [--fill-stem <name> [--fill-mode bars|sections]] [--target-nps 3.5]       --name <s> --artist <s> --genre <s> [--delay-ms <int>] [--song-length-ms <int>]       [--godot-wav <wav>] [--stats-dir <dir>]
 
 chart: analysis intermediates -> <song_dir>/notes.chart + song.ini + <stats-dir>/<id>.chart_stats.json.
 beats.json -> tempo map; onsets_<stem>.json (audible and loud) -> Expert notes; Expert lanes (contour,
@@ -186,8 +186,8 @@ def cmd_chart(args) -> int:
     stats_dir = Path(args.stats_dir).resolve()
     if not _inside(stats_dir, [ROOT.resolve()]):
         raise AutochartError("args", f"--stats-dir {stats_dir} must be inside the repo {ROOT}")
-    if args.fill_stem:
-        raise AutochartError("chart", "--fill-stem is implemented in plan 02.1-06")
+    if args.fill_stem and args.fill_stem == args.stem:
+        raise AutochartError("args", f"--fill-stem {args.fill_stem} must differ from --stem")
     if not 0.5 <= args.target_nps <= 8.0:
         raise AutochartError("args", f"--target-nps {args.target_nps} must be within 0.5..8")
     n = CHART_STEPS
@@ -208,9 +208,24 @@ def cmd_chart(args) -> int:
     n_b = sum(1 for e in tm["events"] if e[1] == "B")
     step(1, f"tempo map: {n_b} B event(s), analysis delay {tm['delay_ms']} ms, {len(tm['bar_ticks'])} bar lines")
 
-    # 2. Expert notes from the stem's audible + loud onsets
+    # sections first: the "sections" fill mode switches stems at section starts
+    from stages import sections as sec_stage
+    secs = sec_stage.sections_stage(work, tm)
+
+    # 2. Expert notes from the stem's audible + loud onsets; silent bars / sparse sections are filled
+    #    from --fill-stem (RESEARCH Pitfall 9: never lower the audibility filter instead)
     ons = _load_json(work / f"onsets_{args.stem}.json", "chart")
     recs = [o for o in ons["onsets"] if o.get("audible") and o.get("loud")]
+    n_primary = len(recs)
+    if args.fill_stem:
+        from stages.fill import fill_silent
+        fons = _load_json(work / f"onsets_{args.fill_stem}.json", "chart")
+        frecs = [o for o in fons["onsets"] if o.get("audible") and o.get("loud")]
+        recs = fill_silent(recs, frecs, tm, mode=args.fill_mode,
+                           section_starts_tick=secs["starts_tick"], fill_src=args.fill_stem)
+        print(f"  fill: {args.fill_stem} ({args.fill_mode}) adds "
+              f"{sum(1 for o in recs if o.get('src') == args.fill_stem)} onsets, "
+              f"{len(recs)} total (primary {n_primary})", flush=True)
     expert = quantize.build_expert(recs, tm, args.target_nps)
     if len(expert) < 32:
         raise AutochartError("chart", f"only {len(expert)} Expert notes from stem {args.stem}")
@@ -225,9 +240,7 @@ def cmd_chart(args) -> int:
         tracks[d] = red.reduce(expert, d, tm)
     step(4, "reductions: " + ", ".join(f"{d} {len(tracks[d])}" for d in ("hard", "medium", "easy")))
 
-    # 5. sections
-    from stages import sections as sec_stage
-    secs = sec_stage.sections_stage(work, tm)
+    # 5. sections (computed above)
     step(5, f"sections: {', '.join(secs['names'])}")
 
     # 6. solo + preview
@@ -265,7 +278,11 @@ def cmd_chart(args) -> int:
     per = {d: _track_stats(tracks[d], expert) for d in CHART_DIFFS}
     flags = band_flags(per)
     stats = {
-        "id": args.id, "stem": args.stem, "fill_stem": args.fill_stem, "target_nps": args.target_nps,
+        "id": args.id, "stem": args.stem, "fill_stem": args.fill_stem,
+        "fill_mode": args.fill_mode if args.fill_stem else None,
+        "fill_share": _r4(sum(1 for x in expert if x.get("src") == args.fill_stem) / len(expert))
+        if args.fill_stem else 0.0,
+        "target_nps": args.target_nps,
         "difficulties": per,
         "expert_on_grid_share": _r4(quantize.on_grid_share(expert)),
         "direction_match": _r4(lanes.direction_match(expert)),
@@ -312,6 +329,8 @@ def main(argv=None) -> int:
     c.add_argument("--out", required=True, help="song folder (inside the repo songs/ or build/)")
     c.add_argument("--stem", required=True, choices=DEFAULT_STEMS)
     c.add_argument("--fill-stem", choices=DEFAULT_STEMS)
+    c.add_argument("--fill-mode", choices=("bars", "sections"), default="bars",
+                   help="bars: fill bars with no primary onsets; sections: sparse sections take the fill stem")
     c.add_argument("--target-nps", type=float, default=3.5)
     c.add_argument("--name", required=True)
     c.add_argument("--artist", required=True)
