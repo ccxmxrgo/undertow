@@ -8,12 +8,14 @@ const SCORES := D + "/scores.cfg"
 var _old_reduce: bool
 var _old_scores: String
 var _old_music: float
+var _old_low: bool
 
 
 func before_test() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(D))
 	_old_reduce = Settings.reduce_motion
 	_old_music = Settings.volume_music
+	_old_low = Settings.low_effects
 	Settings.reduce_motion = true
 	Settings.volume_music = 0.8
 	_old_scores = ScoreStore.default_path
@@ -28,6 +30,7 @@ func before_test() -> void:
 func after_test() -> void:
 	Settings.reduce_motion = _old_reduce
 	Settings.volume_music = _old_music
+	Settings.low_effects = _old_low
 	ScoreStore.default_path = _old_scores
 	Gameplay.pending_chart = null
 	Gameplay.pending_autoplay = false
@@ -544,6 +547,106 @@ func test_debug_state_tiles_for_broken_song_are_unavailable() -> void:
 	for t in s.debug_state()["tiles"]:
 		assert_bool(t["available"]).is_false()
 		assert_str(t["text"]).is_equal("-")
+
+
+func test_preview_player_uses_preview_bus() -> void:
+	var s := _screen(_lib(_songs(1)))
+	assert_str(String(s._preview_player.bus)).is_equal("Preview")
+
+
+func test_visualizer_band_edges_are_log_spaced_60_to_12k() -> void:
+	var edges: PackedFloat32Array = SongSelect.visualizer_band_edges()
+	assert_int(edges.size()).is_equal(SongSelect.VIZ_BARS + 1)
+	assert_int(SongSelect.VIZ_BARS).is_equal(30)
+	assert_float(edges[0]).is_equal_approx(60.0, 0.01)
+	assert_float(edges[30]).is_equal_approx(12000.0, 0.5)
+	var ratio := edges[1] / edges[0]
+	for i in 30:
+		assert_float(edges[i + 1] / edges[i]).is_equal_approx(ratio, 0.001)
+
+
+func test_visualizer_is_zero_without_preview() -> void:
+	Settings.reduce_motion = false
+	var s := _screen(_lib(_songs(1)))
+	s.apply_effect_settings()
+	var calls := [0]
+	s.magnitude_source = func(_lo: float, _hi: float) -> float:
+		calls[0] += 1
+		return 1.0
+	assert_str(s.debug_state()["preview_state"]).is_not_equal("playing")
+	for k in 10:
+		s.step_visualizer(0.05)
+	var lv: PackedFloat32Array = s.visualizer_levels()
+	assert_int(lv.size()).is_equal(30)
+	for v in lv:
+		assert_float(v).is_equal(0.0)
+	assert_int(calls[0]).is_equal(0)
+
+
+func test_visualizer_attack_and_release_smoothing() -> void:
+	Settings.reduce_motion = false
+	var s := _screen(_lib(_songs(1)))
+	s.apply_effect_settings()
+	var mag := [1.0]
+	var bands: Array = []
+	s.magnitude_source = func(lo: float, hi: float) -> float:
+		bands.append(Vector2(lo, hi))
+		return mag[0]
+	s._preview_state = "playing"
+	s.step_visualizer(0.016)
+	assert_int(bands.size()).is_equal(30)
+	assert_float(s.visualizer_levels()[0]).is_between(0.4, 0.7)
+	s.step_visualizer(0.016)
+	# 0 dB rises to full within 30 ms.
+	for v in s.visualizer_levels():
+		assert_float(v).is_equal_approx(1.0, 0.0001)
+	# -30 dB maps to 0.5.
+	mag[0] = db_to_linear(-30.0)
+	s.step_visualizer(0.03)
+	assert_float(s.visualizer_levels()[5]).is_greater(0.8)
+	s.step_visualizer(0.06)
+	assert_float(s.visualizer_levels()[5]).is_equal_approx(0.5, 0.01)
+	# Silence falls from 0.5 to 0 over 90 ms (180 ms for full scale), not at once.
+	mag[0] = 0.0
+	s.step_visualizer(0.045)
+	assert_float(s.visualizer_levels()[5]).is_equal_approx(0.25, 0.01)
+	s.step_visualizer(0.05)
+	assert_float(s.visualizer_levels()[5]).is_equal(0.0)
+	# Preview stops: the bars fall back to zero.
+	mag[0] = 1.0
+	s.step_visualizer(0.05)
+	s._preview_state = "none"
+	s.step_visualizer(0.2)
+	for v in s.visualizer_levels():
+		assert_float(v).is_equal(0.0)
+
+
+func test_visualizer_reduce_motion_static_mid_height_low_keeps_animation() -> void:
+	Settings.reduce_motion = true
+	var s := _screen(_lib(_songs(1)))
+	s.apply_effect_settings()
+	s.magnitude_source = func(_lo: float, _hi: float) -> float: return 1.0
+	s._preview_state = "playing"
+	s.step_visualizer(0.05)
+	for v in s.visualizer_levels():
+		assert_float(v).is_equal(0.5)
+	assert_bool(s.effect_counts()["visualizer_animated"]).is_false()
+	assert_bool(s.effect_counts()["sweep"]).is_false()
+	Settings.reduce_motion = false
+	Settings.low_effects = true
+	s.apply_effect_settings()
+	assert_bool(s.effect_counts()["visualizer_animated"]).is_true()
+	s.step_visualizer(0.05)
+	assert_float(s.visualizer_levels()[0]).is_equal_approx(1.0, 0.0001)
+
+
+func test_song_select_registers_effect_contract() -> void:
+	Settings.reduce_motion = false
+	var s := _screen(_lib(_songs(1)))
+	assert_bool(s.is_in_group(UiKit.FX_GROUP)).is_true()
+	var c: Dictionary = s.effect_counts()
+	assert_bool(c.has("visualizer_animated") and c.has("sweep")).is_true()
+	assert_bool(c["visualizer_animated"]).is_true()
 
 
 func test_drawing_every_state_runs_without_errors() -> void:
