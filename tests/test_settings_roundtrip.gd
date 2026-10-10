@@ -95,6 +95,32 @@ func test_roundtrip_display_flags() -> void:
 	assert_bool(b.low_effects).is_true()
 
 
+func test_menu_music_defaults_on_and_roundtrips() -> void:
+	var a: Node = auto_free(SettingsScript.new())
+	assert_bool(a.menu_music).is_true()
+	a.menu_music = false
+	assert_int(a.save_to(PATH)).is_equal(OK)
+	var cfg := ConfigFile.new()
+	cfg.load(PATH)
+	assert_bool(cfg.get_value("audio", "menu_music", true)).is_false()
+	var b: Node = auto_free(SettingsScript.new())
+	b.load_from(PATH)
+	assert_bool(b.menu_music).is_false()
+	b.reset_defaults()
+	assert_bool(b.menu_music).is_true()
+
+
+func test_menu_music_missing_or_wrong_type_loads_true() -> void:
+	_write("[audio]\nmusic=0.5\n")
+	var s: Node = auto_free(SettingsScript.new())
+	s.menu_music = false
+	s.load_from(PATH)
+	assert_bool(s.menu_music).is_true()
+	_write("[audio]\nmenu_music=\"no\"\n")
+	s.load_from(PATH)
+	assert_bool(s.menu_music).is_true()
+
+
 func test_library_roundtrip() -> void:
 	var a: Node = auto_free(SettingsScript.new())
 	a.library_folders = ["C:/songs/one", "D:/ch"] as Array[String]
