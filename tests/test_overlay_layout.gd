@@ -808,3 +808,8 @@ func test_confirm_dialog_geometry_variants_and_focus() -> void:
 	assert_int(dlg.body_label.autowrap_mode).is_equal(TextServer.AUTOWRAP_WORD_SMART)
 	assert_bool(dlg.body_label.get_theme_color("font_color").is_equal_approx(Palette.TEXT_MID)).is_true()
 	assert_int(dlg.find_children("*", "FocusMarker", true, false).size()).is_equal(1)
+
+
+func test_pause_run_line_skips_an_empty_difficulty() -> void:
+	assert_str(PauseMenu.run_line("Hand chart", "", 16.2)).is_equal("Hand chart · 16%")
+	assert_str(PauseMenu.run_line("", "expert", 3.0)).is_equal("EXPERT · 3%")

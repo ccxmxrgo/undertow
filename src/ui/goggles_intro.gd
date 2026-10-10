@@ -5,7 +5,10 @@ extends Control
 ## conductor lead-in and calls on_count_started(), after which the 3-2-1 numerals derive from
 ## Conductor.song_time(). While it plays it also drives the board reveal (arena, cables,
 ## receptors, HUD) and restores the board defaults when it ends or leaves the tree (T-1.2-12).
-## Hot red (#FF1F4B) is used only here, never in gameplay.
+## 02.2-20 (UI-SPEC 9.5, D-12): the room segment is replaced by the rig-boot stage (sonar ping
+## rings and "NEURAL DIVE RIG · READY" typed in, under the closing lens mask). The stage
+## boundaries come from IntroTimeline and are unchanged. Colours are Palette tokens only.
+## Effect node (UiKit contract): rig rings static under Reduce motion, numeral glow off on Low.
 
 signal pre_count_finished
 signal skip_requested
@@ -14,19 +17,39 @@ enum State { PRE, COUNT, DONE }
 
 const W := 1920.0
 const H := 1080.0
-const INK := Color("02040A")
-const TEAL := Color("05D9E8")
-const HOT_RED := Color("FF1F4B")
-const TEXT_COL := Color("E8E6F0")
-const HINT_COL := Color("8A93AD")
-const NUMERAL_SIZE := 180
+## Count numerals: the Cinematic 176 Oxanium exception (UI-SPEC 3.2), animated 211 -> 176.
+const NUMERAL_SIZE := 176
+const NUMERAL_FROM := 1.2
 const NUMERAL_BASELINE := 624.0
+const NUMERAL_GLOW_ALPHA := 0.3
+const NUMERAL_GLOW_SIZE := 12
+## Rig boot (UI-SPEC 9.5): two SONAR ping rings and the typed rig line.
+const RIG_CENTER := Vector2(960, 540)
+const RING_STARTS: Array[float] = [0.05, 0.45]
+const RING_SEC := 0.7
+const RING_MAX_R := 420.0
+const RING_ALPHA := 0.35
+const RING_W := 2.0
+const RING_STATIC_R := 300.0
+const RING_STATIC_ALPHA := 0.2
+const RIG_TEXT := "NEURAL DIVE RIG · READY"
+const RIG_TEXT_AT := Vector2(960, 548)
+const RIG_TEXT_FROM := 0.10
+const RIG_CHARS_PER_SEC := 40.0
+## Soft SONAR-tinted backlight behind the rig line (cached gradient, see room_glow_texture).
+const BACKLIGHT_R := 560.0
+## Static scope under the pings: faint range rings and a crosshair with a gap for the text.
+const SCOPE_RINGS: Array[float] = [140.0, 280.0, 420.0]
+const SCOPE_RING_ALPHA := 0.07
+const SCOPE_CROSS_ALPHA := 0.05
+const SCOPE_CROSS_GAP := 180.0
+const SCOPE_CROSS_REACH := 470.0
+const HINT_ALPHA := 0.7
 const SKIP_DIP_SEC := 0.12
 const HUD_FADE_SEC := 0.3
 const MASK_W := 480
 const MASK_H := 270
 const MASK_FAR_SCALE := 7.5
-const ROOM_GLOW_R := 624.0
 
 static var _room_glow_tex: GradientTexture2D
 static var _mask_tex: ImageTexture
@@ -53,11 +76,27 @@ var _sfx: AudioStreamPlayer
 var _tick: AudioStreamWAV
 var _tick_hi: AudioStreamWAV
 var _clunk: AudioStreamWAV
+var _reduce := false
+var _low := false
 
 
 func _ready() -> void:
 	UiLayout.fill_rect(self)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	apply_effect_settings()
+	UiKit.register_fx(self)
+
+
+## Effect contract: re-read Reduce motion / Low effects (rig rings, numeral glow).
+func apply_effect_settings() -> void:
+	_reduce = UiKit.reduce_motion()
+	_low = UiKit.low_effects()
+	queue_redraw()
+
+
+## Effect contract: what is active right now.
+func effect_counts() -> Dictionary:
+	return {"rings_animated": not _reduce, "numeral_glow": not _low}
 
 
 func setup(p_mode: int, p_conductor: Conductor, chart: ChartData, p_arena: Arena,
@@ -258,16 +297,14 @@ func _draw_pre() -> void:
 	var p: float = ph["progress"]
 	match phase:
 		IntroTimeline.Phase.ROOM_LENS:
-			var focus := IntroTimeline.lens_focus(t, mode, rm)
-			_draw_room(t)
-			if not rm:
-				_draw_room_blur(t, focus)
+			_draw_rig_boot(t, rm)
 			_draw_lens_mask(IntroTimeline.lens_close(t, mode, rm), 0.0, rm)
+			_draw_rig_text(t, rm)  # the rig readout sits in the goggles, above the lens bridge
 		IntroTimeline.Phase.BLACK:
-			draw_rect(Rect2(0, 0, W, H), Color.BLACK)
+			draw_rect(Rect2(0, 0, W, H), Palette.ABYSS_900)
 		IntroTimeline.Phase.CRT:
 			if rm:
-				draw_rect(Rect2(0, 0, W, H), Color.BLACK)
+				draw_rect(Rect2(0, 0, W, H), Palette.ABYSS_900)
 			else:
 				_draw_crt(p)
 		IntroTimeline.Phase.ARENA:
@@ -277,7 +314,7 @@ func _draw_pre() -> void:
 		_draw_link_text(t)
 	if _hint_visible(t, phase):
 		var txt := "A TO SKIP" if _pad_last else "SPACE TO SKIP"
-		_draw_spaced(txt, 960.0, 1040.0, Palette.SIZE_LABEL, Palette.alpha(HINT_COL, 0.7), 2.0)
+		_draw_spaced(txt, 960.0, 1040.0, Palette.SIZE_LABEL, Color(Palette.TEXT_LO, HINT_ALPHA), 2.0)
 
 
 ## Only the FULL intro has a lens mask; the QUICK intro is a CRT blink plus one count (D-11),
@@ -294,51 +331,61 @@ func _hint_visible(t: float, phase: int) -> bool:
 	return phase == IntroTimeline.Phase.ARENA
 
 
-func _draw_room(t: float) -> void:
-	draw_rect(Rect2(0, 0, W, H), Color("07070B"))
-	_draw_room_props(t, 1.0)
+## Rig boot (0.00..1.10 s of the FULL intro; the Reduce-motion variant uses the same stage):
+## ABYSS_900, a soft SONAR backlight, two expanding ping rings and the typed rig line.
+func _draw_rig_boot(t: float, rm: bool) -> void:
+	draw_rect(Rect2(0, 0, W, H), Palette.ABYSS_900)
+	draw_texture_rect(room_glow_texture(), Rect2(RIG_CENTER - Vector2(BACKLIGHT_R, BACKLIGHT_R),
+		Vector2(BACKLIGHT_R, BACKLIGHT_R) * 2.0), false)
+	for r: float in SCOPE_RINGS:
+		draw_arc(RIG_CENTER, r, 0.0, TAU, 96, Color(Palette.SONAR, SCOPE_RING_ALPHA), Palette.EDGE_HAIR, true)
+	var cross := Color(Palette.SONAR, SCOPE_CROSS_ALPHA)
+	for d: Vector2 in [Vector2.RIGHT, Vector2.LEFT]:
+		draw_line(RIG_CENTER + d * SCOPE_CROSS_GAP, RIG_CENTER + d * SCOPE_CROSS_REACH, cross, Palette.EDGE_HAIR)
+	for d: Vector2 in [Vector2.UP, Vector2.DOWN]:
+		draw_line(RIG_CENTER + d * 40.0, RIG_CENTER + d * SCOPE_CROSS_REACH, cross, Palette.EDGE_HAIR)
+	for i in RING_STARTS.size():
+		var ring := rig_ring(t, i, rm)
+		var a: float = ring["a"]
+		var r: float = ring["r"]
+		if a > 0.0 and r > 0.5:
+			draw_arc(RIG_CENTER, r, 0.0, TAU, 96, Color(Palette.SONAR, a), RING_W, true)
 
 
-## Cheap blur approximation: faint offset copies of the bright props, shrinking as focus
-## returns, plus a dim toward black while unfocused.
-func _draw_room_blur(t: float, focus: float) -> void:
-	var off := 14.0 * (1.0 - focus)
-	if off > 0.5:
-		for d in [Vector2(off, 0), Vector2(-off, 0), Vector2(0, off), Vector2(0, -off)]:
-			draw_set_transform(d, 0.0, Vector2.ONE)
-			_draw_room_props(t, 0.2)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var dim := (1.0 - focus) * 0.35
-	if dim > 0.0:
-		draw_rect(Rect2(0, 0, W, H), Color(0, 0, 0, dim))
+func _draw_rig_text(t: float, rm: bool) -> void:
+	var n := rig_text_chars(t, rm)
+	if n > 0:
+		# Typed text keeps its final centred position: draw the visible prefix from the full start x.
+		_draw_spaced(RIG_TEXT, RIG_TEXT_AT.x, RIG_TEXT_AT.y, Palette.SIZE_LABEL, Palette.SONAR, 2.0, n)
 
 
-func _draw_room_props(t: float, am: float) -> void:
-	var glow_c := Vector2(1380, 504)
-	draw_texture_rect(room_glow_texture(), Rect2(glow_c - Vector2(ROOM_GLOW_R, ROOM_GLOW_R),
-		Vector2(2.0 * ROOM_GLOW_R, 2.0 * ROOM_GLOW_R)), false, Color(1, 1, 1, am))
-	draw_rect(Rect2(0, 768, 1920, 312), Color(Color("0F1118"), am))
-	draw_rect(Rect2(1200, 360, 360, 228), Color(Color("161A26"), am))
-	draw_rect(Rect2(1214, 374, 331, 199), Color(80.0 / 255.0, 140.0 / 255.0, 200.0 / 255.0, 0.25 * am))
-	draw_rect(Rect2(216, 192, 192, 276), Color(Color("12141C"), am))
-	draw_rect(Rect2(456, 240, 144, 192), Color(Color("12141C"), am))
-	var font := Palette.font()
-	draw_string(font, Vector2(1236, 480), "NEURAL DIVE RIG · READY", HORIZONTAL_ALIGNMENT_LEFT,
-		-1, Palette.SIZE_LABEL, Color(0.91, 0.90, 0.94, 0.35 * am))
-	var rec_on := Settings.reduce_motion or fmod(t, 1.0) < 0.5
-	if rec_on:
-		draw_circle(Vector2(1216, 474), 5.0, Color(HOT_RED, am))
+## Ring `i` at intro time `t`: {r, a}. r 0 -> 420 over 0.7 s from its start, alpha 0.35 -> 0.
+## Reduce motion: static r 300 at alpha 0.2.
+static func rig_ring(t: float, i: int, rm: bool) -> Dictionary:
+	if rm:
+		return {"r": RING_STATIC_R, "a": RING_STATIC_ALPHA}
+	var k := (t - RING_STARTS[i]) / RING_SEC
+	if k < 0.0 or k > 1.0:
+		return {"r": 0.0, "a": 0.0}
+	return {"r": RING_MAX_R * k, "a": RING_ALPHA * (1.0 - k)}
 
 
-## Soft light behind the rig monitor: one smooth radial gradient (was 12 stacked discs, which
-## banded visibly). Same peak (~0.30 alpha at the centre) and 624 px reach as before.
+## Characters of RIG_TEXT shown at intro time `t` (40 chars/s from 0.10 s; all at once under
+## Reduce motion).
+static func rig_text_chars(t: float, rm: bool) -> int:
+	if rm:
+		return RIG_TEXT.length()
+	return clampi(int(floor((t - RIG_TEXT_FROM) * RIG_CHARS_PER_SEC + 1e-6)), 0, RIG_TEXT.length())
+
+
+## Soft backlight behind the rig line: one smooth radial gradient (01.2-09 regression: never
+## stacked discs). The name is kept from the old room light.
 static func room_glow_texture() -> GradientTexture2D:
 	if _room_glow_tex != null:
 		return _room_glow_tex
 	var g := Gradient.new()
-	var c := Color(60.0 / 255.0, 90.0 / 255.0, 140.0 / 255.0)
 	g.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
-	g.colors = PackedColorArray([Color(c, 0.30), Color(c, 0.16), Color(c, 0.0)])
+	g.colors = PackedColorArray([Color(Palette.VP_GLOW, 0.42), Color(Palette.VP_GLOW, 0.16), Color(Palette.VP_GLOW, 0.0)])
 	var tex := GradientTexture2D.new()
 	tex.gradient = g
 	tex.fill = GradientTexture2D.FILL_RADIAL
@@ -368,7 +415,7 @@ static func lens_mask_texture() -> ImageTexture:
 			var bx := 1.0 - smoothstep(0.0, 9.0, absf(pt.x - 240.0))
 			var by := 1.0 - smoothstep(35.0, 75.0, absf(pt.y - 135.0))
 			a = maxf(a, 0.92 * bx * by)
-			img.set_pixel(x, y, Color(0.008, 0.016, 0.04, a))
+			img.set_pixel(x, y, Color(Palette.ABYSS_900, a))
 	_mask_tex = ImageTexture.create_from_image(img)
 	return _mask_tex
 
@@ -387,22 +434,22 @@ func _draw_lens_mask(close: float, open: float, rm: bool) -> void:
 	if alpha <= 0.0:
 		return
 	draw_texture_rect(lens_mask_texture(), Rect2(960.0 - 960.0 * scale_f, 540.0 - 540.0 * scale_f,
-		W * scale_f, H * scale_f), false, Color(1, 1, 1, alpha))
+		W * scale_f, H * scale_f), false, Color(Palette.WHITE, alpha))
 
 
 func _draw_crt(q: float) -> void:
-	draw_rect(Rect2(0, 0, W, H), Color.BLACK)
+	draw_rect(Rect2(0, 0, W, H), Palette.ABYSS_900)
 	var pa := minf(q / 0.35, 1.0)
 	var pb := maxf((q - 0.35) / 0.65, 0.0)
 	var bar_w := maxf(8.0, W * IntroTimeline.ease_out(pa))
 	var bar_h := 4.0 + (H - 4.0) * IntroTimeline.ease_out(pb)
 	draw_rect(Rect2(960.0 - bar_w * 0.5, 540.0 - bar_h * 0.5, bar_w, bar_h),
-		Color(235.0 / 255.0, 250.0 / 255.0, 1.0, 1.0 - pb * 0.85))
+		Color(Palette.mix(Palette.SONAR_PALE, Palette.WHITE, 0.6), 1.0 - pb * 0.85))
 	if pb > 0.0:
 		var peak := 0.9 if mode == IntroTimeline.Mode.FULL else 0.6
 		if Settings.reduce_motion:
 			peak = 0.0
-		draw_rect(Rect2(0, 0, W, H), Color(1, 1, 1, peak * (1.0 - pb)))
+		draw_rect(Rect2(0, 0, W, H), Color(Palette.WHITE, peak * (1.0 - pb)))
 
 
 func _draw_link_text(t: float) -> void:
@@ -410,21 +457,26 @@ func _draw_link_text(t: float) -> void:
 	if q < 0.2 or t >= 2.15:
 		return
 	var pb := maxf((q - 0.35) / 0.65, 0.0)
-	var col := INK if pb < 0.56 else TEAL
+	var col := Palette.ABYSS_900 if pb < 0.56 else Palette.SONAR
 	var a := 1.0
 	if t > IntroTimeline.FULL_CRT_END:
 		a = 1.0 - clampf((t - IntroTimeline.FULL_CRT_END) / (2.15 - IntroTimeline.FULL_CRT_END), 0.0, 1.0)
 	_draw_spaced("LINK ESTABLISHED", 960.0, 547.0, Palette.SIZE_LABEL, Palette.alpha(col, a), 2.0)
 
 
-func _draw_spaced(text: String, cx: float, y: float, size: int, col: Color, spacing: float) -> void:
+## Letter-spaced text centred on `cx`; only the first `count` characters are drawn (-1 = all),
+## at the positions they have in the full string.
+func _draw_spaced(text: String, cx: float, y: float, size: int, col: Color, spacing: float,
+		count: int = -1) -> void:
 	var font := Palette.font()
 	var total := 0.0
 	for ch in text:
 		total += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + spacing
 	total -= spacing
 	var x := cx - total * 0.5
-	for ch in text:
+	var shown := text.length() if count < 0 else mini(count, text.length())
+	for i in shown:
+		var ch := text[i]
 		draw_string(font, Vector2(x, y), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
 		x += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + spacing
 
@@ -451,18 +503,27 @@ func _draw_dip() -> void:
 	var d := float(Time.get_ticks_usec() - _skip_usec) / 1000000.0
 	var a := 1.0 - clampf(d / SKIP_DIP_SEC, 0.0, 1.0)
 	if a > 0.0:
-		draw_rect(Rect2(0, 0, W, H), Color(0, 0, 0, a))
+		draw_rect(Rect2(0, 0, W, H), Color(Palette.ABYSS_900, a))
+
+
+## Numeral size for beat progress `p`: 211 -> 176 (Reduce motion: 176).
+static func numeral_size(p: float, rm: bool) -> int:
+	if rm:
+		return NUMERAL_SIZE
+	return int(round(float(NUMERAL_SIZE) * (NUMERAL_FROM - (NUMERAL_FROM - 1.0) * clampf(p, 0.0, 1.0))))
+
+
+static func numeral_font() -> Font:
+	return Palette.display_font()
 
 
 func _draw_numeral(text: String, p: float) -> void:
-	var size := NUMERAL_SIZE
-	if not Settings.reduce_motion:
-		size = int(round(float(NUMERAL_SIZE) * (1.2 - 0.2 * p)))
+	var size := numeral_size(p, Settings.reduce_motion)
 	var alpha := 1.0 - clampf(p, 0.0, 1.0)
-	var font := Palette.bold()
+	var font := numeral_font()
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 	var pos := Vector2(960.0 - w * 0.5, NUMERAL_BASELINE)
 	if not Settings.low_effects:
-		draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 12,
-			Palette.alpha(TEAL, 0.3 * alpha))
-	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Palette.alpha(TEXT_COL, alpha))
+		draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, NUMERAL_GLOW_SIZE,
+			Color(Palette.SONAR, NUMERAL_GLOW_ALPHA * alpha))
+	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(Palette.TEXT_HI, alpha))

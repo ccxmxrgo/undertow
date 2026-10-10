@@ -97,8 +97,12 @@ func has_settings_overlay() -> bool:
 
 ## Run line under the title: "{title} · {DIFFICULTY} · {nn}%" (UI-SPEC 9.1 / 14).
 static func run_line(title: String, difficulty: String, progress_pct: float) -> String:
-	var pct := int(clampf(progress_pct, 0.0, 100.0))
-	return "%s · %s · %d%%" % [title, difficulty.to_upper(), pct]
+	var parts: Array[String] = []
+	for part in [title.strip_edges(), difficulty.strip_edges().to_upper()]:
+		if part != "":
+			parts.append(part)  # charts without a difficulty name skip that part
+	parts.append("%d%%" % int(clampf(progress_pct, 0.0, 100.0)))
+	return " · ".join(parts)
 
 
 ## Gameplay passes the current run before opening the pause panel.
@@ -107,9 +111,9 @@ func set_run_info(title: String, difficulty: String, progress_pct: float) -> voi
 		return
 	var font := run_label.get_theme_font("font")
 	var full := run_line(title, difficulty, progress_pct)
-	var tail := full.substr(title.length())  # " · DIFFICULTY · nn%" always stays visible
+	var tail := full.substr(title.strip_edges().length())  # " · DIFFICULTY · nn%" always stays visible
 	var tail_w := font.get_string_size(tail, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL).x
-	run_label.text = ProgressTrack.truncate_px(title, font, Palette.SIZE_LABEL, RUN_MAX_W - tail_w) + tail
+	run_label.text = ProgressTrack.truncate_px(title.strip_edges(), font, Palette.SIZE_LABEL, RUN_MAX_W - tail_w) + tail
 
 
 ## Ring fill left after `elapsed` seconds of a beat lasting `beat_sec` (1 at the tick, 0 at the end).

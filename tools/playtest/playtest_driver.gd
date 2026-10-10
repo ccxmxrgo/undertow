@@ -1083,7 +1083,7 @@ func sc_d() -> void:
 	metrics["pause_frozen_frames"] = frozen.size()
 	check("song_time frozen for 3 s of real time while paused", max_dev == 0.0, "max change %.6f s over %d frames" % [max_dev, frozen.size()])
 	check("audio stopped while paused", not (c.get("_player") as AudioStreamPlayer).playing)
-	await shot("pause_menu")
+	await shot("pause_panel")
 	var cd_ticks: Array = []
 	var cd_cb := func(n: int) -> void: cd_ticks.append([n, Time.get_ticks_usec()])
 	c.countdown_tick.connect(cd_cb)
@@ -1143,7 +1143,7 @@ func sc_d() -> void:
 	check("Back to Menu shows confirm dialog", dlg != null)
 	if dlg != null:
 		check("menu dialog initial focus on SAFE 'Stay'", focus_owner() == dlg.safe_button and dlg.safe_button.text == "Stay", focus_owner())
-		await shot("menu_confirm")
+		await shot("confirm_dialog")
 		await press_key(KEY_LEFT)
 		check("Left moves focus to 'Leave Dive'", focus_owner() == dlg.confirm_button, focus_owner())
 		await press_key(KEY_ENTER)
@@ -1804,6 +1804,36 @@ func _max_luma_step(img: Image, y: float, x0: float, x1: float) -> Dictionary:
 	return {"max_step": snappedf(mx, 0.0001), "at_x": at, "min": snappedf(lo, 0.0001), "max": snappedf(hi, 0.0001)}
 
 
+## 02.2-20: scan the old intro-room rectangles (design px) for flat neutral-grey pixels:
+## max - min channel <= 0.04 and max channel in 0.07..0.6 (the abyss base is 0.05 max).
+const INTRO_ROOM_RECTS: Array[Rect2] = [Rect2(0, 768, 1920, 312), Rect2(1200, 360, 360, 228),
+	Rect2(216, 192, 192, 276), Rect2(456, 240, 144, 192)]
+
+
+func _intro_grey_scan(img: Image) -> Dictionary:
+	var grey := 0
+	var n := 0
+	var first := ""
+	var brightest := 0.0
+	for r in INTRO_ROOM_RECTS:
+		var y := r.position.y + 4.0
+		while y < r.end.y:
+			var x := r.position.x + 4.0
+			while x < r.end.x:
+				var c := _img_px(img, Vector2(x, y))
+				var hi := maxf(c.r, maxf(c.g, c.b))
+				var lo := minf(c.r, minf(c.g, c.b))
+				brightest = maxf(brightest, hi)
+				n += 1
+				if hi - lo <= 0.04 and hi >= 0.07 and hi <= 0.6:
+					grey += 1
+					if first == "":
+						first = "%s at (%d, %d)" % [c, x, y]
+				x += 8.0
+			y += 8.0
+	return {"grey": grey, "samples": n, "first": first, "brightest": snappedf(brightest, 0.001)}
+
+
 ## Vertical centre of the bright pixels (max channel > thr) in column x, y0..y1; -1 if none.
 func _bright_mid_y(img: Image, x: float, y0: float, y1: float, thr: float) -> float:
 	var top := -1.0
@@ -2363,13 +2393,15 @@ func sc_polish() -> void:
 	var fs := FailScreen.new()
 	host_overlay(fs)
 	var saved_best := float(store.best(TestCharts.HAND_CHART_ID)["depth"])
-	fs.setup(612.0, 17, saved_best)
+	fs.setup(612.0, 17, saved_best, 37.0)
 	fs.play(0.0)
 	await wait(0.6)
 	check("IMPLOSION shows run stats and saved best",
 		fs.stats_label.text == "Max combo: 17" and fs.best_label.text.begins_with("Saved best: "),
 		[fs.stats_label.text, fs.best_label.text])
-	await shot("implosion_stats")
+	check("IMPLOSION shows the song progress row", fs.progress_label.visible and fs.progress_label.text == "SONG PROGRESS 37%",
+		fs.progress_label.text)
+	await shot("implosion")
 	await release_overlay(fs)
 	await goto(MENU)
 	await wait(0.4)
@@ -2492,8 +2524,14 @@ func sc_immersion() -> void:
 	var t0 := Time.get_ticks_msec()
 	var spb := 60.0 / _bpm_of(g)
 	check("intro mode FULL on a normal Start Dive", g.intro_mode == IntroTimeline.Mode.FULL, g.intro_mode)
-	await _wait_elapsed(t0, 0.1)
-	await shot("intro_room", g)
+	await _wait_elapsed(t0, 0.3)
+	await shot("intro_rig_boot", g)
+	# 02.2-20 (UI-SPEC 9.5): the room is gone. Sample where the old room rectangles were drawn
+	# (floor, rig monitor, two shelves): no flat neutral-grey pixel, the frame is the abyss
+	# base plus SONAR rings / text / backlight only.
+	var grey := _intro_grey_scan(last_img)
+	metrics["intro_rig_boot_grey_scan"] = grey
+	check("intro has no grey placeholder rectangles", int(grey["grey"]) == 0, grey)
 	await _wait_elapsed(t0, 0.35)
 	await shot("intro_lens_closing", g)
 	await _wait_elapsed(t0, 0.5)

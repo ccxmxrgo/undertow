@@ -20,6 +20,7 @@ const CONFIRM_POS := Vector2(632, 604)
 const SAFE_POS := Vector2(984, 604)
 const RULE_ALPHA := 0.35
 const BRACKET_ALPHA := 0.8
+const BACKING_ALPHA := 0.94
 
 var confirm_button: Button
 var safe_button: Button
@@ -60,6 +61,9 @@ func setup(title: String, body: String, confirm_text: String, safe_text: String)
 	panel.size = PANEL_RECT.size
 	panel.painter = func(ci: CanvasItem) -> void:
 		var r := Rect2(Vector2.ZERO, PANEL_RECT.size)
+		# Opaque abyss backing under the glass: the dialog often sits over another panel
+		# (pause), whose labels must not show through the body text.
+		ci.draw_colored_polygon(UiKit.chamfer_points(r, Palette.CUT_MD), Color(Palette.ABYSS_900, BACKING_ALPHA))
 		ci.draw_style_box(sb, r)
 		UiKit.draw_brackets(ci, r, Color(Palette.WARNING_RED, BRACKET_ALPHA))
 		var y := RULE_Y - PANEL_RECT.position.y
