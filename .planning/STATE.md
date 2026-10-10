@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-13-PLAN.md
-last_updated: "2026-10-10T17:23:45.687Z"
+stopped_at: Completed 02.2-14-PLAN.md
+last_updated: "2026-10-10T17:55:45.814Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 53
+  completed_plans: 54
   percent: 56
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 14 of 25
+Plan: 15 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
@@ -82,6 +82,7 @@ Progress: [#########.] 93%
 | Phase 02.2 P11 | 125min | 2 tasks | 9 files |
 | Phase 02.2 P12 | 17 min | 2 tasks | 10 files |
 | Phase 02.2 P13 | 35 min | 2 tasks | 6 files |
+| Phase 02.2 P14 | 35 min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -145,6 +146,9 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-12: Console bracket at SONAR 40% (keeps x<32 dark); perfect value right-aligned in 264..356 drawn by Hud; StreakCounter.right_x() is the constant 368; gauges are sized Controls drawing in screen coords
 - [Phase 02.2]: 02.2-13: Mode chips use fixed slots (NO-FAIL y 824, AUTOPLAY y 864); depth right-aligned in a fixed '99,999' box with the M unit at the box edge
 - [Phase 02.2]: 02.2-13: Hull damage is sequential (200 ms red flash holds, then ~150 ms shrink); Bathymeter.estimate_max_depth replays HullScore rules and matches an Autoplay run within 1 m
+- [Phase 02.2]: 02.2-14: Section banner cross-fades on a new section during the hold and restarts the 1.6 s hold; names cut at 28 chars then by pixel width
+- [Phase 02.2]: 02.2-14: Progress track polish (fill stroke glow, playhead diamond, lit reached ticks) identical in all effect modes
+- [Phase 02.2]: 02.2-14: Windowed test launches open on the secondary monitor (run_all --position, tools/test_screen.gd, UNDERTOW_TEST_SCREEN override)
 
 ### Pending Todos
 
@@ -160,6 +164,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T17:23:45.681Z
-Stopped at: Completed 02.2-13-PLAN.md
+Last session: 2026-10-10T17:55:45.808Z
+Stopped at: Completed 02.2-14-PLAN.md
 Resume file: None

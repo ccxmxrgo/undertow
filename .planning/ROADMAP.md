@@ -116,7 +116,7 @@ Plans:
 
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 13/25 plans executed
+**Plans:** 14/25 plans executed
 
 Plans:
 
@@ -133,7 +133,7 @@ Plans:
 - [x] 02.2-11-PLAN.md — Board: trench life (AV-02), 1080p perf checkpoint, Sea Shanty 2 Full-effects autoplay + visual review
 - [x] 02.2-12-PLAN.md — HUD: cockpit frame, multiplier ring, streak numeral, torpedo socket, milestone burst
 - [x] 02.2-13-PLAN.md — HUD: bathymeter, live accuracy, chips, segmented hull arc
-- [ ] 02.2-14-PLAN.md — HUD: progress track + section banner, keep-out test (rects + keepout_shapes), HUD shots + visual review
+- [x] 02.2-14-PLAN.md — HUD: progress track + section banner, keep-out test (rects + keepout_shapes), HUD shots + visual review
 - [ ] 02.2-15-PLAN.md — Results: D-16 grade storage, offsets, Song Select route, grade emblem, opaque layout
 - [ ] 02.2-16-PLAN.md — Results: timing histogram, skippable entrance, results evidence + visual review
 - [ ] 02.2-17-PLAN.md — Song select: album art + generated cover, zip keeps art (D-19), detail panel
