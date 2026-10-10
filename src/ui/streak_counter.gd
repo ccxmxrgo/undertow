@@ -1,84 +1,190 @@
 class_name StreakCounter
 extends Control
-## Large STREAK (combo) counter left of the hit ring plus milestone popups (D-08, D-13).
-## The Perfect streak stays in the HUD; lane colors are never used here.
+## STREAK (combo) instrument on the left cockpit console plus milestone popups (UI-SPEC 7.3,
+## D-08, D-13, VIS-04, VIS-09). The numeral is always visible (also at 0) in a fixed 4-digit
+## box, right-aligned at x 368. Milestones (10/25/50/100, then every 100) pop a label with a
+## SONAR_PALE spark burst and flash both highway outer rails. Lane colours are never used here.
+## Effect contract: UiKit.register_fx, apply_effect_settings(), effect_counts().
+## Animations are delta-driven in _process so tests can step them.
 
-## Fallback/spec value; the live anchor is Trench.point(-2.6, 0.0).x - 24 (see right_x()).
-const RIGHT_X := 390.0
-const ANCHOR_F := -2.6
-const NUMBER_BASE_Y := 709.0
-const CAPTION_BASE_Y := 745.0
-const POPUP_BASE_Y := 600.0
-const MIN_SHOWN := 5
-const FADE_IN_SEC := 0.12
-const PULSE_SEC := 0.08
+const RIGHT_X := 368.0
+const NUMBER_BASE_Y := 736.0
+const BOX_DIGITS := 4
+const BOX_MIN_W := 222.0  # 146..368
+const CAPTION_POS := Vector2(48.0, 644.0)
+const CAPTION := "STREAK"
+const POPUP_CX := 208.0
+const POPUP_BASE_Y := 584.0
 const POPUP_SEC := 0.7
 const POPUP_RISE := 32.0
+const POPUP_POP_SEC := 0.12  # DUR_FAST, back-out
+const POPUP_POP_FROM := 1.3
 const POPUP_STATIC_SEC := 0.7
 const POPUP_STATIC_FADE := 0.2
+const POPUP_OUTLINE_PX := 6  # 3 px KEYLINE each side
+const POPUP_SAMPLE := "9999 STREAK"
+const PULSE_SEC := 0.08
+const PULSE_PEAK := 1.08
+const PULSE_PIVOT := Vector2(257.0, 700.0)
+const TEXT_GLOW_PX := 12
+const TEXT_GLOW_ALPHA := 0.25
 const NUM_CHARS := 4
-const CAPTION := "STREAK"
-const CAPTION_COLOR := Color("8A93AD")
+const SPARK_ORIGIN := Vector2(257.0, 700.0)
+const SPARKS_FULL := 24
+const SPARKS_LOW := 8
+const SPARK_LIFETIME := 0.5
+const SPARK_VEL_MIN := 180.0
+const SPARK_VEL_MAX := 320.0
+const SPARK_SCALE_MIN := 0.05
+const SPARK_SCALE_MAX := 0.09
+const RAIL_FLASH_ALPHA := 0.6
+const RAIL_FLASH_SEC := 0.16
+
+## Board highway whose outer rails flash on a milestone (set by Gameplay; may stay null).
+var highway: Highway
 
 var _combo: int = 0
-var _shown_since_msec: int = 0
-var _pulse_msec: int = -100000
+var _pulse_t: float = -1.0  # < 0: no pop
 var _popup_text: String = ""
-var _popup_born_msec: int = 0
+var _popup_age: float = 0.0
+var _low: bool = false
+var _reduce: bool = false
+var _sparks: CPUParticles2D
+var _sparks_fired: int = 0
 
 
 func _ready() -> void:
 	UiLayout.fill_rect(self)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sparks = CPUParticles2D.new()
+	_sparks.name = "MilestoneSparks"
+	_sparks.position = SPARK_ORIGIN
+	_sparks.one_shot = true
+	_sparks.emitting = false
+	_sparks.explosiveness = 1.0
+	_sparks.lifetime = SPARK_LIFETIME
+	_sparks.local_coords = false
+	_sparks.direction = Vector2.UP
+	_sparks.spread = 180.0
+	_sparks.gravity = Vector2.ZERO
+	_sparks.initial_velocity_min = SPARK_VEL_MIN
+	_sparks.initial_velocity_max = SPARK_VEL_MAX
+	_sparks.texture = UiKit.glow_texture()
+	_sparks.material = UiKit.additive_material()
+	_sparks.scale_amount_min = SPARK_SCALE_MIN
+	_sparks.scale_amount_max = SPARK_SCALE_MAX
+	_sparks.color = Palette.SONAR_PALE
+	var fade := Gradient.new()
+	fade.set_color(0, Palette.WHITE)
+	fade.set_color(1, Palette.alpha(Palette.WHITE, 0.0))
+	_sparks.color_ramp = fade
+	add_child(_sparks)
+	UiKit.register_fx(self)
+	apply_effect_settings()
 
 
 func bind(score: HullScore) -> void:
 	score.combo_changed.connect(on_combo)
+	_combo = score.combo
+	queue_redraw()
 
 
+## Colour tier: 0 below 10, 1 for 10..49, 2 for 50..99, 3 for 100+ (glow).
 static func tier(n: int) -> int:
-	if n < MIN_SHOWN:
-		return 0
 	if n < 10:
-		return 1
+		return 0
 	if n < 50:
-		return 2
+		return 1
 	if n < 100:
-		return 3
-	return 4
+		return 2
+	return 3
 
 
-static func font_size_for(t: int) -> int:
-	return Palette.SIZE_HEADING if t <= 1 else Palette.SIZE_DISPLAY
+static func font_size_for(_t: int) -> int:
+	return Palette.SIZE_DISPLAY
 
 
 static func color_for(t: int) -> Color:
-	return Palette.TEXT if t <= 1 else Palette.ACCENT
+	match t:
+		0:
+			return Palette.TEXT_LO
+		1:
+			return Palette.TEXT_HI
+	return Palette.SONAR_PALE
 
 
-## Right edge of the number/caption/popup, derived from the trench (D-07).
+static func color_for_streak(n: int) -> Color:
+	return color_for(tier(n))
+
+
+static func glows(n: int) -> bool:
+	return tier(n) >= 3
+
+
+## Right edge of the numeral box on the left console (UI-SPEC 7.3).
 static func right_x() -> float:
-	return Trench.point(ANCHOR_F, 0.0).x - 24.0
+	return RIGHT_X
+
+
+static func spark_count(low: bool, reduce: bool) -> int:
+	if reduce:
+		return 0
+	return SPARKS_LOW if low else SPARKS_FULL
 
 
 func on_combo(value: int) -> void:
 	var old := _combo
 	_combo = value
-	if value < MIN_SHOWN:
-		_shown_since_msec = 0
-	elif old < MIN_SHOWN:
-		_shown_since_msec = Time.get_ticks_msec()
-	if value > old:
-		_pulse_msec = Time.get_ticks_msec()
+	if value < old:
+		_pulse_t = -1.0  # break: instant reset
+	elif value > old and value / 10 > old / 10 and not _reduce:
+		_pulse_t = 0.0
 	var m := StreakMilestones.reached(old, value)
 	if m > 0:
 		_popup_text = "%d STREAK" % m
-		_popup_born_msec = Time.get_ticks_msec()
+		_popup_age = 0.0
+		_fire_burst()
 	queue_redraw()
 
 
+func _fire_burst() -> void:
+	var n := spark_count(_low, _reduce)
+	if n > 0 and _sparks != null:
+		if _sparks.amount != n:
+			_sparks.amount = n
+		_sparks.restart()
+		_sparks_fired += 1
+	if highway != null and is_instance_valid(highway):
+		highway.flash_rails(RAIL_FLASH_ALPHA, RAIL_FLASH_SEC)
+
+
+## Effect contract (UI-SPEC 11): milestone sparks 24 Full / 8 Low / 0 Reduce; no pop under Reduce.
+func apply_effect_settings() -> void:
+	_low = Settings.low_effects
+	_reduce = Settings.reduce_motion
+	if _reduce:
+		_pulse_t = -1.0
+	var n := spark_count(_low, _reduce)
+	if _sparks != null and n > 0 and _sparks.amount != n:
+		_sparks.amount = n
+	queue_redraw()
+
+
+func effect_counts() -> Dictionary:
+	return {"milestone_sparks": spark_count(_low, _reduce)}
+
+
+func sparks() -> CPUParticles2D:
+	return _sparks
+
+
+func sparks_fired() -> int:
+	return _sparks_fired
+
+
+## Always true: the streak is a cockpit instrument (kept for the harness/tests API).
 func is_counter_visible() -> bool:
-	return _combo >= MIN_SHOWN
+	return true
 
 
 func popup_text() -> String:
@@ -89,92 +195,131 @@ func number_text() -> String:
 	return ("%" + str(NUM_CHARS) + "d") % _combo
 
 
-func _popup_age() -> float:
-	return float(Time.get_ticks_msec() - _popup_born_msec) / 1000.0
+func numeral_scale() -> float:
+	if _pulse_t < 0.0:
+		return 1.0
+	var k := clampf(_pulse_t / PULSE_SEC, 0.0, 1.0)
+	return 1.0 + (PULSE_PEAK - 1.0) * sin(PI * k)
+
+
+## Fixed numeral box (identical for every value, so nothing shifts).
+func numeral_box() -> Rect2:
+	var f := Palette.display_font()
+	var fs := Palette.SIZE_DISPLAY
+	var w := maxf(UiKit.fixed_number_box(f, fs, BOX_DIGITS), BOX_MIN_W)
+	var asc := f.get_ascent(fs)
+	return Rect2(RIGHT_X - w, NUMBER_BASE_Y - asc, w, asc + f.get_descent(fs))
+
+
+func _caption_rect() -> Rect2:
+	var f := Palette.font()
+	var fs := Palette.SIZE_LABEL
+	var w := f.get_string_size(CAPTION, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var asc := f.get_ascent(fs)
+	return Rect2(CAPTION_POS.x, CAPTION_POS.y - asc, w, asc + f.get_descent(fs))
+
+
+func _popup_rect() -> Rect2:
+	var f := Palette.display_font()
+	var fs := Palette.SIZE_HEADING
+	var w := f.get_string_size(POPUP_SAMPLE, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x * POPUP_POP_FROM
+	var top := POPUP_BASE_Y - POPUP_RISE - f.get_ascent(fs) * POPUP_POP_FROM
+	var x0 := maxf(POPUP_CX - w * 0.5, 0.0)
+	var x1 := minf(POPUP_CX + w * 0.5, 400.0)
+	return Rect2(x0, top, x1 - x0, POPUP_BASE_Y + f.get_descent(fs) - top)
+
+
+static func _rect_poly(r: Rect2, xf: Transform2D) -> PackedVector2Array:
+	return xf * PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end,
+		Vector2(r.position.x, r.end.y)])
+
+
+## W4 contract for full-screen canvases: global polygons of everything this node draws
+## (numeral box, caption, milestone popup area).
+func keepout_shapes() -> Array[PackedVector2Array]:
+	var xf := get_global_transform()
+	var out: Array[PackedVector2Array] = []
+	for r in [numeral_box(), _caption_rect(), _popup_rect()]:
+		out.append(_rect_poly(r, xf))
+	return out
 
 
 func _popup_life() -> float:
-	if Settings.reduce_motion:
+	if _reduce:
 		return POPUP_STATIC_SEC + POPUP_STATIC_FADE
 	return POPUP_SEC
 
 
-func _animating() -> bool:
-	var now := Time.get_ticks_msec()
-	if _popup_text != "" and _popup_age() < _popup_life():
-		return true
-	if is_counter_visible() and not Settings.reduce_motion:
-		if float(now - _shown_since_msec) / 1000.0 < FADE_IN_SEC:
-			return true
-		if float(now - _pulse_msec) / 1000.0 < PULSE_SEC:
-			return true
-	return false
-
-
-func _process(_delta: float) -> void:
-	if _animating():
-		queue_redraw()
-	elif _popup_text != "" and _popup_age() >= _popup_life():
-		_popup_text = ""
+func _process(delta: float) -> void:
+	var dirty := false
+	if _pulse_t >= 0.0:
+		_pulse_t += delta
+		if _pulse_t >= PULSE_SEC:
+			_pulse_t = -1.0
+		dirty = true
+	if _popup_text != "":
+		_popup_age += delta
+		if _popup_age >= _popup_life():
+			_popup_text = ""
+		dirty = true
+	if dirty:
 		queue_redraw()
 
 
 func _draw() -> void:
-	var now := Time.get_ticks_msec()
-	if is_counter_visible():
-		_draw_counter(now)
+	_draw_counter()
 	if _popup_text != "":
 		_draw_popup()
 
 
-func _draw_counter(now: int) -> void:
-	var t := tier(_combo)
-	var size := font_size_for(t)
-	var col := color_for(t)
-	var a := 1.0
-	var scale_f := 1.0
-	if not Settings.reduce_motion:
-		var since := float(now - _shown_since_msec) / 1000.0
-		a = clampf(since / FADE_IN_SEC, 0.0, 1.0)
-		var p := float(now - _pulse_msec) / 1000.0
-		if p < PULSE_SEC:
-			scale_f = 1.0 + 0.1 * sin(PI * p / PULSE_SEC)
-	var font := Palette.bold()
-	var text := number_text()
-	var rx := right_x()
-	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	# Scale about the number's right baseline so the box does not shift.
-	var pivot := Vector2(rx, NUMBER_BASE_Y)
-	draw_set_transform(pivot - pivot * scale_f, 0.0, Vector2(scale_f, scale_f))
-	var pos := Vector2(rx - w, NUMBER_BASE_Y)
-	if t >= 3:
-		draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 6, Palette.alpha(Palette.ACCENT, 0.3 * a))
-	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Palette.alpha(col, a))
-	if t >= 4:
-		draw_rect(Rect2(rx - w, NUMBER_BASE_Y + 8.0, w, 2.0), Palette.alpha(Palette.ACCENT, a))
-	var cap_font := Palette.font()
-	var cw := cap_font.get_string_size(CAPTION, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL).x
-	draw_string(cap_font, Vector2(rx - cw, CAPTION_BASE_Y), CAPTION, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.alpha(CAPTION_COLOR, a))
+func _draw_counter() -> void:
+	var f := Palette.display_font()
+	var fs := font_size_for(tier(_combo))
+	var col := color_for_streak(_combo)
+	var text := str(_combo)
+	var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var s := numeral_scale()
+	draw_set_transform(PULSE_PIVOT - PULSE_PIVOT * s, 0.0, Vector2(s, s))
+	var pos := Vector2(RIGHT_X - w, NUMBER_BASE_Y)
+	if glows(_combo) and not _low:
+		draw_string_outline(f, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, TEXT_GLOW_PX,
+			Palette.alpha(col, TEXT_GLOW_ALPHA))
+	draw_string(f, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	draw_string(Palette.font(), CAPTION_POS, CAPTION, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL,
+		Palette.TEXT_LO)
+
+
+static func _ease_out_back(k: float) -> float:
+	var c1 := 1.70158
+	var c3 := c1 + 1.0
+	return 1.0 + c3 * pow(k - 1.0, 3.0) + c1 * pow(k - 1.0, 2.0)
 
 
 func _draw_popup() -> void:
-	var age := _popup_age()
+	var age := _popup_age
 	var a := 1.0
 	var rise := 0.0
-	if Settings.reduce_motion:
+	var s := 1.0
+	if _reduce:
 		if age > POPUP_STATIC_SEC:
 			a = clampf(1.0 - (age - POPUP_STATIC_SEC) / POPUP_STATIC_FADE, 0.0, 1.0)
 	else:
 		var k := clampf(age / POPUP_SEC, 0.0, 1.0)
-		var e := 1.0 - (1.0 - k) * (1.0 - k)  # ease-out
-		rise = POPUP_RISE * e
+		rise = POPUP_RISE * (1.0 - (1.0 - k) * (1.0 - k))  # ease-out
 		a = 1.0 - k
+		var kp := clampf(age / POPUP_POP_SEC, 0.0, 1.0)
+		s = lerpf(POPUP_POP_FROM, 1.0, _ease_out_back(kp))
 	if a <= 0.0:
 		return
-	var font := Palette.bold()
-	var size := Palette.SIZE_HEADING
+	var f := Palette.display_font()
+	var fs := Palette.SIZE_HEADING
 	var text := _popup_text.to_upper()
-	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	var pos := Vector2(right_x() - w, POPUP_BASE_Y - rise)
-	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Palette.alpha(Palette.ACCENT, a))
+	var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var anchor := Vector2(POPUP_CX, POPUP_BASE_Y - rise)
+	draw_set_transform(anchor, 0.0, Vector2(s, s))
+	var pos := Vector2(-w * 0.5, 0.0)
+	draw_string_outline(f, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, POPUP_OUTLINE_PX,
+		Palette.alpha(Palette.KEYLINE, Palette.KEYLINE.a * a))
+	draw_string(f, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Palette.alpha(Palette.SONAR_PALE, a))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

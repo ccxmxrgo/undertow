@@ -21,7 +21,6 @@ const PENDING_MIGRATION: Array[String] = [
 	"res://src/ui/hud.gd",
 	"res://src/ui/settings_screen.gd",
 	"res://src/ui/song_select.gd",
-	"res://src/ui/streak_counter.gd",
 ]
 
 const SCRIPT_PATTERN := "Color\\(\\s*\"|Color\\(\\s*[0-9.]|Color8\\(|Color\\.(?!TRANSPARENT\\b)[A-Z][A-Z_0-9]*\\b"

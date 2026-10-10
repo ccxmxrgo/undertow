@@ -157,7 +157,7 @@ func test_arena_and_streak_layering_and_restart() -> void:
 		assert_int((board[i] as Node).get_index()).is_less((board[i + 1] as Node).get_index())
 	assert_object(gp.board_root.get_parent()).is_same(gp._run_root)
 	assert_int(gp.board_root.mouse_filter).is_equal(Control.MOUSE_FILTER_IGNORE)
-	var order := [gp.board_root, gp.hud, gp.streak_counter, gp.pause_menu]
+	var order := [gp.board_root, gp.cockpit_frame, gp.hud, gp.streak_counter, gp.pause_menu]
 	for n in order:
 		assert_object((n as Node).get_parent()).is_same(gp._run_root)
 	for i in range(order.size() - 1):
@@ -169,9 +169,11 @@ func test_arena_and_streak_layering_and_restart() -> void:
 	assert_object(gp.highway_notes.highway).is_same(gp.highway)
 	gp.score.combo_changed.emit(10)
 	assert_str(gp.streak_counter.popup_text()).is_equal("10 STREAK")
+	assert_object(gp.streak_counter.highway).is_same(gp.highway)
+	assert_object(gp.hud.multiplier_ring.get_parent()).is_same(gp.hud)
 	gp.restart(false)
 	await get_tree().process_frame
-	for cls in [Arena, StreakCounter]:
+	for cls in [Arena, StreakCounter, CockpitFrame]:
 		var n := 0
 		for ch in gp._run_root.get_children() + gp.board_root.get_children():
 			if is_instance_of(ch, cls):

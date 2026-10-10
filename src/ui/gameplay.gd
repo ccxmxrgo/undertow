@@ -38,6 +38,8 @@ var highway_notes: HighwayNotes
 ## One Control holding Arena, Highway, FxLayer, Feedback, HighwayNotes (in that order): the board
 ## moves as one on the FxLayer Miss shake; Hud and StreakCounter stay outside it.
 var board_root: Control
+## Static cockpit consoles and bezels (02.2-12) between BoardRoot and the Hud.
+var cockpit_frame: CockpitFrame
 var hud: Hud
 var arena: Arena
 var streak_counter: StreakCounter
@@ -149,6 +151,9 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	highway_notes = HighwayNotes.new()
 	board_root.add_child(highway_notes)
 	highway_notes.bind(highway)
+	cockpit_frame = CockpitFrame.new()  # static frame: above the board, below the HUD
+	cockpit_frame.name = "CockpitFrame"
+	_run_root.add_child(cockpit_frame)
 	hud = Hud.new()
 	_run_root.add_child(hud)
 	hud.bind(score)
@@ -156,6 +161,7 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	streak_counter = StreakCounter.new()
 	_run_root.add_child(streak_counter)
 	streak_counter.bind(score)
+	streak_counter.highway = highway  # milestone rail flash
 	_autoplay_player = Autoplay.new(chart, judge) if autoplay else null
 	_end_time = 0.0
 	for n in chart.notes:

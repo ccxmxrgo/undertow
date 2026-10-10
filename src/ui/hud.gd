@@ -1,9 +1,10 @@
 class_name Hud
 extends Control
-## Minimal floating HUD (01.2 D-07). Depth + small multiplier/perfect-streak column right of the
-## board, thin hull arc under it, badges below the column. Nothing persistent in the outer 32 px.
-## The streak number itself is drawn by StreakCounter; combo_value/hull_value stay as hidden live
-## labels so the label API (tests/harness) keeps working.
+## Cockpit HUD. Left console (02.2-12, UI-SPEC 7.3): MultiplierRing, PERFECT caption + perfect
+## streak value, empty TorpedoSocket (the big streak numeral is StreakCounter). Right side (depth,
+## badges) and the hull arc are still the 01.2 layout until plan 13.
+## combo_value/hull_value/hull_caption/mult_value/streak_value stay as hidden live labels so the
+## label API (tests/harness) keeps working.
 ## Hull critical = red AND a pulsing arc AND the "HULL CRITICAL" caption AND a 30% tick, so it
 ## never relies on colour alone.
 
@@ -20,8 +21,10 @@ const DEPTH_COLOR := Color("05D9E8")
 const BADGE_COLOR := Color("8FD98A")
 const BADGE_Y_FIRST := 861.0
 const BADGE_Y_SECOND := 905.0
-const PULSE_SEC := 0.08
-const PULSE_SCALE := 1.1
+const PERFECT_CAPTION := "PERFECT"
+const PERFECT_CAPTION_POS := Vector2(264.0, 852.0)
+const PERFECT_BASE_Y := 896.0
+const PERFECT_RIGHT_X := 356.0  # 4-digit box 264..356
 const DAMAGE_FLASH_USEC := 200000
 const SHRINK_TAU := 0.05  # ~150 ms to settle
 const CRITICAL_PULSE_HZ := 3.0
@@ -33,6 +36,8 @@ var depth_value: Label
 var combo_value: Label
 var mult_value: Label
 var streak_value: Label
+var multiplier_ring: MultiplierRing
+var torpedo_socket: TorpedoSocket
 
 var _score: HullScore
 var _hull: float = 100.0
@@ -40,7 +45,7 @@ var _shown_hull: float = 100.0
 var _flash_until: int = 0
 var _no_fail: bool = false
 var _autoplay: bool = false
-var _pulses: Dictionary = {}  # Label -> Tween
+var _perfect: int = 0
 
 
 func _ready() -> void:
@@ -57,14 +62,19 @@ func _ready() -> void:
 	_make_caption(Vector2(COL_X, 723.0), "DEPTH", 320.0)
 	combo_value = _make_label(Vector2(COL_X, 700.0), Vector2(120.0, 48.0), "0", true, HORIZONTAL_ALIGNMENT_LEFT)
 	combo_value.visible = false
-	_make_caption(Vector2(COL_X, 763.0), "MULTIPLIER", 164.0)
+	# Hidden live labels; the visible multiplier is the ring, the perfect streak is drawn in _draw.
 	mult_value = _make_label(Vector2(VAL_X, 763.0), Vector2(120.0, 30.0), "x1", false, HORIZONTAL_ALIGNMENT_LEFT)
-	mult_value.add_theme_color_override("font_color", Palette.REC_TEXT)
-	_make_caption(Vector2(COL_X, 795.0), "PERFECT STREAK", 164.0)
+	mult_value.visible = false
 	streak_value = _make_label(Vector2(VAL_X, 795.0), Vector2(120.0, 30.0), "0", false, HORIZONTAL_ALIGNMENT_LEFT)
-	streak_value.add_theme_color_override("font_color", Palette.ACCENT)
-	for l in [combo_value, mult_value, streak_value]:
-		l.pivot_offset = Vector2(0.0, 15.0)
+	streak_value.visible = false
+	multiplier_ring = MultiplierRing.new()
+	multiplier_ring.name = "MultiplierRing"
+	add_child(multiplier_ring)
+	torpedo_socket = TorpedoSocket.new()
+	torpedo_socket.name = "TorpedoSocket"
+	add_child(torpedo_socket)
+	if _score != null:
+		multiplier_ring.bind(_score)
 	_refresh_all()
 
 
@@ -80,6 +90,8 @@ func bind(score: HullScore, p_hull_max: float = 100.0) -> void:
 	score.multiplier_changed.connect(_on_multiplier_changed)
 	score.streak_changed.connect(_on_streak_changed)
 	score.score_changed.connect(_on_score_changed)
+	if multiplier_ring != null:
+		multiplier_ring.bind(score)
 	if is_node_ready():
 		_refresh_all()
 
@@ -127,7 +139,9 @@ func _refresh_all() -> void:
 	combo_value.text = str(_score.combo)
 	mult_value.text = "x%d" % _score.multiplier()
 	streak_value.text = str(_score.perfect_streak)
+	_perfect = _score.perfect_streak
 	_update_hull_text()
+	queue_redraw()
 
 
 func depth_text(meters: float) -> String:
@@ -157,33 +171,21 @@ func _on_hull_changed(value: float, delta: float) -> void:
 
 func _on_combo_changed(value: int) -> void:
 	combo_value.text = str(value)
-	_pulse(combo_value)
 
 
 func _on_multiplier_changed(value: int) -> void:
 	mult_value.text = "x%d" % value
-	_pulse(mult_value)
 
 
 func _on_streak_changed(value: int) -> void:
 	streak_value.text = str(value)
-	_pulse(streak_value)
+	_perfect = value
+	queue_redraw()
 
 
 func _on_score_changed(_value: int) -> void:
 	if _score != null:
 		depth_value.text = depth_text(_score.depth())  # depth never pulses
-
-
-func _pulse(l: Label) -> void:
-	if Settings.reduce_motion or not is_inside_tree():
-		return
-	if _pulses.has(l) and is_instance_valid(_pulses[l]):
-		(_pulses[l] as Tween).kill()
-	l.scale = Vector2(PULSE_SCALE, PULSE_SCALE)
-	var tw := create_tween()
-	tw.tween_property(l, "scale", Vector2.ONE, PULSE_SEC).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
-	_pulses[l] = tw
 
 
 func _process(delta: float) -> void:
@@ -233,6 +235,7 @@ func _draw() -> void:
 	var dir := Vector2(cos(ang), sin(ang))
 	var mid := ARC_CENTER + dir * ARC_RADIUS
 	draw_line(mid - dir * 6.0, mid + dir * 6.0, Palette.DESTRUCTIVE, 2.0)
+	_draw_perfect()
 	var row := 0
 	if _no_fail:
 		_draw_badge("NO-FAIL", BADGE_Y_FIRST)
@@ -244,3 +247,19 @@ func _draw() -> void:
 func _draw_badge(text: String, y: float) -> void:
 	draw_rect(Rect2(COL_X, y, 144.0, 32.0), BADGE_COLOR, false, 2.0)
 	draw_string(Palette.font(), Vector2(COL_X, y + 22.0), text, HORIZONTAL_ALIGNMENT_CENTER, 144.0, Palette.SIZE_LABEL, Palette.REC_TEXT)
+
+
+## Left console perfect streak (UI-SPEC 7.3): caption at (264, 852), Heading 40 Oxanium
+## SONAR_PALE value right-aligned in the 4-digit box 264..356, baseline 896.
+func _draw_perfect() -> void:
+	draw_string(Palette.font(), PERFECT_CAPTION_POS, PERFECT_CAPTION, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		Palette.SIZE_LABEL, Palette.TEXT_LO)
+	var f := Palette.display_font()
+	var text := perfect_text()
+	var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_HEADING).x
+	draw_string(f, Vector2(PERFECT_RIGHT_X - w, PERFECT_BASE_Y), text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		Palette.SIZE_HEADING, Palette.SONAR_PALE)
+
+
+func perfect_text() -> String:
+	return str(_perfect)
