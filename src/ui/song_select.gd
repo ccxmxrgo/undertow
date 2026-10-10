@@ -60,13 +60,28 @@ const INFO_W := 472.0
 const STAT_X: Array[float] = [1360.0, 1520.0, 1680.0]
 const STAT_W := 152.0
 const BEST_X: Array[float] = [1080.0, 1336.0, 1592.0]
-
-const C_PANEL := Color("0D1424")
-const C_SEL := Color("123A52")
-const C_BORDER := Color("1E8CB4")
-const C_TEAL := Color("05D9E8")
-const C_TEXT := Color("E8E6F0")
-const C_CAP := Color("8A93AD")
+## Sections block (UI-SPEC 6): caption + count chip, strip with a tick per section start, names.
+const SECTIONS_BASELINE := 688.0
+const SECTION_STRIP := Rect2(1080.0, 700.0, 752.0, 8.0)
+const SECTION_TICK_W := 2.0
+const SECTION_NAMES_BASELINE := 736.0
+const SECTION_NAMES_W := 752.0
+const NO_SECTIONS := "No section markers in this chart."
+## Parsed sections kept per song id (selected songs only; oldest dropped first).
+const SECTION_CACHE_MAX := 64
+## Glass rows (UI-SPEC 6): idle ABYSS_700 60% + SONAR 30% edge; hover edge SONAR 60%;
+## selected = button focus style (ABYSS_600 92%, SONAR edge) plus marker bar and caret.
+const ROW_FILL_A := 0.6
+const ROW_EDGE_A := 0.3
+const ROW_HOVER_EDGE_A := 0.6
+const ROW_SEL_FILL_A := 0.92
+const ROW_H := 72.0
+## Detail-panel sonar decoration: static rings / crosshair and the sweep + ping (Full only).
+const SONAR_CENTER := Vector2(1456.0, 512.0)
+const SONAR_RING_A := 0.07
+const SONAR_CROSS_A := 0.05
+const SWEEP_A := 0.08
+const PING_A := 0.2
 
 ## Run flags set by MainMenu; reset when Song Select exits (a dive copies them first).
 static var run_autoplay: bool = false
@@ -90,6 +105,8 @@ var library: Node
 var preview_loader: Callable = Callable()
 ## Test seam: Callable(lo_hz, hi_hz) -> float linear magnitude. Defaults to the Preview bus analyzer.
 var magnitude_source: Callable = Callable()
+## Callable(entry) -> Array of {time, name}, run on a worker thread. Defaults to parse_sections.
+var section_loader: Callable = Callable()
 
 var _all: Array[SongEntry] = []
 ## id -> index in _all (rescans replace entries in place instead of clearing the list).
@@ -156,6 +173,19 @@ var _preview_tasks: Array[int] = []
 var _viz_levels := PackedFloat32Array()
 var _viz_edges := PackedFloat32Array()
 var _reduce: bool = false
+var _low: bool = false
+var _sweep: bool = true
+
+# sections (lazy, selected song only, parsed on a worker, cached per song id, stale dropped)
+var _sections_id: String = ""
+var _sections: Array = []
+var _sections_state: String = "none"
+var _section_request: int = 0
+var _section_cache: Dictionary = {}
+var _section_tasks: Array[int] = []
+
+# cached button styles (rebuilt in apply_effect_settings: Low effects drops the focus glow)
+var _btn_styles: Dictionary = {}
 
 # album cover (D-11): selected song only, worker-loaded, never while the library scans
 var _cover: AlbumCover
@@ -165,7 +195,7 @@ var _cover_fade: float = 0.0
 var _cover_tween: Tween
 var _cover_wait: bool = false
 
-var _arena: Arena
+var _backdrop: AbyssBackdrop
 var _panes: Array[Pane] = []
 var _p_header: Pane
 var _p_filter: Pane
@@ -186,14 +216,15 @@ func _ready() -> void:
 		library = get_node_or_null("/root/SongLibrary")
 	_make_fonts()
 	_cover = AlbumCover.new()
-	_arena = Arena.new()
-	_arena.menu_mode = true
-	_arena.name = "Arena"
-	add_child(_arena)
+	_backdrop = AbyssBackdrop.new()
+	_backdrop.variant = "table"
+	_backdrop.name = "Backdrop"
+	add_child(_backdrop)
 	_p_header = _pane("Header", Rect2(64, 64, 700, 48), _paint_header)
 	_p_filter = _pane("FilterField", Rect2(64, 120, 944, 48), _paint_filter)
 	_p_sort = _pane("SortChip", SORT_RECT, _paint_sort)
-	_p_list = _pane("SongList", Rect2(LIST_X, LIST_Y, 976, 720), _paint_list)
+	# Starts 32 px left of the rows so the selected row's caret (12 px outside its edge) shows.
+	_p_list = _pane("SongList", Rect2(LIST_X - 32.0, LIST_Y, 1008, 720), _paint_list)
 	_p_list.clip_contents = true
 	_p_detail = _pane("DetailPanel", PANEL_RECT, _paint_detail)
 	_p_detail.clip_contents = true
@@ -233,6 +264,7 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	_stop_preview(false)
 	_reap_preview_tasks(true)
+	_reap_section_tasks(true)
 	if _cover != null:
 		_cover.shutdown()
 	if library != null:
@@ -301,6 +333,8 @@ func _on_scan_started() -> void:
 	_scan_done = 0
 	_scan_total = 0
 	_scan_label = ""
+	# Charts may change on disk; parse sections again after the rescan (the shown list stays).
+	_section_cache = {}
 
 
 func _on_entries_added(batch: Array) -> void:
@@ -478,6 +512,103 @@ func _selection_changed() -> void:
 	var can_preview := e != null and e.status != "broken" 			and (not e.audio_files.is_empty() or preview_loader.is_valid())
 	_preview_state = "pending" if can_preview else "none"
 	_request_cover()
+	_request_sections()
+
+
+# ---- sections (UI-SPEC 6, T-02.2-50) ----
+
+func _section_loader_fn() -> Callable:
+	if section_loader.is_valid():
+		return section_loader
+	return func(e: SongEntry) -> Array: return SongSelect.parse_sections(e)
+
+
+## Sections of the selected song: cached per song id, otherwise parsed on a worker. Only
+## playable songs are parsed; a newer selection makes older results stale (request id).
+func _request_sections() -> void:
+	var e := _selected()
+	var id := e.id if e != null else ""
+	if id != "" and id == _sections_id and _sections_state != "none":
+		return
+	_sections_id = id
+	_section_request += 1
+	_sections = []
+	if e == null or e.status != "ok":
+		_sections_state = "none"
+		return
+	if _section_cache.has(id):
+		_sections = _section_cache[id]
+		_sections_state = "ready"
+		return
+	_sections_state = "loading"
+	var req := _section_request
+	var loader := _section_loader_fn()
+	_section_tasks.append(WorkerThreadPool.add_task(func() -> void:
+		var secs: Variant = loader.call(e)
+		sections_loaded.call_deferred(req, e.id, secs if secs is Array else [])))
+
+
+## Worker result (main thread). Dropped unless it answers the current request for the
+## currently selected song.
+func sections_loaded(req: int, id: String, secs: Array) -> void:
+	if not SongListModel.accept_result(req, _section_request) or id != _sections_id \
+			or _sections_state != "loading":
+		return
+	_sections = secs
+	_section_cache[id] = secs
+	while _section_cache.size() > SECTION_CACHE_MAX:
+		_section_cache.erase(_section_cache.keys()[0])
+	_sections_state = "ready"
+
+
+func _reap_section_tasks(all: bool) -> void:
+	var keep: Array[int] = []
+	for tid in _section_tasks:
+		if all or WorkerThreadPool.is_task_completed(tid):
+			WorkerThreadPool.wait_for_task_completion(tid)
+		else:
+			keep.append(tid)
+	_section_tasks = keep
+
+
+## [{time, name}] from the chart's [Events] "section" lines (sanitized and capped by
+## ChartImporter). Worker-safe: no tree access. Unplayable, missing, oversized or
+## unparsable charts give [].
+static func parse_sections(e: SongEntry) -> Array:
+	if e == null or e.status != "ok" or e.chart_path == "":
+		return []
+	if not FileAccess.file_exists(e.chart_path):
+		return []
+	var f := FileAccess.open(e.chart_path, FileAccess.READ)
+	if f == null or f.get_length() > ChartParser.MAX_BYTES:
+		return []
+	var parsed := ChartParser.parse_bytes(f.get_buffer(f.get_length()))
+	f.close()
+	if not parsed.ok:
+		return []
+	var diff := "expert"
+	if not e.difficulties.is_empty():
+		diff = str(e.difficulties[0].get("name", "expert"))
+	var chart := ChartImporter.build(parsed, diff, e.delay_ms)
+	return chart.sections.duplicate(true)
+
+
+## Left x of a section's 2 px tick on the strip (time over the song length, clamped).
+static func section_tick_x(time_sec: float, length_sec: float) -> float:
+	if length_sec <= 0.0:
+		return SECTION_STRIP.position.x
+	var k := clampf(time_sec / length_sec, 0.0, 1.0)
+	return minf(SECTION_STRIP.position.x + SECTION_STRIP.size.x * k, SECTION_STRIP.end.x - SECTION_TICK_W)
+
+
+## Names joined with ", ", cut with "..." at SECTION_NAMES_W; the empty-state line when none.
+func section_names_text(secs: Array) -> String:
+	if secs.is_empty():
+		return NO_SECTIONS
+	var names := PackedStringArray()
+	for s in secs:
+		names.append(str(s.get("name", "")))
+	return _fit(", ".join(names), Palette.SIZE_LABEL, SECTION_NAMES_W)
 
 
 ## Shows the generated cover at once and asks AlbumCover for the selected song's art. While
@@ -882,6 +1013,7 @@ func _process(delta: float) -> void:
 		_message_kind = ""
 	tick_preview(Time.get_ticks_msec())
 	_reap_preview_tasks(false)
+	_reap_section_tasks(false)
 	step_visualizer(delta)
 	if _cover != null:
 		_cover.reap(false)
@@ -1062,14 +1194,20 @@ func step_visualizer(delta: float) -> void:
 
 func apply_effect_settings() -> void:
 	_reduce = UiKit.reduce_motion()
+	_low = UiKit.low_effects()
+	_sweep = not (_low or _reduce)
+	_btn_styles = {}
+	for st in UiKit.BUTTON_STATES:
+		for v in ["default", "primary"]:
+			_btn_styles["%s|%s" % [st, v]] = UiKit.style_button(st, v, _low)
 
 
 ## visualizer_animated: bars follow the music (off under Reduce motion; Low keeps them).
-## sweep: the detail-panel sonar sweep (off in Low and under Reduce motion; restyled in plan 19).
+## sweep: the detail-panel sonar sweep and ping ring (UI-SPEC 11: off in Low and under Reduce motion).
 func effect_counts() -> Dictionary:
 	return {
 		"visualizer_animated": not _reduce,
-		"sweep": not (UiKit.low_effects() or _reduce),
+		"sweep": _sweep,
 	}
 
 
@@ -1092,7 +1230,15 @@ func debug_state() -> Dictionary:
 		"onboarding": _view.has(null),
 		"cover": "art" if _cover_art != null else "generated",
 		"tiles": tile_states(_selected()),
+		"sections": _sections_debug(),
 	}
+
+
+func _sections_debug() -> Dictionary:
+	var names: Array = []
+	for s in _sections:
+		names.append(str(s.get("name", "")))
+	return {"state": _sections_state, "count": _sections.size(), "names": names}
 
 
 func set_filter_for_test(text: String) -> void:
@@ -1186,52 +1332,69 @@ func _fit_font(f: Font, tag: String, s: String, size: int, max_w: float) -> Stri
 	return out
 
 
-func _box(c: CanvasItem, r: Rect2, fill: Color, border: Color, bw: float) -> void:
+## Chamfered (TL / BR cut) fill and 2 px edge, the glass-row / field shape.
+func _chamfer(c: CanvasItem, r: Rect2, fill: Color, edge: Color, cut: float = float(Palette.CUT_SM)) -> void:
+	var pts := UiKit.chamfer_points(r, cut)
 	if fill.a > 0.0:
-		c.draw_rect(r, fill)
-	if bw > 0.0 and border.a > 0.0:
-		c.draw_rect(r.grow(-bw * 0.5), border, false, bw)
+		c.draw_colored_polygon(pts, fill)
+	if edge.a > 0.0:
+		var e := UiKit.chamfer_points(r.grow(-Palette.EDGE * 0.5), cut)
+		e.append(e[0])
+		c.draw_polyline(e, edge, Palette.EDGE, true)
 
 
-func _outline_badge(c: CanvasItem, x: float, base_y: float, label: String) -> float:
-	var w := _w(label, Palette.SIZE_LABEL) + 16.0
-	var r := Rect2(x, base_y - 24.0, w, 32.0)
-	c.draw_rect(r.grow(-1.0), Palette.TEXT, false, 2.0)
-	_txt(c, Vector2(x + 8.0, base_y - 2.0), label, Palette.SIZE_LABEL, Palette.TEXT)
+## Chip (UI-SPEC 4.4) with its natural width, vertically centred on `cy`. Returns the width.
+func _chip(c: CanvasItem, x: float, cy: float, label: String, variant: String) -> float:
+	var w := UiKit.chip_width(label, variant)
+	UiKit.draw_chip(c, Rect2(x, cy - UiKit.CHIP_H * 0.5, w, UiKit.CHIP_H), label, variant)
 	return w
 
 
+## Row badge text and chip variant: TEST = mode, NEEDS A CHART = info (UI-SPEC 6).
+static func row_badge(e: SongEntry) -> Array:
+	if e.source == "test":
+		return ["TEST", "mode"]
+	if e.status == "needs_chart":
+		return ["NEEDS A CHART", "info"]
+	return ["", ""]
+
+
+## Row fill / edge (UI-SPEC 6): selected = button focus style, others glass rows.
+static func row_colors(selected: bool, hover: bool) -> Dictionary:
+	if selected:
+		return {"fill": Palette.alpha(Palette.ABYSS_600, ROW_SEL_FILL_A), "edge": Palette.SONAR}
+	return {"fill": Palette.alpha(Palette.ABYSS_700, ROW_FILL_A),
+		"edge": Palette.alpha(Palette.SONAR, ROW_HOVER_EDGE_A if hover else ROW_EDGE_A)}
+
+
 func _paint_header(c: CanvasItem) -> void:
-	_txt(c, Vector2(64, 104), "SELECT SONG", Palette.SIZE_HEADING, C_TEXT, true)
+	c.draw_string(_heading, Vector2(64, 104), "SELECT SONG", HORIZONTAL_ALIGNMENT_LEFT, -1.0,
+			Palette.SIZE_HEADING, Palette.TEXT_HI)
 	var x := 384.0
 	if run_practice:
-		x += _outline_badge(c, x, 100.0, "PRACTICE DIVE") + 8.0
+		x += _chip(c, x, 88.0, "PRACTICE DIVE", "mode") + Palette.SP_SM
 	if run_autoplay:
-		_outline_badge(c, x, 100.0, "AUTOPLAY")
+		_chip(c, x, 88.0, "AUTOPLAY", "mode")
 
 
 func _paint_sort(c: CanvasItem) -> void:
 	var label := SongListModel.sort_label(_sort)
-	var prefix := "SORT: "
-	var value := label.trim_prefix(prefix)
-	var total := _w(label, Palette.SIZE_LABEL)
-	var x := 1008.0 - total
-	_txt(c, Vector2(x, 100), prefix, Palette.SIZE_LABEL, C_CAP)
-	_txt(c, Vector2(x + _w(prefix, Palette.SIZE_LABEL), 100), value, Palette.SIZE_LABEL, C_TEXT)
+	var w := UiKit.chip_width(label, "info")
+	_chip(c, 1008.0 - w, 88.0, label, "info")
 
 
 func _paint_filter(c: CanvasItem) -> void:
 	var r := Rect2(64, 120, 944, 48)
 	var active := _filter != ""
-	_box(c, r, Color(C_PANEL, 0.6), Color(C_TEAL, 0.6) if active else Color(C_BORDER, 0.35), 2.0)
+	var edge := Palette.SONAR if active else Palette.alpha(Palette.SONAR, ROW_EDGE_A)
+	_chamfer(c, r, Palette.alpha(Palette.ABYSS_700, 0.7 if not active else 0.85), edge)
 	if active:
-		_txt(c, Vector2(80, 156), _filter, Palette.SIZE_BODY, C_TEXT)
+		_txt(c, Vector2(80, 156), _filter, Palette.SIZE_BODY, Palette.TEXT_HI)
 		if Settings.reduce_motion or fmod(_t, 1.0) < 0.5:
-			c.draw_rect(Rect2(80.0 + _w(_filter, Palette.SIZE_BODY), 128.0, 2.0, 28.0), C_TEXT)
-		_txt_r(c, 992, 152, filter_count_text(), Palette.SIZE_LABEL, C_CAP)
+			c.draw_rect(Rect2(80.0 + _w(_filter, Palette.SIZE_BODY), 128.0, 2.0, 28.0), Palette.SONAR)
 	else:
-		_txt(c, Vector2(80, 156), "Type to search title or artist", Palette.SIZE_BODY, C_CAP)
-		_txt_r(c, 992, 152, filter_count_text(), Palette.SIZE_LABEL, C_CAP)
+		_txt(c, Vector2(80, 156), "Type to search title or artist", Palette.SIZE_BODY, Palette.TEXT_LO)
+	_txt_r(c, 992, 152, filter_count_text(), Palette.SIZE_LABEL, Palette.TEXT_LO)
 
 
 ## Right side of the filter field. Counts songs like the footer status does (the Calibration Track
@@ -1251,12 +1414,12 @@ func filter_count_text() -> String:
 
 
 func _paint_credits(c: CanvasItem) -> void:
-	_txt_r(c, 1856, 960, CREDITS, Palette.SIZE_LABEL, C_CAP)
+	_txt_r(c, 1856, 960, CREDITS, Palette.SIZE_LABEL, Palette.TEXT_LO)
 
 
 func _paint_fade(c: CanvasItem) -> void:
 	if _fade > 0.0:
-		c.draw_rect(Rect2(0, 0, 1920, 1080), Color(0, 0, 0, clampf(_fade, 0.0, 1.0)))
+		c.draw_rect(Rect2(0, 0, 1920, 1080), Palette.alpha(Palette.ABYSS_900, clampf(_fade, 0.0, 1.0)))
 
 
 # -- list --
@@ -1279,28 +1442,34 @@ func _paint_list(c: CanvasItem) -> void:
 			_paint_row(c, _view[i], y, i)
 	if _view.size() > ROWS:
 		var track := Rect2(1024, LIST_Y, 4, 720)
-		c.draw_rect(track, Color(0.91, 0.9, 0.94, 0.25))
+		c.draw_rect(track, Palette.alpha(Palette.ABYSS_500, 0.6))
 		var th := maxf(24.0, 720.0 * float(ROWS) / float(_view.size()))
 		var ty := LIST_Y + (720.0 - th) * (_scroll_vis / float(_view.size() - ROWS))
-		c.draw_rect(Rect2(1024, ty, 4, th), C_TEAL)
+		c.draw_rect(Rect2(1024, ty, 4, th), Palette.SONAR)
 
 
 func _paint_empty(c: CanvasItem, title: String, body: String, show_path: bool) -> void:
 	var cx := LIST_X + LIST_W * 0.5
-	var tw := _w(title, Palette.SIZE_HEADING, true)
-	_txt(c, Vector2(cx - tw * 0.5, 480), title, Palette.SIZE_HEADING, C_TEXT, true)
+	# A glass panel behind the empty state so the message reads over the backdrop.
+	var panel := Rect2(LIST_X, 400.0, LIST_W, 400.0 if show_path else 220.0)
+	_chamfer(c, panel, Palette.alpha(Palette.ABYSS_700, Palette.PANEL_ALPHA), Palette.alpha(Palette.SONAR, 0.45),
+			float(Palette.CUT_MD))
+	UiKit.draw_brackets(c, panel, Palette.alpha(Palette.SONAR, 0.8))
+	var tw := _heading.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1.0, Palette.SIZE_HEADING).x
+	c.draw_string(_heading, Vector2(cx - tw * 0.5, 480), title, HORIZONTAL_ALIGNMENT_LEFT, -1.0,
+			Palette.SIZE_HEADING, Palette.TEXT_HI)
 	var lines := _wrap(body, Palette.SIZE_BODY, 800.0)
 	var y := 540.0
 	for ln in lines.slice(0, 3):
 		var lw := _w(ln, Palette.SIZE_BODY)
-		_txt(c, Vector2(cx - lw * 0.5, y), ln, Palette.SIZE_BODY, C_CAP)
+		_txt(c, Vector2(cx - lw * 0.5, y), ln, Palette.SIZE_BODY, Palette.TEXT_MID)
 		y += 40.0
 	if show_path and library != null:
 		var cap := "Your Songs folder is:"
-		_txt(c, Vector2(cx - _w(cap, Palette.SIZE_LABEL) * 0.5, 620), cap, Palette.SIZE_LABEL, C_CAP)
+		_txt(c, Vector2(cx - _w(cap, Palette.SIZE_LABEL) * 0.5, 620), cap, Palette.SIZE_LABEL, Palette.TEXT_LO)
 		var py := 660.0
 		for ln in wrap_path(library.songs_dir(), Palette.SIZE_BODY, 800.0).slice(0, 3):
-			_txt(c, Vector2(cx - _w(ln, Palette.SIZE_BODY) * 0.5, py), ln, Palette.SIZE_BODY, C_TEXT)
+			_txt(c, Vector2(cx - _w(ln, Palette.SIZE_BODY) * 0.5, py), ln, Palette.SIZE_BODY, Palette.TEXT_HI)
 			py += 36.0
 
 
@@ -1350,8 +1519,9 @@ func _wrap(s: String, size: int, max_w: float) -> Array:
 
 
 func _paint_info_row(c: CanvasItem, y: float) -> void:
-	var r := Rect2(LIST_X, y, LIST_W, 72.0)
-	var col := Color(0.54, 0.58, 0.68, 0.35)
+	var r := Rect2(LIST_X, y, LIST_W, ROW_H)
+	c.draw_rect(r, Palette.alpha(Palette.ABYSS_700, 0.4))
+	var col := Palette.alpha(Palette.TEXT_LO, 0.35)
 	var x := r.position.x
 	while x < r.end.x:
 		var x2 := minf(x + 12.0, r.end.x)
@@ -1361,50 +1531,63 @@ func _paint_info_row(c: CanvasItem, y: float) -> void:
 	var lines := _wrap(ONBOARD_TEXT, Palette.SIZE_LABEL, LIST_W - 48.0)
 	var ly := y + 28.0
 	for ln in lines.slice(0, 2):
-		_txt(c, Vector2(LIST_X + 24.0, ly), _fit(ln, Palette.SIZE_LABEL, LIST_W - 48.0), Palette.SIZE_LABEL, C_CAP)
+		_txt(c, Vector2(LIST_X + 24.0, ly), _fit(ln, Palette.SIZE_LABEL, LIST_W - 48.0), Palette.SIZE_LABEL,
+				Palette.TEXT_MID)
 		ly += 28.0
+
+
+## Width the row title may use: 776 px minus the badge chip and its 8 px gap.
+static func row_title_max(badge: String, variant: String) -> float:
+	return 776.0 - (UiKit.chip_width(badge, variant) + Palette.SP_SM if badge != "" else 0.0)
 
 
 func _paint_row(c: CanvasItem, e: SongEntry, y: float, index: int) -> void:
 	var sel := e.id == _sel_id
 	var broken := e.status == "broken"
 	var needs := e.status == "needs_chart"
-	var r := Rect2(LIST_X, y, LIST_W, 72.0)
+	var r := Rect2(LIST_X, y, LIST_W, ROW_H)
+	var rc := row_colors(sel, index == _hover_row)
+	if sel and not _low:
+		# Focus glow (UI-SPEC 3.3 stroke glow): wider faint strokes under the edge.
+		for g in [[8.0, 0.12], [16.0, 0.06]]:
+			var gp := UiKit.chamfer_points(r, float(Palette.CUT_SM))
+			gp.append(gp[0])
+			c.draw_polyline(gp, Palette.alpha(Palette.SONAR, g[1]), Palette.EDGE + g[0], true)
+	_chamfer(c, r, rc["fill"], rc["edge"])
 	if sel:
-		_box(c, r, Color(C_SEL, 0.7), Palette.ACCENT, 4.0)
-		var cy := y + 36.0
-		c.draw_colored_polygon(PackedVector2Array([Vector2(80, cy - 8), Vector2(96, cy), Vector2(80, cy + 8)]),
-				Palette.ACCENT)
-	else:
-		var hov := index == _hover_row
-		_box(c, r, Color(C_PANEL, 0.6), Color(C_TEAL, 0.6) if hov else Color(C_BORDER, 0.35), 2.0)
-	var is_cal := e.source == "test"
-	var title_col := C_CAP if broken else (Color(C_TEXT, 0.7) if needs else C_TEXT)
-	var badge := "TEST" if is_cal else ("NEEDS A CHART" if needs else "")
-	var title_max := 776.0 - (_w(badge, Palette.SIZE_LABEL) + 24.0 if badge != "" else 0.0)
+		# Focus marker (UI-SPEC 4.3): 4 px bar at x+8 and a 12x16 caret 12 px outside the left edge.
+		var bar := FocusMarker.bar_rect(r.size)
+		c.draw_rect(Rect2(r.position + bar.position, bar.size), Palette.SONAR)
+		var caret := FocusMarker.caret_points(r.size)
+		for i in caret.size():
+			caret[i] += r.position
+		c.draw_colored_polygon(caret, Palette.SONAR)
+	var title_col := Palette.TEXT_LO if broken else (Palette.alpha(Palette.TEXT_HI, 0.7) if needs else Palette.TEXT_HI)
+	var badge := row_badge(e)
+	var title_max := row_title_max(badge[0], badge[1])
 	var title := e.title if e.title != "" else "Untitled"
 	var shown_title := _fit(title, Palette.SIZE_BODY, title_max, sel)
 	_txt(c, Vector2(112, y + 32), shown_title, Palette.SIZE_BODY, title_col, sel)
-	if badge != "":
-		_outline_badge(c, 112.0 + _w(shown_title, Palette.SIZE_BODY, sel) + 8.0, y + 30.0, badge)
+	if badge[0] != "":
+		_chip(c, 112.0 + _w(shown_title, Palette.SIZE_BODY, sel) + Palette.SP_SM, y + 22.0, badge[0], badge[1])
 	# second line
 	if broken:
-		_txt(c, Vector2(112, y + 60), "!", Palette.SIZE_LABEL, Palette.DESTRUCTIVE, true)
-		_txt(c, Vector2(128, y + 60), _fit(e.error, Palette.SIZE_LABEL, 740.0), Palette.SIZE_LABEL, C_CAP)
+		_txt(c, Vector2(112, y + 60), "!", Palette.SIZE_LABEL, Palette.WARNING_RED, true)
+		_txt(c, Vector2(128, y + 60), _fit(e.error, Palette.SIZE_LABEL, 740.0), Palette.SIZE_LABEL, Palette.TEXT_LO)
 	else:
 		var second := e.artist if e.artist != "" else "Unknown artist"
 		if needs:
 			second = NEEDS_HINT_ROW
-		_txt(c, Vector2(112, y + 60), _fit(second, Palette.SIZE_LABEL, 700.0), Palette.SIZE_LABEL, C_CAP)
+		_txt(c, Vector2(112, y + 60), _fit(second, Palette.SIZE_LABEL, 700.0), Palette.SIZE_LABEL, Palette.TEXT_MID)
 		if e.length_sec > 0.0:
-			_txt_r(c, 904, y + 60, SongListModel.fmt_length(e.length_sec), Palette.SIZE_LABEL, C_CAP)
+			_txt_r(c, 904, y + 60, SongListModel.fmt_length(e.length_sec), Palette.SIZE_LABEL, Palette.TEXT_LO)
 	# best depth
 	if e.status == "ok":
 		var bd := SongListModel.best_depth(e, _best_by_fp)
 		if bd >= 0.0:
-			_txt_r(c, 992, y + 32, "%s m" % Palette.fmt_depth(int(bd)), Palette.SIZE_LABEL, C_TEAL)
+			_txt_r(c, 992, y + 32, "%s m" % Palette.fmt_depth(int(bd)), Palette.SIZE_LABEL, Palette.REWARD_GOLD)
 		else:
-			_txt_r(c, 992, y + 32, "-", Palette.SIZE_LABEL, C_CAP)
+			_txt_r(c, 992, y + 32, "-", Palette.SIZE_LABEL, Palette.TEXT_LO)
 	_paint_pips(c, e, y, sel)
 
 
@@ -1421,14 +1604,20 @@ func _paint_pips(c: CanvasItem, e: SongEntry, y: float, sel: bool) -> void:
 			if chosen:
 				c.draw_line(Vector2(cx - 8.0, cy + 12.0), Vector2(cx + 8.0, cy + 12.0), col, 2.0)
 		else:
-			NoteShape.draw_outline(c, NoteShape.kind_for_lane(i), Vector2(cx, cy), 16.0, Color(C_CAP, 0.35), 2.0)
+			NoteShape.draw_outline(c, NoteShape.kind_for_lane(i), Vector2(cx, cy), 16.0,
+					Palette.alpha(Palette.TEXT_LO, 0.35), 2.0)
 
 
 # -- detail panel --
 
 func _paint_detail(c: CanvasItem) -> void:
 	var e := _selected()
-	_box(c, PANEL_RECT, Color(C_PANEL, 0.8), Color(C_BORDER, 0.6), 2.0)
+	var ps: StyleBoxFlat = _btn_styles.get("panel")
+	if ps == null:
+		ps = UiKit.style_panel("default", _low)
+		_btn_styles["panel"] = ps
+	ps.draw(c.get_canvas_item(), PANEL_RECT)
+	UiKit.draw_brackets(c, PANEL_RECT, Palette.alpha(Palette.SONAR, 0.8))
 	_paint_sonar(c)
 	var x0 := 1080.0
 	if e == null:
@@ -1454,18 +1643,41 @@ func _paint_detail(c: CanvasItem) -> void:
 	_paint_tiles(c, e)
 	if ok:
 		_paint_best(c, e)
+		_paint_sections(c, e)
 	else:
 		_paint_reason(c, e)
-	if e.warnings > 0:
-		var wt := "1 line in this chart was skipped." if e.warnings == 1 else \
-				"%d lines in this chart were skipped." % e.warnings
-		_txt(c, Vector2(x0, 696), wt, Palette.SIZE_LABEL, C_CAP)
-	_txt(c, Vector2(x0, 728), "SOURCE", Palette.SIZE_LABEL, C_CAP)
-	_txt(c, Vector2(1200, 728), _fit(_source_text(e), Palette.SIZE_LABEL, 600.0), Palette.SIZE_LABEL, C_TEXT)
 	_paint_preview_row(c)
 	_paint_start(c, e)
 	if _show_debug and _diff != "":
-		_txt_r(c, 1832, 696, str(e.difficulty(_diff).get("fingerprint", "")), Palette.SIZE_LABEL, C_CAP)
+		_txt_r(c, 1832, 140, str(e.difficulty(_diff).get("fingerprint", "")), Palette.SIZE_LABEL, Palette.TEXT_LO)
+
+
+## Sections block (UI-SPEC 6): "SECTIONS" + info count chip at baseline 688, the strip
+## (ABYSS_500 60% track, 2 px TEXT_LO tick per section start) at y 700..708, the names at
+## baseline 736. Skipped-line warnings sit right-aligned on the caption line.
+func _paint_sections(c: CanvasItem, e: SongEntry) -> void:
+	var x0 := SECTION_STRIP.position.x
+	_txt(c, Vector2(x0, SECTIONS_BASELINE), "SECTIONS", Palette.SIZE_LABEL, Palette.TEXT_LO)
+	var ready := _sections_state == "ready"
+	if ready:
+		_chip(c, x0 + _w("SECTIONS", Palette.SIZE_LABEL) + Palette.SP_MD, SECTIONS_BASELINE - 8.0,
+				str(_sections.size()), "info")
+	if e.warnings > 0:
+		var wt := "1 line in this chart was skipped." if e.warnings == 1 else \
+				"%d lines in this chart were skipped." % e.warnings
+		_txt_r(c, SECTION_STRIP.end.x, SECTIONS_BASELINE, _fit(wt, Palette.SIZE_LABEL, 440.0), Palette.SIZE_LABEL,
+				Palette.TEXT_LO)
+	c.draw_rect(SECTION_STRIP, Palette.alpha(Palette.ABYSS_500, 0.6))
+	if not ready:
+		return
+	var length := e.length_sec
+	if length <= 0.0 and not _sections.is_empty():
+		length = float(_sections[_sections.size() - 1].get("time", 0.0)) + 1.0
+	for s in _sections:
+		var tx := section_tick_x(float(s.get("time", 0.0)), length)
+		c.draw_rect(Rect2(tx, SECTION_STRIP.position.y, SECTION_TICK_W, SECTION_STRIP.size.y), Palette.TEXT_LO)
+	var col := Palette.TEXT_LO if _sections.is_empty() else Palette.TEXT_MID
+	_txt(c, Vector2(x0, SECTION_NAMES_BASELINE), section_names_text(_sections), Palette.SIZE_LABEL, col)
 
 
 ## The detail title as at most 2 Heading lines of INFO_W, the second ending in "..." when cut.
@@ -1534,35 +1746,26 @@ func _paint_cover(c: CanvasItem, e: SongEntry) -> void:
 	UiKit.draw_brackets(c, r, Palette.alpha(Palette.SONAR, 0.8))
 
 
-func _source_text(e: SongEntry) -> String:
-	match e.source:
-		"bundled":
-			return "Bundled"
-		"test":
-			return "Test chart"
-		"library":
-			return "Library: " + e.library_name
-	return "Songs folder"
-
-
+## Detail-panel sonar (UI-SPEC 6 / 11): static rings and crosshair always; the rotating sweep
+## and the selection ping ring only when the sweep is on (off in Low and under Reduce motion).
 func _paint_sonar(c: CanvasItem) -> void:
-	var ctr := Vector2(1456, 512)
+	var ctr := SONAR_CENTER
 	for r in [160.0, 280.0, 400.0]:
-		c.draw_arc(ctr, r, 0.0, TAU, 64, Color(C_BORDER, 0.10), 2.0, true)
-	c.draw_line(Vector2(1056, 512), Vector2(1856, 512), Color(C_BORDER, 0.06), 2.0)
-	c.draw_line(Vector2(1456, 120), Vector2(1456, 904), Color(C_BORDER, 0.06), 2.0)
-	if Settings.low_effects or Settings.reduce_motion:
+		c.draw_arc(ctr, r, 0.0, TAU, 64, Palette.alpha(Palette.SONAR, SONAR_RING_A), Palette.EDGE, true)
+	c.draw_line(Vector2(1056, ctr.y), Vector2(1856, ctr.y), Palette.alpha(Palette.SONAR, SONAR_CROSS_A), Palette.EDGE)
+	c.draw_line(Vector2(ctr.x, 120), Vector2(ctr.x, 904), Palette.alpha(Palette.SONAR, SONAR_CROSS_A), Palette.EDGE)
+	if not _sweep:
 		return
 	var base := _t * TAU / 8.0
 	for i in 12:
 		var a0 := base - deg_to_rad(5.0) * float(i)
 		var a1 := a0 - deg_to_rad(5.0)
-		var col := Color(C_TEAL, 0.10 * (1.0 - float(i) / 12.0))
+		var col := Palette.alpha(Palette.SONAR, SWEEP_A * (1.0 - float(i) / 12.0))
 		c.draw_colored_polygon(PackedVector2Array([ctr, ctr + Vector2.from_angle(a0) * 440.0,
 				ctr + Vector2.from_angle(a1) * 440.0]), col)
 	if _ping_t < 0.6:
 		var k := _ping_t / 0.6
-		c.draw_arc(ctr, 400.0 * k, 0.0, TAU, 64, Color(C_TEAL, 0.20 * (1.0 - k)), 2.0, true)
+		c.draw_arc(ctr, 400.0 * k, 0.0, TAU, 64, Palette.alpha(Palette.SONAR, PING_A * (1.0 - k)), Palette.EDGE, true)
 
 
 func _paint_stats(c: CanvasItem, e: SongEntry) -> void:
@@ -1643,14 +1846,14 @@ func _paint_tiles(c: CanvasItem, e: SongEntry) -> void:
 			continue
 		var chosen: bool = st["name"] == _diff
 		if chosen:
-			if not Settings.low_effects:
+			if not _low:
 				var g := Vector2(TILE_W, TILE_H) * (Palette.GLOW_SM[0] - 1.0) * 0.5
 				c.draw_texture_rect(UiKit.glow_texture(), r.grow_individual(g.x, g.y, g.x, g.y), false,
 						Palette.alpha(col, Palette.GLOW_SM[1]))
-			_box(c, r, Palette.alpha(col, 0.22), col, 2.0)
+			_chamfer(c, r, Palette.alpha(col, 0.22), col)
 			c.draw_rect(Rect2(r.position.x + (TILE_W - 24.0) * 0.5, r.end.y, 24.0, 4.0), col)
 		else:
-			_box(c, r, Palette.alpha(col, 0.10), Palette.alpha(col, 0.6), 2.0)
+			_chamfer(c, r, Palette.alpha(col, 0.10), Palette.alpha(col, 0.6))
 		NoteShape.draw(c, kind, glyph_c, 24.0, col if chosen else Palette.dim(col), 2.0)
 		_txt(c, name_pos, _fit(name_up, Palette.SIZE_BODY, TILE_W - 60.0, chosen), Palette.SIZE_BODY,
 				Palette.TEXT_HI, chosen)
@@ -1695,29 +1898,29 @@ func _paint_best(c: CanvasItem, e: SongEntry) -> void:
 
 func _paint_reason(c: CanvasItem, e: SongEntry) -> void:
 	var needs := e.status == "needs_chart"
-	var edge := Palette.TEXT if needs else Palette.DESTRUCTIVE
+	var edge := Palette.TEXT_MID if needs else Palette.WARNING_RED
 	c.draw_rect(Rect2(1080, 588, 4, 112), edge)
 	var title := "Needs a chart" if needs else e.error
 	var hint := NEEDS_BODY if needs else e.fix_hint
 	var x := 1100.0
 	if not needs:
-		_txt(c, Vector2(x, 620), "!", Palette.SIZE_BODY, Palette.DESTRUCTIVE, true)
+		_txt(c, Vector2(x, 620), "!", Palette.SIZE_BODY, Palette.WARNING_RED, true)
 		x += 24.0
-	var tcol := C_TEXT if needs else Palette.DESTRUCTIVE
+	var tcol := Palette.TEXT_HI if needs else Palette.WARNING_RED
 	var y := 620.0
 	for ln in _wrap(title, Palette.SIZE_BODY, 1832.0 - x).slice(0, 2):
 		_txt(c, Vector2(x, y), ln, Palette.SIZE_BODY, tcol, true)
 		y += 32.0
 	y += 4.0
 	for ln in _wrap(hint, Palette.SIZE_LABEL, 1832.0 - 1100.0).slice(0, 3):
-		_txt(c, Vector2(1100, y), ln, Palette.SIZE_LABEL, C_CAP)
+		_txt(c, Vector2(1100, y), ln, Palette.SIZE_LABEL, Palette.TEXT_LO)
 		y += 24.0
 
 
 func _paint_preview_row(c: CanvasItem) -> void:
 	if _message_kind == "audio":
-		_txt(c, Vector2(1080, 760), "!", Palette.SIZE_LABEL, Palette.DESTRUCTIVE, true)
-		_txt(c, Vector2(1100, 760), _fit(_message, Palette.SIZE_LABEL, 732.0), Palette.SIZE_LABEL, Palette.DESTRUCTIVE)
+		_txt(c, Vector2(1080, 760), "!", Palette.SIZE_LABEL, Palette.WARNING_RED, true)
+		_txt(c, Vector2(1100, 760), _fit(_message, Palette.SIZE_LABEL, 732.0), Palette.SIZE_LABEL, Palette.WARNING_RED)
 		_paint_viz_line(c)
 		return
 	var any := false
@@ -1761,23 +1964,32 @@ func _paint_start(c: CanvasItem, e: SongEntry) -> void:
 	var on := e != null and _start_enabled()
 	var r := START_RECT
 	var hover := _hover_btn == "start" and on
-	if on:
-		_box(c, r, C_SEL, Color(C_TEAL, 1.0 if hover else 0.8), 2.0)
-	else:
-		_box(c, r, Color(C_PANEL, 0.6), Color(C_CAP, 0.35), 2.0)
+	# Primary button (UI-SPEC 4.2); disabled style when the song cannot be played.
+	_button_style("hover" if hover else ("normal" if on else "disabled"), "primary" if on else "default").draw(
+			c.get_canvas_item(), r)
 	_txt(c, Vector2(r.position.x + 24.0, r.position.y + 34.0), _start_label(e), Palette.SIZE_BODY,
-			C_TEXT if on else Color(C_CAP, 0.5), true)
+			Palette.TEXT_HI if on else Palette.alpha(Palette.TEXT_LO, 0.6), true)
 	if on:
-		_txt_r(c, r.end.x - 24.0, r.position.y + 32.0, "A" if _last_pad else "ENTER", Palette.SIZE_LABEL, C_CAP)
+		_txt_r(c, r.end.x - 24.0, r.position.y + 32.0, "A" if _last_pad else "ENTER", Palette.SIZE_LABEL, Palette.TEXT_LO)
+
+
+func _button_style(state: String, variant: String) -> StyleBoxFlat:
+	var key := "%s|%s" % [state, variant]
+	if not _btn_styles.has(key):
+		_btn_styles[key] = UiKit.style_button(state, variant, _low)
+	return _btn_styles[key]
 
 
 # -- footer --
 
+## Compact footer button (UI-SPEC 4.2, 48 tall): idle / hover / disabled styles, label centred.
 func _paint_button(c: CanvasItem, r: Rect2, label: String, id: String, enabled: bool = true) -> void:
 	var hover := _hover_btn == id and enabled
-	_box(c, r, Color(C_PANEL, 0.6), Color(C_TEAL, 0.9) if hover else Color(C_BORDER, 0.6), 2.0)
-	_txt(c, Vector2(r.position.x + 24.0, r.position.y + 34.0), label, Palette.SIZE_BODY,
-			C_TEXT if enabled else Color(C_CAP, 0.5), true)
+	var state := "disabled" if not enabled else ("hover" if hover else "normal")
+	_button_style(state, "default").draw(c.get_canvas_item(), r)
+	var col := Palette.alpha(Palette.TEXT_LO, 0.6) if not enabled else (Palette.TEXT_HI if hover else Palette.TEXT_MID)
+	var lw := _w(label, Palette.SIZE_BODY, true)
+	_txt(c, Vector2(r.position.x + (r.size.x - lw) * 0.5, r.position.y + 34.0), label, Palette.SIZE_BODY, col, true)
 
 
 func _paint_footer(c: CanvasItem) -> void:
@@ -1791,14 +2003,14 @@ func _paint_footer(c: CanvasItem) -> void:
 		hint = "TYPE TO FILTER  ·  BACKSPACE EDIT  ·  ESC CLEAR FILTER  ·  UP DOWN SONG  ·  ENTER DIVE"
 	else:
 		hint = "UP DOWN SONG  ·  LEFT RIGHT DIFFICULTY  ·  ENTER DIVE  ·  F5 RESCAN  ·  ESC BACK"
-	_txt(c, Vector2(64, 1008), _fit(hint, Palette.SIZE_LABEL, 976.0), Palette.SIZE_LABEL, C_CAP)
+	_txt(c, Vector2(64, 1008), _fit(hint, Palette.SIZE_LABEL, 976.0), Palette.SIZE_LABEL, Palette.TEXT_LO)
 	if library != null:
 		var prefix := "Songs folder: "
 		var path := SongListModel.truncate_middle(library.songs_dir(), 66 - prefix.length())
 		var full := prefix + path
 		var x := 1856.0 - _w(full, Palette.SIZE_LABEL)
-		_txt(c, Vector2(x, 1008), prefix, Palette.SIZE_LABEL, C_CAP)
-		_txt(c, Vector2(x + _w(prefix, Palette.SIZE_LABEL), 1008), path, Palette.SIZE_LABEL, C_TEXT)
+		_txt(c, Vector2(x, 1008), prefix, Palette.SIZE_LABEL, Palette.TEXT_LO)
+		_txt(c, Vector2(x + _w(prefix, Palette.SIZE_LABEL), 1008), path, Palette.SIZE_LABEL, Palette.TEXT_HI)
 
 
 func _scan_text() -> String:
@@ -1810,37 +2022,37 @@ func _scan_text() -> String:
 func _paint_scan(c: CanvasItem) -> void:
 	var scanning: bool = library != null and library.scanning
 	if _message_kind == "folder":
-		_txt(c, Vector2(704, 960), "!", Palette.SIZE_LABEL, Palette.DESTRUCTIVE, true)
+		_txt(c, Vector2(704, 960), "!", Palette.SIZE_LABEL, Palette.WARNING_RED, true)
 		var ml := _wrap(_message, Palette.SIZE_LABEL, 456.0)
 		var y := 946.0 if ml.size() > 1 else 960.0
 		for ln in ml.slice(0, 2):
-			_txt(c, Vector2(724, y), ln, Palette.SIZE_LABEL, Palette.DESTRUCTIVE)
+			_txt(c, Vector2(724, y), ln, Palette.SIZE_LABEL, Palette.WARNING_RED)
 			y += 22.0
 		return
 	if library != null and library.folder_error != "":
 		var nm: String = library.folder_error.trim_prefix("Folder not found: ").trim_suffix("/").get_file()
 		var msg := "Could not read library folder \"%s\". Check that it still exists, then press Rescan Library." % nm
-		_txt(c, Vector2(704, 946), "!", Palette.SIZE_LABEL, Palette.DESTRUCTIVE, true)
+		_txt(c, Vector2(704, 946), "!", Palette.SIZE_LABEL, Palette.WARNING_RED, true)
 		var y2 := 946.0
 		for ln in _wrap(msg, Palette.SIZE_LABEL, 456.0).slice(0, 2):
-			_txt(c, Vector2(724, y2), ln, Palette.SIZE_LABEL, Palette.DESTRUCTIVE)
+			_txt(c, Vector2(724, y2), ln, Palette.SIZE_LABEL, Palette.WARNING_RED)
 			y2 += 22.0
 		return
 	if scanning and Time.get_ticks_msec() - _scan_started_msec >= SCAN_STRIP_DELAY_MSEC:
 		var track := Rect2(704, 936, 240, 8)
-		c.draw_rect(track, Color(0.91, 0.9, 0.94, 0.25))
+		c.draw_rect(track, Palette.alpha(Palette.ABYSS_500, 0.6))
 		if _scan_total > 0:
-			c.draw_rect(Rect2(track.position, Vector2(240.0 * clampf(float(_scan_done) / float(_scan_total), 0.0, 1.0), 8.0)), C_TEAL)
+			c.draw_rect(Rect2(track.position, Vector2(240.0 * clampf(float(_scan_done) / float(_scan_total), 0.0, 1.0), 8.0)), Palette.SONAR)
 		elif Settings.reduce_motion:
-			c.draw_rect(Rect2(track.position, Vector2(120.0, 8.0)), C_TEAL)
+			c.draw_rect(Rect2(track.position, Vector2(120.0, 8.0)), Palette.SONAR)
 		else:
 			var sx := fmod(_t / 1.2, 1.0) * (240.0 + 64.0) - 64.0
 			var x0 := maxf(sx, 0.0)
 			var x1 := minf(sx + 64.0, 240.0)
 			if x1 > x0:
-				c.draw_rect(Rect2(704.0 + x0, 936.0, x1 - x0, 8.0), C_TEAL)
-		_txt(c, Vector2(704, 968), _fit(_scan_text(), Palette.SIZE_LABEL, 456.0), Palette.SIZE_LABEL, C_CAP)
+				c.draw_rect(Rect2(704.0 + x0, 936.0, x1 - x0, 8.0), Palette.SONAR)
+		_txt(c, Vector2(704, 968), _fit(_scan_text(), Palette.SIZE_LABEL, 456.0), Palette.SIZE_LABEL, Palette.TEXT_LO)
 	elif scanning:
 		pass
 	else:
-		_txt(c, Vector2(704, 960), _fit(_scan_text(), Palette.SIZE_LABEL, 456.0), Palette.SIZE_LABEL, C_CAP)
+		_txt(c, Vector2(704, 960), _fit(_scan_text(), Palette.SIZE_LABEL, 456.0), Palette.SIZE_LABEL, Palette.TEXT_LO)
