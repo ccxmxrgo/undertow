@@ -771,3 +771,61 @@ func test_hud_hosts_progress_track_and_banner() -> void:
 	hud.setup_song(_sectioned_chart([[10.0, "verse"]], 200.0), null)
 	hud.progress_track.set_song_time(100.0)
 	assert_float(hud.progress_track.fill()).is_equal_approx(0.5, 0.0001)
+
+
+# ---- 02.2-23: chip pop -------------------------------------------------------------------
+
+func test_max_chip_pops_in_when_x4_is_reached() -> void:
+	var r := _ring()
+	var ring: MultiplierRing = r[0]
+	var s: HullScore = r[1]
+	assert_bool(ring.max_chip.visible).is_false()
+	s.combo_changed.emit(30)
+	s.multiplier_changed.emit(4)
+	assert_bool(ring.max_chip.visible).is_true()
+	assert_object(ring.max_chip_tween).is_not_null()
+	var w := UiKit.chip_width(MultiplierRing.MAX_CHIP, "reward")
+	assert_object(ring.max_chip.position + ring.position).is_equal(
+		Vector2(MultiplierRing.CENTER.x - w * 0.5, MultiplierRing.CHIP_Y))
+	# Staying at x4 does not pop again; losing it hides the chip.
+	var tw := ring.max_chip_tween
+	s.multiplier_changed.emit(4)
+	assert_object(ring.max_chip_tween).is_same(tw)
+	s.multiplier_changed.emit(1)
+	assert_bool(ring.max_chip.visible).is_false()
+
+
+func test_max_chip_does_not_pop_under_reduce_motion() -> void:
+	Settings.reduce_motion = true
+	var r := _ring()
+	var ring: MultiplierRing = r[0]
+	var s: HullScore = r[1]
+	s.multiplier_changed.emit(4)
+	assert_bool(ring.max_chip.visible).is_true()
+	assert_object(ring.max_chip_tween).is_null()
+	assert_object(ring.max_chip.scale).is_equal(Vector2.ONE)
+
+
+func test_mode_chips_are_nodes_that_pop_in_at_their_rects() -> void:
+	var score := HullScore.new(JudgeConfig.new())
+	score.no_fail = true
+	var hud := _hud(score)
+	var nf: Control = hud.mode_chips["NO-FAIL"]
+	var ap: Control = hud.mode_chips["AUTOPLAY"]
+	assert_bool(nf.visible).is_true()
+	assert_bool(ap.visible).is_false()
+	assert_object(Rect2(nf.position, nf.size)).is_equal(hud.chip_rects()["NO-FAIL"])
+	hud.set_autoplay(true)
+	assert_bool(ap.visible).is_true()
+	assert_object(Rect2(ap.position, ap.size)).is_equal(hud.chip_rects()["AUTOPLAY"])
+	# Mid-pop the chip is scaled about its centre, then it settles at 1 (tween stepped by hand).
+	var tw: Tween = hud.mode_chip_tweens["AUTOPLAY"]
+	assert_object(tw).is_not_null()
+	tw.pause()
+	tw.custom_step(Palette.DUR_BASE * 0.4)
+	assert_float(ap.scale.x).is_greater(1.0)
+	assert_object(ap.pivot_offset).is_equal(ap.size * 0.5)
+	tw.custom_step(Palette.DUR_BASE * 2.0)
+	assert_float(ap.scale.x).is_equal_approx(1.0, 0.001)
+	hud.set_autoplay(false)
+	assert_bool(ap.visible).is_false()

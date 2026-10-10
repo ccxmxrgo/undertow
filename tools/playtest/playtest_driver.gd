@@ -801,11 +801,33 @@ func sc_a() -> void:
 	await press_key(KEY_ENTER)
 	await wait_until(func() -> bool: return w.conductor.song_time() > 5.0 * CalibrationWizard.SPB + 0.2, 8.0)
 	await shot("calibration_audio")
+	# 02.2-23 (W7): UI blips are muted while the wizard measures; a Tab focus move stays silent.
+	var cal_last: String = UiSounds.last_played
+	var cal_count: int = UiSounds.play_count
+	var cal_focus0 := focus_owner()
+	var cal_muted: bool = UiSounds.muted
+	await press_key(KEY_TAB)
+	await frame()
+	# The step has one focusable button, so Tab may not move focus: also force a real focus change
+	# right after a navigation press, which would play "move" anywhere else.
+	var cal_nav := InputEventAction.new()
+	cal_nav.action = &"ui_down"
+	cal_nav.pressed = true
+	UiSounds.handle_input(cal_nav)
+	w.skip_button.release_focus()
+	w.skip_button.grab_focus()
+	await frame()
+	check("no UI blip during calibration measuring", cal_muted and UiSounds.muted
+		and w.step == CalibrationWizard.Step.AUDIO and UiSounds.play_count == cal_count
+		and UiSounds.last_played == cal_last,
+		{"muted": cal_muted, "count": UiSounds.play_count - cal_count, "last": UiSounds.last_played,
+			"focus": "%s -> %s" % [cal_focus0, focus_owner()]})
 	# A tap-perfect player (0 ms lag) on a calibrated (+40) profile should measure 0.
 	await press_key(KEY_ESCAPE)
 	ok = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
 	check("Esc in wizard = Skip, back to menu, offset unchanged", ok and absf(Settings.audio_offset - lag) <= 0.005,
 		"%.2f ms" % (Settings.audio_offset * 1000.0))
+	check("UI blips unmuted again after leaving the wizard", not UiSounds.muted, UiSounds.muted)
 
 
 ## Gap 6 (01-09): wizard buttons stay 280-480 px wide instead of stretching across the window.
@@ -2256,8 +2278,16 @@ func sc_polish() -> void:
 
 	# --- practice entry ---------------------------------------------------------------------
 	m.start_button.grab_focus()
+	await frame()
+	var blips0: int = UiSounds.play_count
 	await press_key(KEY_DOWN)
 	check("Down from Start Dive focuses Practice Dive", focus_owner() == m.practice_button, focus_owner())
+	# 02.2-23 (VIS-09): a focus move by a navigation key plays the soft "move" blip on SFX.
+	var blip_player: AudioStreamPlayer = UiSounds.last_player()
+	check("UI blip plays on focus move in the menu", UiSounds.last_played == "move" and UiSounds.play_count > blips0
+		and blip_player != null and String(blip_player.bus) == "SFX",
+		{"last": UiSounds.last_played, "count": UiSounds.play_count - blips0,
+			"bus": String(blip_player.bus) if blip_player else ""})
 	await press_key(KEY_ENTER)
 	var pg: Gameplay = await dive_from_song_select(TestCharts.HAND_CHART_ID, "expert")
 	if not check("Practice Dive opens gameplay (through Song Select)", pg != null, cur()):
@@ -2536,7 +2566,26 @@ func sc_polish() -> void:
 	var ga: Gameplay = await start_dive_from_menu(true)
 	if ga == null:
 		return
-	var ga_done: bool = await wait_until(func() -> bool: return not is_instance_valid(ga) or ga.state == Gameplay.State.DONE, 120.0)
+	# 02.2-23: no UI blip while the dive runs, even when the blip hooks fire (accept / cancel /
+	# navigation focus moves are fed straight to UiSounds, so the run itself is not disturbed).
+	var ui_last: String = UiSounds.last_played
+	var ui_count: int = UiSounds.play_count
+	var ui_seen := {"count": ui_count, "last": ui_last, "probes": 0, "running": 0}
+	var ga_done: bool = await wait_until(func() -> bool:
+		if is_instance_valid(ga) and ga.state == Gameplay.State.RUNNING:
+			ui_seen["running"] += 1
+			if ui_seen["probes"] < 3 and ui_seen["running"] % 20 == 5:
+				ui_seen["probes"] += 1
+				var ui_acc := InputEventAction.new()
+				ui_acc.action = &"ui_accept"
+				ui_acc.pressed = true
+				UiSounds.handle_input(ui_acc)
+				UiSounds.play("move")
+			ui_seen["count"] = UiSounds.play_count
+			ui_seen["last"] = UiSounds.last_played
+		return not is_instance_valid(ga) or ga.state == Gameplay.State.DONE, 120.0)
+	check("no UI blip during gameplay", ui_seen["count"] == ui_count and ui_seen["last"] == ui_last
+		and ui_seen["probes"] > 0, ui_seen)
 	if not check("autoplay dive (Song Select route) reaches results", ga_done and is_instance_valid(ga) and ga.results != null):
 		return
 	await review_results("results_route_song_select", ga.results, ga.score, ga.record_info.get("offsets", PackedFloat32Array()),

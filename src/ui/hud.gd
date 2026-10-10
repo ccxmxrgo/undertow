@@ -61,6 +61,11 @@ var bathymeter: Bathymeter
 var hull_arc: HullArc
 var progress_track: ProgressTrack
 var section_banner: SectionBanner
+## NO-FAIL / AUTOPLAY chip nodes (02.2-23), keyed by chip text: each pops in (UiKit.pop_in)
+## when it appears. chip_rects() stays the layout and keep-out source.
+var mode_chips: Dictionary = {}
+## Last pop tween per chip text (null under Reduce motion).
+var mode_chip_tweens: Dictionary = {}
 
 var _score: HullScore
 var _hull: float = 100.0
@@ -111,6 +116,15 @@ func _ready() -> void:
 	bathymeter.setup(_scale_est, _best)
 	if _score != null:
 		multiplier_ring.bind(_score)
+	for text in [CHIP_NO_FAIL, CHIP_AUTOPLAY]:
+		var chip := Control.new()
+		chip.name = "Chip" + text.capitalize().replace(" ", "").replace("-", "")
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.visible = false
+		chip.draw.connect(func() -> void:
+			UiKit.draw_chip(chip, Rect2(Vector2.ZERO, chip.size), text, "mode"))
+		add_child(chip)
+		mode_chips[text] = chip
 	_refresh_all()
 
 
@@ -166,6 +180,7 @@ func set_record(best_depth: float) -> void:
 ## AUTOPLAY mode chip (UI-SPEC copy "AUTOPLAY").
 func set_autoplay(on: bool) -> void:
 	_autoplay = on
+	_sync_chips()
 	queue_redraw()
 
 
@@ -230,6 +245,7 @@ func hull_caption_baseline() -> float:
 
 
 func _refresh_all() -> void:
+	_sync_chips()
 	if _score == null:
 		_update_hull_text()
 		_update_accuracy()
@@ -356,9 +372,21 @@ func _draw() -> void:
 	_draw_caption(Vector2(RC_X, DEPTH_CAPTION_Y), DEPTH_CAPTION)
 	_draw_depth()
 	_draw_caption(Vector2(RC_X, ACCURACY_CAPTION_Y), ACCURACY_CAPTION)
-	var chips := chip_rects()
-	for text in chips:
-		UiKit.draw_chip(self, chips[text], text, "mode")
+
+
+## Shows the mode chip nodes at chip_rects(); a chip that just appeared pops in.
+func _sync_chips() -> void:
+	var rects := chip_rects()
+	for text in mode_chips:
+		var chip: Control = mode_chips[text]
+		var was := chip.visible
+		chip.visible = rects.has(text)
+		if chip.visible:
+			var r: Rect2 = rects[text]
+			chip.position = r.position
+			chip.size = r.size
+			if not was:
+				mode_chip_tweens[text] = UiKit.pop_in(chip)
 
 
 func _draw_caption(pos: Vector2, text: String) -> void:

@@ -43,6 +43,10 @@ var _glint_phase: float = 0.0
 var _low: bool = false
 var _reduce: bool = false
 var _glow: Node2D
+## The MAX chip (02.2-23): its own node so it can pop in (UiKit.pop_in) when x4 is reached.
+var max_chip: Control
+## Tween of the last MAX chip pop (null under Reduce motion or before the first x4).
+var max_chip_tween: Tween
 
 
 func _ready() -> void:
@@ -56,6 +60,16 @@ func _ready() -> void:
 	_glow.position = CENTER - RECT.position
 	_glow.draw.connect(_draw_glow)
 	add_child(_glow)
+	var chip_w := UiKit.chip_width(MAX_CHIP, "reward")
+	max_chip = Control.new()
+	max_chip.name = "MaxChip"
+	max_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	max_chip.position = Vector2(CENTER.x - chip_w * 0.5, CHIP_Y) - RECT.position
+	max_chip.size = Vector2(chip_w, UiKit.CHIP_H)
+	max_chip.draw.connect(func() -> void:
+		UiKit.draw_chip(max_chip, Rect2(Vector2.ZERO, max_chip.size), MAX_CHIP, "reward"))
+	max_chip.visible = max_chip_visible()
+	add_child(max_chip)
 	UiKit.register_fx(self)
 	apply_effect_settings()
 
@@ -66,6 +80,8 @@ func bind(score: HullScore) -> void:
 	_combo = score.combo
 	_mult = score.multiplier()
 	_shown = float(filled_total(_combo))
+	if max_chip != null:
+		max_chip.visible = max_chip_visible()
 	queue_redraw()
 
 
@@ -108,6 +124,11 @@ func on_multiplier(value: int) -> void:
 	if rose and not _reduce:
 		_flash_left = FLASH_SEC
 		_pop_t = 0.0
+	if max_chip != null:
+		var was := max_chip.visible
+		max_chip.visible = max_chip_visible()
+		if max_chip.visible and not was:
+			max_chip_tween = UiKit.pop_in(max_chip)
 	if _glow != null:
 		_glow.queue_redraw()
 	queue_redraw()
@@ -219,9 +240,6 @@ func _draw() -> void:
 	var cw := cf.get_string_size(CAPTION, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL).x
 	draw_string(cf, Vector2(CENTER.x - cw * 0.5, CAPTION_BASE_Y), CAPTION, HORIZONTAL_ALIGNMENT_LEFT, -1,
 		Palette.SIZE_LABEL, Palette.TEXT_LO)
-	if max_chip_visible():
-		var chip_w := UiKit.chip_width(MAX_CHIP, "reward")
-		UiKit.draw_chip(self, Rect2(CENTER.x - chip_w * 0.5, CHIP_Y, chip_w, UiKit.CHIP_H), MAX_CHIP, "reward")
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
