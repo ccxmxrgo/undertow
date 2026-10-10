@@ -106,7 +106,7 @@
 ### Look & Sound
 
 - [x] **AV-01**: Highway renders as a sonar CRT screen (phosphor glow, scanlines, sweep afterglow) (visor portion delivered early in Phase 1.1, plan 01.1-06)
-- [ ] **AV-02**: Background shows the trench with bioluminescent life pulsing on the beat
+- [x] **AV-02**: Background shows the trench with bioluminescent life pulsing on the beat
 - [ ] **AV-03**: Sonar pings on downbeats, hull creaks and a muffled filter that grows with damage
 - [ ] **AV-04**: Torpedo impacts, eliminations and launches have screen shake/flash/implosion feedback
 - [ ] **AV-05**: A low-effects toggle keeps the game smooth on weaker PCs
@@ -226,7 +226,7 @@
 | NET-06 | Phase 4 | Pending |
 | NET-07 | Phase 4 | Pending |
 | AV-01 | Phase 2.2 | Complete |
-| AV-02 | Phase 2.2 | Pending |
+| AV-02 | Phase 2.2 | Complete |
 | AV-03 | Phase 5 | Pending |
 | AV-04 | Phase 5 | Pending |
 | AV-05 | Phase 2.2 | Pending |

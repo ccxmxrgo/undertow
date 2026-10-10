@@ -116,7 +116,7 @@ Plans:
 
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 10/25 plans executed
+**Plans:** 11/25 plans executed
 
 Plans:
 
@@ -130,7 +130,7 @@ Plans:
 - [x] 02.2-08-PLAN.md — Board: NotePainter gems, HighwaySurface/HighwayNotes split, strips, receptors
 - [x] 02.2-09-PLAN.md — Board: beat/bar lines (TS), sustain tubes, sonar CRT surface, streak tiers + visual review
 - [x] 02.2-10-PLAN.md — Board: FxLayer bursts/rings/crack/shake/sparks, merged chord popup, early/late + visual review
-- [ ] 02.2-11-PLAN.md — Board: trench life (AV-02), 1080p perf checkpoint, Sea Shanty 2 Full-effects autoplay + visual review
+- [x] 02.2-11-PLAN.md — Board: trench life (AV-02), 1080p perf checkpoint, Sea Shanty 2 Full-effects autoplay + visual review
 - [ ] 02.2-12-PLAN.md — HUD: cockpit frame, multiplier ring, streak numeral, torpedo socket, milestone burst
 - [ ] 02.2-13-PLAN.md — HUD: bathymeter, live accuracy, chips, segmented hull arc
 - [ ] 02.2-14-PLAN.md — HUD: progress track + section banner, keep-out test (rects + keepout_shapes), HUD shots + visual review

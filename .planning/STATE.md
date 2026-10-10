@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-10-PLAN.md
-last_updated: "2026-10-10T16:04:46.045Z"
+stopped_at: Completed 02.2-11-PLAN.md
+last_updated: "2026-10-10T16:44:55.607Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 50
+  completed_plans: 51
   percent: 56
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 11 of 25
+Plan: 12 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
@@ -79,6 +79,7 @@ Progress: [#########.] 93%
 | Phase 02.2 P08 | 25 min | 2 tasks | 10 files |
 | Phase 02.2 P09 | 20 min | 2 tasks | 7 files |
 | Phase 02.2 P10 | 75 min | 2 tasks | 10 files |
+| Phase 02.2 P11 | 125min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -137,6 +138,8 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-09: strip fill lives in Highway's child Polygon2D Surface (show_behind_parent) carrying sonar_surface.gdshader; Low = no material, Reduce motion = sweep off
 - [Phase 02.2]: 02.2-10: the Miss shake has one path, FxLayer.request_shake moving board_root only (Feedback nudge removed); bursts clipped by Control.clip_contents (works in Compatibility)
 - [Phase 02.2]: 02.2-10: burst sprites drawn at 4x dot size and spawned on the receptor rim for readability (motion values per spec); a new popup within 150 px fades the older one
+- [Phase 02.2]: 02.2-11: Arena colonies live on side-wall/ceiling vertices only, culled 18 px outside the expanded note path (analytic half-plane test), 64 px from screen edges and out of the console corners; creature seeded by chart id, first crossing at 15..45 s then every 45..75 s
+- [Phase 02.2]: 02.2-11: visual review raised band fills to a gradient lip 0.06+0.16n (spec 0.03+0.05n was invisible), doubled colony halos with a 0.5 floor, lantern fish cyan/pink school that swims; board-slice perf Full p95 2.53 ms, no cut step
 
 ### Pending Todos
 
@@ -152,6 +155,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T16:04:46.038Z
-Stopped at: Completed 02.2-10-PLAN.md
+Last session: 2026-10-10T16:44:55.601Z
+Stopped at: Completed 02.2-11-PLAN.md
 Resume file: None
