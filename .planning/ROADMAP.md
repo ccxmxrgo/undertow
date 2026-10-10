@@ -99,6 +99,28 @@ Plans:
 **Plans**: TBD
 **UI hint**: yes
 
+### Phase 02.2: Visual Design Overhaul (INSERTED)
+
+**Goal:** Every screen shares one deliberate "submarine cockpit looking through a neon sonar into the abyss" look. The gameplay board and HUD become rich, readable instruments, and hits, streaks and the music visibly drive the scene. Timing is unchanged.
+**Mode:** mvp
+**Requirements**: VIS-01, VIS-02, VIS-03, VIS-04, VIS-05, VIS-06, VIS-07, VIS-08, VIS-09, VIS-10, AV-01, AV-02, AV-05
+**Spec:** `phases/02.2-visual-design-overhaul/02.2-SPEC.md` (locked 2026-10-10 from user feedback: "very barebones, just a road and some numbers wont do it")
+**Success Criteria** (what must be TRUE):
+
+  1. Menu, song select, gameplay, pause, results, fail, settings and calibration all use one design system (tokens, panels, buttons, motion), with no screen-specific hard-coded styling
+  2. The main menu is an animated abyss title screen with menu music; song select shows album art or a generated cover
+  3. The highway has filled lanes, beat lines, solid gem notes, hit explosions and streak-driven intensity, and stays readable (contrast tests, 0.5x-3x scroll)
+  4. The HUD is a cockpit instrument cluster: multiplier ring, depth gauge, hull gauge, song progress with section names, accuracy %
+  5. The results screen is opaque (the menu bleed-through bug is fixed) and shows grade, accuracy, timing histogram and record
+  6. Full effects holds >= 230 fps p95 at 1080p on the dev PC; Low effects and Reduce motion have working fallbacks; the timing core is unchanged and Autoplay stays all-Perfect
+**UI hint**: yes
+**Depends on:** Phase 02.1
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 02.2 to break down)
+
 ### Phase 02.1: Instrument Extraction Tool (INSERTED)
 
 **Goal:** Players can turn a song they own into a playable chart by extracting its instruments. Research comes first: study how to separate stems and how to turn a stem into notes, then build the tool.
