@@ -556,3 +556,218 @@ func test_badge_drawing_retired_and_keepout_in_consoles() -> void:
 			assert_bool(p.x <= 400.0 or p.x >= 1520.0).override_failure_message(
 				"HUD keep-out point %s outside the consoles" % p).is_true()
 			assert_bool(p.y >= 600.0).is_true()
+
+
+# ---- ProgressTrack (02.2-14, UI-SPEC 4.8) -------------------------------------------------
+
+func _sectioned_chart(sections: Array, length_s: float = 200.0) -> ChartData:
+	var c := ChartData.new()
+	c.title = "Invisible"
+	c.artist = "Duran Duran"
+	c.add_note(0, 1.0, 0.0)
+	c.add_note(1, length_s, 0.0)
+	c.finalize()
+	for s in sections:
+		c.sections.append({"time": float(s[0]), "name": str(s[1])})
+	return c
+
+
+func _track(chart: ChartData) -> ProgressTrack:
+	var p: ProgressTrack = auto_free(ProgressTrack.new())
+	add_child(p)
+	p.setup(chart, null)
+	return p
+
+
+func test_progress_fill_and_geometry() -> void:
+	var p := _track(_sectioned_chart([[10.0, "intro"], [50.0, "verse 1"]], 200.0))
+	assert_float(p.song_length()).is_equal_approx(200.0, 0.001)
+	assert_object(ProgressTrack.TRACK).is_equal(Rect2(480.0, 60.0, 960.0, 4.0))
+	p.set_song_time(-2.0)
+	assert_float(p.fill()).is_equal(0.0)
+	p.set_song_time(50.0)
+	assert_float(p.fill()).is_equal_approx(0.25, 0.0001)
+	p.set_song_time(500.0)
+	assert_float(p.fill()).is_equal(1.0)
+	assert_int(p.mouse_filter).is_equal(Control.MOUSE_FILTER_IGNORE)
+
+
+func test_progress_title_line_and_truncation() -> void:
+	var c := _sectioned_chart([])
+	var p := _track(c)
+	assert_str(p.title_label.text).is_equal("Invisible · Duran Duran")
+	assert_float(p.title_label.position.x).is_equal(480.0)
+	assert_object(p.title_label.get_theme_color("font_color")).is_equal(Palette.TEXT_MID)
+	c.title = "The Extraordinarily Long Title Of A Progressive Rock Epic That Never Ends Part IV"
+	p.setup(c, null)
+	var t := p.title_label.text
+	assert_str(t).ends_with("...")
+	var w := Palette.font().get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL).x
+	assert_float(w).is_less_equal(560.0)
+	assert_bool(p.title_label.clip_text).is_true()
+	assert_int(p.title_label.autowrap_mode).is_equal(TextServer.AUTOWRAP_OFF)
+
+
+func test_progress_current_section_name_and_ticks() -> void:
+	var p := _track(_sectioned_chart([[10.0, "intro"], [50.0, "verse 1"], [100.0, "chorus 2"]], 200.0))
+	assert_str(p.current_section_name(5.0)).is_equal("")
+	assert_str(p.current_section_name(10.0)).is_equal("INTRO")
+	assert_str(p.current_section_name(99.9)).is_equal("VERSE 1")
+	assert_str(p.current_section_name(150.0)).is_equal("CHORUS 2")
+	p.set_song_time(120.0)
+	assert_str(p.section_label.text).is_equal("CHORUS 2")
+	assert_object(p.section_label.get_theme_color("font_color")).is_equal(Palette.SONAR_PALE)
+	assert_float(p.section_label.position.x + p.section_label.size.x).is_equal_approx(1440.0, 0.5)
+	var ticks := p.tick_xs()
+	assert_int(ticks.size()).is_equal(3)
+	assert_float(ticks[0]).is_equal_approx(480.0 + 960.0 * 10.0 / 200.0, 0.01)
+	assert_float(ticks[2]).is_equal_approx(960.0, 0.01)
+
+
+func test_progress_time_remaining_text() -> void:
+	var p := _track(_sectioned_chart([], 200.0))
+	assert_str(p.time_remaining_text(49.0)).is_equal("-2:31")
+	assert_str(p.time_remaining_text(200.0)).is_equal("-0:00")
+	assert_str(p.time_remaining_text(260.0)).is_equal("-0:00")
+	assert_str(p.time_remaining_text(-3.0)).is_equal("-3:20")
+	p.set_song_time(49.0)
+	assert_str(p.time_label.text).is_equal("-2:31")
+	assert_float(p.time_label.position.x).is_equal(1456.0)
+	assert_object(p.time_label.get_theme_color("font_color")).is_equal(Palette.TEXT_LO)
+
+
+func test_progress_scrim_gradient() -> void:
+	assert_float(ProgressTrack.scrim_alpha(0.0)).is_equal_approx(0.8, 0.001)
+	assert_float(ProgressTrack.scrim_alpha(76.0)).is_equal_approx(0.8, 0.001)
+	assert_float(ProgressTrack.scrim_alpha(94.0)).is_equal_approx(0.4, 0.01)
+	assert_float(ProgressTrack.scrim_alpha(112.0)).is_equal_approx(0.0, 0.001)
+	assert_float(ProgressTrack.scrim_alpha(300.0)).is_equal(0.0)
+
+
+func test_progress_no_sections_still_draws() -> void:
+	var p := _track(_sectioned_chart([], 200.0))
+	p.set_song_time(80.0)
+	assert_str(p.current_section_name(80.0)).is_equal("")
+	assert_str(p.section_label.text).is_equal("")
+	assert_array(p.tick_xs()).is_empty()
+	assert_bool(p.visible).is_true()
+	assert_float(p.fill()).is_equal_approx(0.4, 0.0001)
+	for poly in p.keepout_shapes():
+		for pt in poly:
+			assert_float(pt.y).is_less_equal(112.0)
+	p.queue_redraw()
+	await get_tree().process_frame
+
+
+# ---- SectionBanner (02.2-14, UI-SPEC 4.9) -------------------------------------------------
+
+func _banner(chart: ChartData) -> SectionBanner:
+	var b: SectionBanner = auto_free(SectionBanner.new())
+	add_child(b)
+	b.setup(chart, null)
+	return b
+
+
+func test_banner_should_show_rules() -> void:
+	assert_bool(SectionBanner.should_show(0.0, 200.0)).is_false()
+	assert_bool(SectionBanner.should_show(0.49, 200.0)).is_false()
+	assert_bool(SectionBanner.should_show(0.5, 200.0)).is_true()
+	assert_bool(SectionBanner.should_show(197.9, 200.0)).is_true()
+	assert_bool(SectionBanner.should_show(198.5, 200.0)).is_false()
+	assert_object(SectionBanner.RECT).is_equal(Rect2(640.0, 200.0, 640.0, 72.0))
+
+
+func test_banner_name_truncation() -> void:
+	assert_str(SectionBanner.display_name("chorus 2")).is_equal("CHORUS 2")
+	var long := SectionBanner.display_name("an extremely long guitar solo section name here")
+	assert_str(long).ends_with("...")
+	assert_int(long.length()).is_less_equal(31)
+	var f := Palette.display_font()
+	var w := f.get_string_size(long, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_HEADING).x
+	assert_float(w).is_less_equal(SectionBanner.RECT.size.x - 2.0 * UiKit.PANEL_PAD)
+
+
+func test_banner_slides_in_holds_and_fades_out() -> void:
+	var b := _banner(_sectioned_chart([[0.0, "intro"], [10.0, "verse 1"], [40.0, "chorus"]], 200.0))
+	b.observe(0.2)
+	assert_bool(b.is_showing()).is_false()  # section at 0 s is before 0.5 s
+	b.observe(10.0)
+	assert_bool(b.is_showing()).is_true()
+	assert_str(b.shown_text()).is_equal("VERSE 1")
+	assert_float(b.slide_offset()).is_equal_approx(-24.0, 0.01)
+	assert_float(b.modulate.a).is_less(0.05)
+	b.step(Palette.DUR_BASE * 0.5)
+	assert_float(b.modulate.a).is_between(0.3, 0.99)
+	b.step(Palette.DUR_BASE * 0.5 + 0.001)
+	assert_float(b.modulate.a).is_equal_approx(1.0, 0.001)
+	assert_float(b.slide_offset()).is_equal_approx(0.0, 0.01)
+	b.step(1.5)
+	assert_float(b.modulate.a).is_equal_approx(1.0, 0.001)
+	b.step(0.11)  # hold of 1.6 s is over
+	b.step(0.15)
+	assert_float(b.modulate.a).is_between(0.3, 0.7)
+	b.step(0.2)
+	assert_bool(b.is_showing()).is_false()
+	assert_bool(b.visible).is_false()
+
+
+func test_banner_cross_fades_on_new_section_during_hold() -> void:
+	var b := _banner(_sectioned_chart([[10.0, "verse"], [11.0, "chorus"]], 200.0))
+	b.observe(10.0)
+	b.step(0.5)
+	b.observe(11.0)
+	assert_str(b.shown_text()).is_equal("CHORUS")
+	assert_bool(b.is_cross_fading()).is_true()
+	assert_float(b.modulate.a).is_equal_approx(1.0, 0.001)
+	b.step(0.13)
+	assert_bool(b.is_cross_fading()).is_false()
+	b.step(1.4)
+	assert_float(b.modulate.a).is_equal_approx(1.0, 0.001)  # the hold restarted with the new name
+
+
+func test_banner_reduce_motion_is_fade_only() -> void:
+	Settings.reduce_motion = true
+	var b := _banner(_sectioned_chart([[10.0, "verse"]], 200.0))
+	b.observe(10.0)
+	assert_float(b.slide_offset()).is_equal(0.0)
+	b.step(0.09)
+	assert_float(b.slide_offset()).is_equal(0.0)
+	assert_float(b.modulate.a).is_greater(0.2)
+	assert_bool(b.effect_counts()["slide"]).is_false()
+	assert_bool(b.is_in_group(UiKit.FX_GROUP)).is_true()
+
+
+func test_banner_no_sections_never_shows() -> void:
+	var b := _banner(_sectioned_chart([], 200.0))
+	for t in [0.0, 1.0, 10.0, 100.0, 199.0]:
+		b.observe(t)
+		b.step(0.1)
+		assert_bool(b.is_showing()).is_false()
+
+
+func test_banner_skips_section_near_the_end() -> void:
+	var b := _banner(_sectioned_chart([[199.0, "outro"]], 200.0))
+	b.observe(199.0)
+	assert_bool(b.is_showing()).is_false()
+
+
+func test_banner_keepout_inside_its_rect_and_draws() -> void:
+	var b := _banner(_sectioned_chart([[10.0, "verse"]], 200.0))
+	b.observe(10.0)
+	b.step(0.3)
+	for poly in b.keepout_shapes():
+		for pt in poly:
+			assert_bool(SectionBanner.RECT.grow(1.0).has_point(pt)).is_true()
+	b.queue_redraw()
+	await get_tree().process_frame
+
+
+func test_hud_hosts_progress_track_and_banner() -> void:
+	var score := HullScore.new(JudgeConfig.new())
+	var hud := _hud(score)
+	assert_object(hud.progress_track).is_not_null()
+	assert_object(hud.section_banner).is_not_null()
+	assert_object(hud.progress_track.get_parent()).is_same(hud)
+	hud.setup_song(_sectioned_chart([[10.0, "verse"]], 200.0), null)
+	hud.progress_track.set_song_time(100.0)
+	assert_float(hud.progress_track.fill()).is_equal_approx(0.5, 0.0001)
