@@ -8,6 +8,7 @@ extends Control
 enum State { RUNNING, FAILED, DONE, ERROR }
 
 const MENU_SCENE := "res://scenes/main_menu.tscn"
+const SONG_SELECT_SCENE := "res://scenes/song_select.tscn"
 const FALLBACK_SCENE := "res://scenes/skeleton.tscn"
 const LEAD_IN_BEATS := 3
 const QUICK_LEAD_IN_BEATS := 1
@@ -47,8 +48,12 @@ var feedback: Feedback
 ## Board juice between Highway and Feedback (02.2-10): bursts, rings, crack, shake, sparks.
 var fx_layer: FxLayer
 var fail_screen: FailScreen
-## Last finished-dive record outcome {eligible, new_record, previous_depth, best_depth}.
+## Last finished-dive record outcome {eligible, new_record, previous_depth, best_depth, grade,
+## accuracy (D-08, -1 when nothing was judged), offsets (PackedFloat32Array, seconds)}.
 var record_info: Dictionary = {}
+## Per-hit timing offsets for the results histogram (D-09). Read-only judge listener; attached
+## to each run's judge in start(), reset on every (re)start, detached on teardown.
+var offset_recorder := HitOffsetRecorder.new()
 var results: ResultsScreen
 var pause_menu: PauseMenu
 var debug_overlay: DebugOverlay
@@ -61,6 +66,8 @@ var _fail_tween: Tween
 var _end_time: float = 0.0
 var _began: bool = false
 var _arena_miss_frame: int = -1
+## The autoplay flag this run was launched with (Song Select restores it on the way back).
+var _launch_autoplay: bool = false
 
 
 func _ready() -> void:
@@ -69,6 +76,7 @@ func _ready() -> void:
 	theme = Palette.load_theme()
 	var c := pending_chart if pending_chart != null else TestCharts.hand_chart()
 	var a := pending_autoplay
+	_launch_autoplay = a
 	pending_chart = null
 	pending_autoplay = false
 	practice = pending_practice
@@ -101,6 +109,8 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	score = HullScore.new(cfg)
 	score.no_fail = Settings.no_fail or practice
 	score.connect_judge(judge)
+	offset_recorder.reset()
+	offset_recorder.attach(judge)
 	score.failed.connect(_on_failed)
 	conductor = Conductor.new()
 	conductor.tempo_map = chart.tempo_map
@@ -253,6 +263,7 @@ func _teardown() -> void:
 	if _fail_tween != null and _fail_tween.is_valid():
 		_fail_tween.kill()
 	_fail_tween = null
+	offset_recorder.detach()
 	if _run_root == null:
 		return
 	if conductor != null and is_instance_valid(conductor):
@@ -314,9 +325,11 @@ func _finish() -> void:
 	var store := ScoreStore.new()
 	store.load()
 	var eligible := ScoreStore.is_eligible(autoplay_used, score.no_fail, practice)
-	var acc := ScoreStore.accuracy(score.perfect_count, score.good_count, score.miss_count)
-	var res := store.submit(chart.id, score.depth(), acc, score.max_combo, eligible,
-		Time.get_date_string_from_system())
+	# D-08 weighted accuracy (-1 when nothing was judged; stored as 0) and the D-16 grade.
+	var acc := RunStats.accuracy(score.perfect_count, score.good_count, score.miss_count)
+	var grade := RunStats.grade(acc, score.miss_count)
+	var res := store.submit(chart.id, score.depth(), maxf(acc, 0.0), score.max_combo, eligible,
+		Time.get_date_string_from_system(), grade if grade != "-" else "", score.miss_count)
 	var prev: Dictionary = res["previous"]
 	var best := store.best(chart.id)
 	record_info = {
@@ -324,11 +337,24 @@ func _finish() -> void:
 		"new_record": res["new_record"],
 		"previous_depth": float(prev["depth"]) if not prev.is_empty() else -1.0,
 		"best_depth": float(best["depth"]) if not best.is_empty() else -1.0,
+		"grade": grade,
+		"accuracy": acc,
+		"offsets": offset_recorder.offsets(),
+	}
+	var run_info := {
+		"title": chart.title,
+		"artist": chart.artist,
+		"difficulty": chart.difficulty,
+		"offsets": record_info["offsets"],
+		"accuracy": acc,
+		"grade": grade,
+		"perfect_window": JudgeConfig.new().perfect_window,
 	}
 	results = ResultsScreen.new()
 	_run_root.add_child(results)
-	results.setup(score, autoplay_used, record_info, practice)
+	results.setup(score, autoplay_used, record_info, practice, run_info)
 	results.retry_pressed.connect(_on_retry)
+	results.song_select_pressed.connect(go_to_song_select)
 	results.menu_pressed.connect(go_to_menu)
 
 
@@ -382,6 +408,19 @@ func _show_audio_error() -> void:
 	l.add_theme_color_override("font_color", Palette.DESTRUCTIVE)
 	_run_root.add_child(l)
 	get_tree().create_timer(ERROR_RETURN_SEC).timeout.connect(go_to_menu)
+
+
+## Restores the Song Select run flags this dive was launched with (SongSelect resets them when it
+## exits into gameplay), so "Song Select" from results keeps Practice / Autoplay mode.
+func prepare_song_select() -> void:
+	SongSelect.run_autoplay = _launch_autoplay
+	SongSelect.run_practice = practice
+
+
+func go_to_song_select() -> void:
+	prepare_song_select()
+	var target := SONG_SELECT_SCENE if ResourceLoader.exists(SONG_SELECT_SCENE) else MENU_SCENE
+	get_tree().change_scene_to_file(target)
 
 
 func go_to_menu() -> void:

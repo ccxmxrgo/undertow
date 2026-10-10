@@ -263,9 +263,9 @@ func test_hostile_grade_and_misses_sanitized() -> void:
 
 func test_submit_rejects_unknown_grade_and_clamps_misses() -> void:
 	var s := ScoreStore.new(P)
-	s.submit("z", 10.0, 10.0, 1, true, "X", 5)
+	s.submit("z", 10.0, 10.0, 1, true, "", "X", 5)
 	assert_str(s.best("z").grade).is_equal("")
 	assert_int(s.best("z").misses).is_equal(-1)
-	s.submit("z", 10.0, 10.0, 1, true, "D", -3)
+	s.submit("z", 10.0, 10.0, 1, true, "", "D", -3)
 	assert_str(s.best("z").grade).is_equal("D")
 	assert_int(s.best("z").misses).is_equal(0)

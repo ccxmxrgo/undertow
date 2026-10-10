@@ -5,6 +5,7 @@ extends Control
 
 signal retry_pressed
 signal menu_pressed
+signal song_select_pressed
 
 var retry_button: Button
 var menu_button: Button
@@ -20,7 +21,7 @@ var note_label: Label
 
 
 func setup(score: HullScore, autoplay_used: bool, record_info: Dictionary = {},
-		practice: bool = false) -> void:
+		practice: bool = false, _run_info: Dictionary = {}) -> void:
 	UiLayout.fill_rect(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if theme == null:
