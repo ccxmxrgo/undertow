@@ -539,3 +539,123 @@ func test_ui_icons_names_and_unknown_name_is_noop() -> void:
 	for i in 10:
 		assert_bool(drawn[i]).is_true()
 	assert_bool(drawn[10]).is_false()
+
+
+# ---- Plan 05 task 2: FocusMarker.
+
+func _marker_screen() -> Array:
+	var screen: Control = auto_free(Control.new())
+	screen.size = Vector2(1920, 1080)
+	add_child(screen)
+	var a := UiKit.make_button("Start Dive", "dive", "primary", 64)
+	a.position = Vector2(128, 416)
+	a.size = Vector2(512, 64)
+	screen.add_child(a)
+	var b := UiKit.make_button("Quit Game", "power", "default", 64)
+	b.position = Vector2(128, 488)
+	b.size = Vector2(512, 64)
+	screen.add_child(b)
+	var m := FocusMarker.new()
+	screen.add_child(m)
+	return [screen, a, b, m]
+
+
+func test_focus_marker_glides_over_dur_fast() -> void:
+	Settings.reduce_motion = false
+	var parts := _marker_screen()
+	var a: Button = parts[1]
+	var b: Button = parts[2]
+	var m: FocusMarker = parts[3]
+	assert_int(m.mouse_filter).is_equal(Control.MOUSE_FILTER_IGNORE)
+	assert_bool(m.is_in_group(UiKit.FX_GROUP)).is_true()
+	m.set_process(false)  # step by hand
+	a.grab_focus()
+	m.advance(Palette.DUR_FAST)
+	assert_object(m.target()).is_same(a)
+	assert_vector(m.position).is_equal(a.get_global_rect().position)
+	b.grab_focus()
+	m.advance(Palette.DUR_FAST * 0.4)
+	assert_float(m.position.y).is_greater(a.get_global_rect().position.y)
+	assert_float(m.position.y).is_less(b.get_global_rect().position.y)
+	m.advance(Palette.DUR_FAST)
+	assert_vector(m.position).is_equal(b.get_global_rect().position)
+	assert_vector(m.size).is_equal(b.size)
+	var c := m.effect_counts()
+	assert_bool(c.glide).is_true()
+	assert_bool(c.breathing).is_true()
+
+
+func test_focus_marker_jumps_and_is_static_under_reduce_motion() -> void:
+	Settings.reduce_motion = true
+	var parts := _marker_screen()
+	var a: Button = parts[1]
+	var b: Button = parts[2]
+	var m: FocusMarker = parts[3]
+	m.set_process(false)
+	m.apply_effect_settings()
+	a.grab_focus()
+	b.grab_focus()
+	m.advance(0.0)
+	assert_vector(m.position).is_equal(b.get_global_rect().position)
+	for i in 5:
+		m.advance(0.3)
+		assert_float(m.glow_alpha).is_equal_approx(0.28, 0.0001)
+	var c := m.effect_counts()
+	assert_bool(c.glide).is_false()
+	assert_bool(c.breathing).is_false()
+
+
+func test_focus_marker_breathes_between_20_and_32_percent() -> void:
+	Settings.reduce_motion = false
+	var parts := _marker_screen()
+	var m: FocusMarker = parts[3]
+	m.set_process(false)
+	m.apply_effect_settings()
+	var lo := 1.0
+	var hi := 0.0
+	for i in 64:
+		m.advance(Palette.BREATH_SEC / 32.0)
+		lo = minf(lo, m.glow_alpha)
+		hi = maxf(hi, m.glow_alpha)
+	assert_float(lo).is_equal_approx(0.20, 0.005)
+	assert_float(hi).is_equal_approx(0.32, 0.005)
+
+
+func test_focus_marker_bar_and_caret_geometry() -> void:
+	var bar := FocusMarker.bar_rect(Vector2(512, 64))
+	assert_that(bar).is_equal(Rect2(8, 8, 4, 48))
+	var caret := FocusMarker.caret_points(Vector2(512, 64))
+	assert_int(caret.size()).is_equal(3)
+	# 12 wide x 16 tall, 12 px left of the control, pointing right, centred vertically.
+	assert_vector(caret[0]).is_equal(Vector2(-24, 24))
+	assert_vector(caret[1]).is_equal(Vector2(-12, 32))
+	assert_vector(caret[2]).is_equal(Vector2(-24, 40))
+
+
+func test_focus_marker_ignores_controls_outside_its_screen() -> void:
+	var parts := _marker_screen()
+	var a: Button = parts[1]
+	var m: FocusMarker = parts[3]
+	m.set_process(false)
+	a.grab_focus()
+	m.advance(1.0)
+	var other: Button = auto_free(Button.new())
+	add_child(other)
+	other.grab_focus()
+	m.advance(1.0)
+	assert_object(m.target()).is_same(a)
+	assert_vector(m.position).is_equal(a.get_global_rect().position)
+
+
+func test_focus_marker_is_red_for_destructive() -> void:
+	var parts := _marker_screen()
+	var screen: Control = parts[0]
+	var m: FocusMarker = parts[3]
+	var d := UiKit.make_button("Leave", "", "destructive", 64)
+	d.position = Vector2(128, 560)
+	d.size = Vector2(512, 64)
+	screen.add_child(d)
+	d.grab_focus()
+	assert_that(m.marker_color()).is_equal(Palette.WARNING_RED)
+	(parts[1] as Button).grab_focus()
+	assert_that(m.marker_color()).is_equal(Palette.SONAR)
