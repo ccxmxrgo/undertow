@@ -315,3 +315,19 @@ func test_menu_mode_has_no_fish_or_creature() -> void:
 	var c := a.effect_counts()
 	assert_int(c["fish"]).is_equal(0)
 	assert_bool(c["creature"]).is_false()
+
+
+# Regression: the wavy rings of large radius overlap, which made the half-annulus band polygons
+# self-intersect ("Invalid polygon data, triangulation failed") and spammed errors every frame.
+func test_band_polygons_always_triangulate() -> void:
+	var a: Arena = auto_free(Arena.new())
+	a.apply_effect_settings()
+	var drawn := 0
+	for step in 200:
+		a.set_scroll(float(step) / 200.0)
+		var polys := a.band_polygons()
+		drawn = maxi(drawn, polys.size())
+		for poly in polys:
+			assert_bool(Geometry2D.triangulate_polygon(poly).is_empty()).override_failure_message(
+				"band polygon failed to triangulate at scroll step %d" % step).is_false()
+	assert_int(drawn).is_greater_equal(10)

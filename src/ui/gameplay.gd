@@ -114,8 +114,10 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	_run_root.add_child(board_root)
 	arena = Arena.new()  # first board child: the world behind the board
 	board_root.add_child(arena)
-	arena.bind(conductor, chart.tempo_map)
+	arena.bind(conductor, chart.tempo_map, chart.id)  # chart id seeds the distant creature
 	score.combo_changed.connect(arena.on_combo)
+	arena.set_tier(1)
+	score.multiplier_changed.connect(arena.set_tier)  # bio pulse gain, MAX fish energy (7.6)
 	judge.judged.connect(_on_judged_arena)
 	score.hull_changed.connect(_on_hull_arena)
 	highway = Highway.new()
