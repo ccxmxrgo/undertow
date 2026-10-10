@@ -161,9 +161,8 @@ func test_results_screen_fills_viewport_dims_and_blocks() -> void:
 	await _frames(3)
 	var rs: ResultsScreen = gp.results
 	_assert_full(rs)
-	_assert_dim(rs, 1.0)
+	_assert_results_opaque(rs)
 	assert_int(rs.mouse_filter).is_equal(Control.MOUSE_FILTER_STOP)
-	_assert_centered(rs.retry_button.get_parent())
 	await _click_blocked(gp)
 
 
@@ -263,7 +262,7 @@ func test_results_ineligible_and_non_record_copy() -> void:
 	assert_bool(_texts(r).has("Not recorded. Practice, Autoplay and No-Fail dives do not set records.")).is_true()
 	assert_bool(r.flags.has("PRACTICE DIVE")).is_true()
 	var b := _results({"eligible": true, "new_record": false, "previous_depth": 100.0, "best_depth": 2500.0})
-	assert_bool(_texts(b).has("Best: 2,500 m")).is_true()
+	assert_bool(_texts(b).has("PREVIOUS BEST 2,500 M")).is_true()
 	assert_object(b.record_banner).is_null()
 	var a := _results({"eligible": false}, false, true)
 	assert_bool(a.flags.has("AUTOPLAY USED")).is_true()
@@ -319,8 +318,86 @@ func test_results_after_menu_show_no_main_menu() -> void:
 	if fo != null:
 		assert_bool(gp.results.is_ancestor_of(fo)).override_failure_message(
 			"focus outside results: %s" % fo).is_true()
-	# Results backdrop is fully opaque.
-	_assert_dim(gp.results, 1.0)
+	# Results backdrop is fully opaque (calm AbyssBackdrop + ABYSS_900 55%).
+	_assert_results_opaque(gp.results)
+
+
+
+
+# --- 02.2-15: opaque design-system results (UI-SPEC 8, 4.13) --------------------------------------
+
+
+## Results are opaque: the first child is the calm AbyssBackdrop, then a viewport-sized ABYSS_900 55%
+## layer. The backdrop's own gradient is opaque, so nothing of the frozen board shows through.
+func _assert_results_opaque(rs: ResultsScreen) -> void:
+	assert_int(rs.get_child_count()).is_greater(2)
+	var bd := rs.get_child(0) as AbyssBackdrop
+	assert_object(bd).override_failure_message("first child is not an AbyssBackdrop").is_not_null()
+	if bd != null:
+		assert_str(bd.variant).is_equal("calm")
+	_assert_dim(rs, 0.55)
+	var dim := _find_dim(rs)
+	if dim != null:
+		assert_bool(Color(dim.color, 1.0).is_equal_approx(Palette.ABYSS_900)).is_true()
+	assert_bool(rs.backdrop_opaque()).is_true()
+
+
+func _score(p: int, g: int, m: int, hull: float = 82.0) -> HullScore:
+	var s := HullScore.new(JudgeConfig.new())
+	s.perfect_count = p
+	s.good_count = g
+	s.miss_count = m
+	s.max_combo = p
+	s.hull = hull
+	return s
+
+
+func _results_run(score: HullScore, info: Dictionary, run_info: Dictionary = {}, practice: bool = false) -> ResultsScreen:
+	var host := Control.new()
+	UiLayout.fill_rect(host)
+	add_child(host)
+	auto_free(host)
+	var r := ResultsScreen.new()
+	host.add_child(r)
+	r.setup(score, false, info, practice, run_info)
+	return r
+
+
+func _rect_of(c: Control) -> Rect2:
+	return Rect2(c.global_position, c.size)
+
+
+func test_results_three_buttons_geometry_and_signals() -> void:
+	var r := _results_run(_score(10, 0, 0), {"eligible": true, "new_record": false})
+	await _frames(2)
+	assert_object(r.song_select_button).is_not_null()
+	assert_str(r.retry_button.text).is_equal("Retry Dive")
+	assert_str(r.song_select_button.text).is_equal("Song Select")
+	assert_str(r.menu_button.text).is_equal("Back to Menu")
+	assert_str(String(r.retry_button.get_meta(&"ui_variant", ""))).is_equal("primary")
+	assert_object(_rect_of(r.retry_button)).is_equal(Rect2(96, 752, 400, 64))
+	assert_object(_rect_of(r.song_select_button)).is_equal(Rect2(520, 752, 400, 64))
+	assert_object(_rect_of(r.menu_button)).is_equal(Rect2(944, 752, 400, 64))
+	assert_bool(r.retry_button.has_focus()).is_true()
+	var got: Array[String] = []
+	r.retry_pressed.connect(func() -> void: got.append("retry"))
+	r.song_select_pressed.connect(func() -> void: got.append("song"))
+	r.menu_pressed.connect(func() -> void: got.append("menu"))
+	r.retry_button.pressed.emit()
+	r.song_select_button.pressed.emit()
+	r.menu_button.pressed.emit()
+	assert_array(got).is_equal(["retry", "song", "menu"])
+	# Esc / B = Back to Menu.
+	var esc := InputEventAction.new()
+	esc.action = "ui_cancel"
+	esc.pressed = true
+	get_viewport().push_input(esc)
+	var esc_up := InputEventAction.new()
+	esc_up.action = "ui_cancel"
+	esc_up.pressed = false
+	get_viewport().push_input(esc_up)
+	await _frames(1)
+	assert_array(got).is_equal(["retry", "song", "menu", "menu"])
 
 
 func test_results_buttons_form_closed_focus_loop() -> void:
@@ -329,22 +406,25 @@ func test_results_buttons_form_closed_focus_loop() -> void:
 	gp._finish()
 	await _frames(3)
 	var rs: ResultsScreen = gp.results
-	var pairs := [[rs.retry_button, rs.menu_button], [rs.menu_button, rs.retry_button]]
-	for pair in pairs:
-		var a: Button = pair[0]
-		var b: Button = pair[1]
-		for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
-			var np: NodePath = a.get_focus_neighbor(side)
-			assert_bool(not np.is_empty() and a.get_node_or_null(np) == b).override_failure_message(
-				"%s side %d -> %s, expected %s" % [a.text, side, np, b.text]).is_true()
-			assert_object(a.find_valid_focus_neighbor(side)).is_same(b)
-		assert_object(a.get_node_or_null(a.focus_next)).is_same(b)
-		assert_object(a.get_node_or_null(a.focus_previous)).is_same(b)
-	# Real ui_* navigation stays inside the two buttons.
+	var order: Array[Button] = [rs.retry_button, rs.song_select_button, rs.menu_button]
+	for i in order.size():
+		var a := order[i]
+		var nxt := order[(i + 1) % 3]
+		var prv := order[(i + 2) % 3]
+		for side in [SIDE_RIGHT, SIDE_BOTTOM]:
+			assert_object(a.get_node_or_null(a.get_focus_neighbor(side))).override_failure_message(
+				"%s side %d" % [a.text, side]).is_same(nxt)
+		for side in [SIDE_LEFT, SIDE_TOP]:
+			assert_object(a.get_node_or_null(a.get_focus_neighbor(side))).override_failure_message(
+				"%s side %d" % [a.text, side]).is_same(prv)
+		assert_object(a.get_node_or_null(a.focus_next)).is_same(nxt)
+		assert_object(a.get_node_or_null(a.focus_previous)).is_same(prv)
+	# Real ui_* navigation stays inside the three buttons and wraps.
 	rs.retry_button.grab_focus()
 	await _frames(1)
-	for action in ["ui_left", "ui_right", "ui_up", "ui_down"]:
-		var before := gp.get_viewport().gui_get_focus_owner()
+	var expect := {"ui_right": rs.song_select_button, "ui_down": rs.menu_button, "ui_left": rs.song_select_button,
+		"ui_up": rs.retry_button}
+	for action in ["ui_right", "ui_down", "ui_left", "ui_up"]:
 		var ev := InputEventAction.new()
 		ev.action = action
 		ev.pressed = true
@@ -355,6 +435,189 @@ func test_results_buttons_form_closed_focus_loop() -> void:
 		gp.get_viewport().push_input(up)
 		await _frames(1)
 		var after := gp.get_viewport().gui_get_focus_owner()
-		assert_bool(after == rs.retry_button or after == rs.menu_button).override_failure_message(
-			"%s left the results buttons: %s" % [action, after]).is_true()
-		assert_bool(after != before).override_failure_message("%s did not move focus" % action).is_true()
+		assert_object(after).override_failure_message("%s -> %s" % [action, after]).is_same(expect[action])
+	# Up from Retry wraps to Back to Menu.
+	var w := InputEventAction.new()
+	w.action = "ui_up"
+	w.pressed = true
+	gp.get_viewport().push_input(w)
+	var wu := InputEventAction.new()
+	wu.action = "ui_up"
+	wu.pressed = false
+	gp.get_viewport().push_input(wu)
+	await _frames(1)
+	assert_object(gp.get_viewport().gui_get_focus_owner()).is_same(rs.menu_button)
+
+
+func test_results_legacy_four_arg_setup_derives_grade() -> void:
+	# 90 P, 10 G, 0 M -> (9000 + 500) / 100 = 95.0% -> A.
+	var r := _results_run(_score(90, 10, 0), {"eligible": true, "new_record": false})
+	var acc := RunStats.accuracy(90, 10, 0)
+	assert_str(r.accuracy_text).is_equal(RunStats.accuracy_text(acc))
+	assert_str(r.accuracy_text).is_equal("95.0%")
+	assert_str(r.grade_letter).is_equal(RunStats.grade(acc, 0))
+	assert_str(r.grade_letter).is_equal("A")
+	assert_str(r.grade_emblem.letter).is_equal("A")
+	assert_bool(_texts(r).has("95.0%")).is_true()
+	# Old 4-argument call (no run_info) still works.
+	var host := Control.new()
+	add_child(host)
+	auto_free(host)
+	var old := ResultsScreen.new()
+	host.add_child(old)
+	old.setup(_score(50, 0, 1), false, {"eligible": true, "new_record": false}, false)
+	assert_str(old.grade_letter).is_equal(RunStats.grade(RunStats.accuracy(50, 0, 1), 1))
+	# 98+% with a Miss is A, not S.
+	var s := _results_run(_score(200, 0, 1), {})
+	assert_str(s.grade_letter).is_equal("A")
+	var perfect := _results_run(_score(50, 0, 0), {})
+	assert_str(perfect.grade_letter).is_equal("S")
+
+
+func test_results_zero_judged_notes() -> void:
+	var r := _results_run(_score(0, 0, 0), {})
+	assert_str(r.accuracy_text).is_equal("--.-%")
+	assert_str(r.grade_letter).is_equal("-")
+	assert_array(r.bar_widths).is_equal([0.0, 0.0, 0.0])
+
+
+func test_results_header_uses_run_info() -> void:
+	var info := {"title": "Sea Shanty 2", "artist": "Jagex", "difficulty": "expert", "grade": "B", "accuracy": 88.0}
+	var r := _results_run(_score(70, 20, 10), {"eligible": true, "new_record": false}, info)
+	var t := _texts(r)
+	assert_bool(t.has("DIVE COMPLETE")).is_true()
+	assert_bool(t.has("Sea Shanty 2")).is_true()
+	assert_bool(t.has("Jagex")).is_true()
+	assert_bool(r.header_chips.has("EXPERT")).is_true()
+	assert_bool(t.has("ENTER SELECT  ·  ESC BACK TO MENU")).is_true()
+	for cap in ["GRADE", "ACCURACY", "DEPTH", "MAX COMBO", "FINAL HULL", "PERFECT", "GOOD", "MISS", "TIMING"]:
+		assert_bool(t.has(cap)).override_failure_message("missing caption " + cap).is_true()
+	# Long titles are cut to fit 1200 px.
+	var long_title := "An Extremely Long Song Title ".repeat(8)
+	var lr := _results_run(_score(1, 0, 0), {}, {"title": long_title})
+	assert_float(lr.title_label.size.x).is_less_equal(1200.0)
+	assert_bool(lr.title_label.text.ends_with("...")).is_true()
+
+
+func test_results_judgment_bars_are_proportional() -> void:
+	var r := _results_run(_score(60, 30, 10), {})
+	assert_float(r.bar_widths[0]).is_equal_approx(352.0 * 0.6, 0.01)
+	assert_float(r.bar_widths[1]).is_equal_approx(352.0 * 0.3, 0.01)
+	assert_float(r.bar_widths[2]).is_equal_approx(352.0 * 0.1, 0.01)
+	assert_float(ResultsScreen.BAR_MAX).is_equal(352.0)
+
+
+func test_results_final_hull_red_when_critical() -> void:
+	var ok := _results_run(_score(10, 0, 0, 31.0), {})
+	assert_bool(ok.hull_label.get_theme_color("font_color").is_equal_approx(Palette.TEXT_HI)).is_true()
+	assert_str(ok.hull_label.text).is_equal("31%")
+	var low := _results_run(_score(10, 0, 0, 30.0), {})
+	assert_bool(low.hull_label.get_theme_color("font_color").is_equal_approx(Palette.WARNING_RED)).is_true()
+
+
+func test_results_previous_best_line_variants() -> void:
+	var rec := _results_run(_score(10, 0, 0), {"eligible": true, "new_record": true, "previous_depth": 466.0, "best_depth": 500.0})
+	assert_str(rec.previous_label.text).is_equal("PREVIOUS BEST 466 M")
+	assert_bool(rec.record_banner != null and rec.record_banner.is_visible_in_tree()).is_true()
+	var first := _results_run(_score(10, 0, 0), {"eligible": true, "new_record": true, "previous_depth": -1.0, "best_depth": 5.0})
+	assert_str(first.previous_label.text).is_equal("First record for this song.")
+	var nr := _results_run(_score(10, 0, 0), {"eligible": false, "new_record": false}, {}, true)
+	assert_bool(nr.previous_label == null or not nr.previous_label.is_visible_in_tree()).is_true()
+
+
+func test_results_practice_shows_not_recorded_chip() -> void:
+	var r := _results_run(_score(10, 2, 3), {"eligible": false, "new_record": false, "previous_depth": -1.0, "best_depth": -1.0}, {}, true)
+	assert_bool(r.header_chips.has("NOT RECORDED")).is_true()
+	assert_bool(r.header_chips.has("PRACTICE DIVE")).is_true()
+	assert_bool(r.flags.has("PRACTICE DIVE")).is_true()
+	assert_object(r.note_label).is_not_null()
+	assert_bool(r.note_label.text.begins_with("Not recorded")).is_true()
+	assert_object(r.record_banner).is_null()
+	var ok := _results_run(_score(10, 2, 3), {"eligible": true, "new_record": false})
+	assert_bool(ok.header_chips.has("NOT RECORDED")).is_false()
+
+
+func test_results_grade_panel_reward_brackets_on_record() -> void:
+	var rec := _results_run(_score(10, 0, 0), {"eligible": true, "new_record": true, "previous_depth": -1.0})
+	assert_str(rec.grade_panel_variant).is_equal("reward")
+	var plain := _results_run(_score(10, 0, 0), {"eligible": true, "new_record": false})
+	assert_str(plain.grade_panel_variant).is_equal("default")
+	assert_object(rec.grade_emblem.get_global_rect()).is_equal(Rect2(224, 280, 224, 224))
+
+
+# --- GradeEmblem (UI-SPEC 4.13) -------------------------------------------------------------------
+
+
+func _emblem(letter: String) -> GradeEmblem:
+	var host := Control.new()
+	add_child(host)
+	auto_free(host)
+	var e := GradeEmblem.new()
+	host.add_child(e)
+	e.set_grade(letter)
+	return e
+
+
+func test_grade_emblem_geometry_and_colour() -> void:
+	var e := _emblem("S")
+	assert_object(e.size).is_equal(Vector2(224, 224))
+	var pts := GradeEmblem.octagon_points(Rect2(0, 0, 224, 224), 48.0)
+	assert_int(pts.size()).is_equal(8)
+	assert_bool(pts.has(Vector2(48, 0))).is_true()
+	assert_bool(pts.has(Vector2(224, 176))).is_true()
+	assert_bool(e.grade_color().is_equal_approx(Palette.grade_color("S"))).is_true()
+	assert_bool(e.is_in_group(UiKit.FX_GROUP)).is_true()
+	assert_float(e.glow_alpha()).is_equal_approx(0.30, 0.001)
+	e.set_grade("B")
+	assert_float(e.glow_alpha()).is_equal_approx(0.15, 0.001)
+	assert_str(e.letter).is_equal("B")
+
+
+func test_grade_emblem_pop_animation() -> void:
+	var saved_rm: bool = Settings.reduce_motion
+	var saved_low: bool = Settings.low_effects
+	Settings.reduce_motion = false
+	Settings.low_effects = false
+	var e := _emblem("S")
+	e.apply_effect_settings()
+	e.play(0.2)
+	assert_float(e.anim_alpha()).is_equal(0.0)
+	e.step(0.2)
+	assert_float(e.anim_scale()).is_equal_approx(1.6, 0.01)
+	e.step(Palette.DUR_SLOW)
+	assert_float(e.anim_scale()).is_equal_approx(1.0, 0.001)
+	assert_float(e.anim_alpha()).is_equal_approx(1.0, 0.001)
+	var c := e.effect_counts()
+	assert_bool(c["glow"]).is_true()
+	assert_bool(c["scale"]).is_true()
+	assert_bool(c["ring"]).is_true()
+	e.step(0.1)
+	assert_bool(e.ring_active()).is_true()
+	e.step(0.5)
+	assert_bool(e.ring_active()).is_false()
+	var a := _emblem("A")
+	assert_bool(a.effect_counts()["ring"]).is_false()
+	Settings.reduce_motion = saved_rm
+	Settings.low_effects = saved_low
+
+
+func test_grade_emblem_reduce_motion_and_low() -> void:
+	var saved_rm: bool = Settings.reduce_motion
+	var saved_low: bool = Settings.low_effects
+	Settings.reduce_motion = true
+	Settings.low_effects = true
+	var e := _emblem("S")
+	e.apply_effect_settings()
+	e.play(0.2)
+	e.step(0.2 + 0.09)
+	assert_float(e.anim_scale()).is_equal(1.0)
+	assert_float(e.anim_alpha()).is_equal_approx(0.5, 0.01)
+	e.step(0.1)
+	assert_float(e.anim_alpha()).is_equal_approx(1.0, 0.001)
+	assert_bool(e.ring_active()).is_false()
+	var c := e.effect_counts()
+	assert_bool(c["glow"]).is_false()
+	assert_bool(c["scale"]).is_false()
+	assert_bool(c["ring"]).is_false()
+	Settings.reduce_motion = saved_rm
+	Settings.low_effects = saved_low
