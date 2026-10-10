@@ -115,11 +115,32 @@ Plans:
   6. Full effects holds >= 230 fps p95 at 1080p on the dev PC; Low effects and Reduce motion have working fallbacks; the timing core is unchanged and Autoplay stays all-Perfect
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 0 plans
+**Plans:** 22 plans
 
 Plans:
 
-- [ ] TBD (run /gsd:plan-phase 02.2 to break down)
+- [ ] 02.2-01-PLAN.md — Wave 0: timing-gate script, uncapped perf scenario + baseline (D-17), results bleed-through fix (D-20)
+- [ ] 02.2-02-PLAN.md — Wave 0: Abyssal Cockpit tokens, colour-literal scan test, contrast test C1..C19
+- [ ] 02.2-03-PLAN.md — Wave 0: ChartData sections/time_sigs (D-18), BeatClock.beats_between, RunStats (D-08/D-09), HitOffsetRecorder
+- [ ] 02.2-04-PLAN.md — Design system: Oxanium (D-21), UiKit, FocusMarker, UiIcons, token-built theme
+- [ ] 02.2-05-PLAN.md — Living title screen: AbyssBackdrop, wordmark + shimmer, icon menu layout
+- [ ] 02.2-06-PLAN.md — Menu music + Preview bus + setting, last-dive card, menu Full/Low/Reduce evidence
+- [ ] 02.2-07-PLAN.md — Board: NotePainter gems, HighwaySurface/HighwayNotes split, strips, receptors
+- [ ] 02.2-08-PLAN.md — Board: beat/bar lines (TS), sustain tubes, sonar CRT shader, streak tiers
+- [ ] 02.2-09-PLAN.md — Board: FxLayer bursts/rings/crack/shake/sparks, judgment popup per chord, early/late
+- [ ] 02.2-10-PLAN.md — Board: trench life (beat-pulsing bio colonies, creature), perf checkpoint
+- [ ] 02.2-11-PLAN.md — HUD: cockpit frame, multiplier ring, streak numeral, torpedo socket, milestone burst
+- [ ] 02.2-12-PLAN.md — HUD: bathymeter, live accuracy, chips, segmented hull arc
+- [ ] 02.2-13-PLAN.md — HUD: progress track + section banner, keep-out test, HUD screenshot set
+- [ ] 02.2-14-PLAN.md — Results: D-16 grade storage, offsets, Song Select route, grade emblem, opaque layout
+- [ ] 02.2-15-PLAN.md — Results: timing histogram, skippable entrance, results harness evidence
+- [ ] 02.2-16-PLAN.md — Song select: album art + generated cover, zip keeps art (D-19), detail panel
+- [ ] 02.2-17-PLAN.md — Song select: intensity tiles, Preview visualizer, table backdrop, restyle, evidence
+- [ ] 02.2-18-PLAN.md — Pause, IMPLOSION, dialogs restyle; intro rig-boot (room trimmed)
+- [ ] 02.2-19-PLAN.md — Settings and calibration restyle
+- [ ] 02.2-20-PLAN.md — Sonar-wipe transitions, UI navigation blips, chip pop
+- [ ] 02.2-21-PLAN.md — Low effects / Reduce motion test, final perf gate, token cleanup, readability shots
+- [ ] 02.2-22-PLAN.md — Final verification, v0.5 build, UAT sheet with screenshots, human checkpoint
 
 ### Phase 02.1: Instrument Extraction Tool (INSERTED)
 
