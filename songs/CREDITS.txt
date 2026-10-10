@@ -40,3 +40,23 @@ Notes
    (02.1-NOTES.md, decision D-13).
    Chart: notes.chart and song.ini are generated from the audio by
    tools/autochart (charter "UNDERTOW autochart"), see tools/autochart/README.txt.
+
+4. HRT
+   artist unknown (the user's own file)
+   Source file: "HRT.mp3" (MP3 320 kbps, 44.1 kHz, 6477459 bytes), copied unchanged as
+         songs/hrt/song.mp3
+   SHA-256: 6baac760a89d181cd94fd1ae6ce10761a18bd30bf82b0ecfadc739330fb32d24
+   Licence unknown: bundled for the friends-only build with the user's permission
+   (02.1-NOTES.md, decision D-13).
+   Chart: notes.chart and song.ini are generated from the audio by
+   tools/autochart (charter "UNDERTOW autochart"), see tools/autochart/README.txt.
+
+5. INVISIBLE
+   by Duran Duran
+   Source file: "Duran Duran - INVISIBLE.mp3" (MP3 320 kbps, 44.1 kHz, 7667597 bytes),
+         copied unchanged as songs/invisible/song.mp3
+   SHA-256: 7bedb97d20ba783fdaa4c4cf537c80b7e4251baca79580389dffec3137080331
+   Copyrighted, not CC0: bundled for the friends-only build with the user's permission
+   (02.1-NOTES.md, decision D-13). Do not redistribute publicly.
+   Chart: notes.chart and song.ini are generated from the audio by
+   tools/autochart (charter "UNDERTOW autochart"), see tools/autochart/README.txt.

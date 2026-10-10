@@ -12,4 +12,6 @@ const SONGS: Array[Dictionary] = [
 	{"id": "synth_wave_april", "dir": "res://songs/synth_wave_april", "audio": "song.mp3"},
 	{"id": "space_synth_wave", "dir": "res://songs/space_synth_wave", "audio": "song.wav"},
 	{"id": "sea_shanty_2", "dir": "res://songs/sea_shanty_2", "audio": "song.mp3"},
+	{"id": "hrt", "dir": "res://songs/hrt", "audio": "song.mp3"},
+	{"id": "invisible", "dir": "res://songs/invisible", "audio": "song.mp3"},
 ]

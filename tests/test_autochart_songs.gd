@@ -5,11 +5,11 @@ extends GdUnitTestSuite
 ## sync-gate report (tools/autochart/reports/<id>.sync.json) and chart statistics
 ## (<id>.chart_stats.json), plus library listing, Autoplay and fingerprint stability.
 
-const AUTOCHART_IDS: Array[String] = ["sea_shanty_2"]
+const AUTOCHART_IDS: Array[String] = ["sea_shanty_2", "hrt", "invisible"]
 ## Ids allowed to ship at PASS_BASELINE (SPEC req 5, flagged in UAT).
 const BASELINE_OK: Array[String] = []
 ## Minimum Expert melody direction match (SPEC req 4).
-const MELODY_IDS := {"sea_shanty_2": 0.70}
+const MELODY_IDS := {"sea_shanty_2": 0.70, "hrt": 0.70, "invisible": 0.70}
 
 const DIFFS: Array[String] = ["easy", "medium", "hard", "expert"]
 const TRACKS := {"easy": "EasySingle", "medium": "MediumSingle", "hard": "HardSingle", "expert": "ExpertSingle"}
@@ -310,6 +310,25 @@ func test_sync_gate_report_passes_and_belongs_to_the_committed_chart() -> void:
 		var sha := FileAccess.get_sha256(_chart_path(id))
 		assert_str(str(rep.get("chart_sha256", "")).to_lower()).is_equal(sha.to_lower())
 		assert_int(int(rep.get("ini_delay_ms", -99999))).is_equal(_delay(id))
+
+
+## A filled chart (chart_stats fill_stem set) is gated against every charted stem: the report's
+## stems list holds both the primary and the fill stem WAV (plan 02.1-06).
+func test_filled_chart_gated_against_all_charted_stems() -> void:
+	for id in AUTOCHART_IDS:
+		var st := _report(id, "chart_stats")
+		var rep := _report(id, "sync")
+		if st.is_empty() or rep.is_empty():
+			continue
+		var names: Array[String] = []
+		for p in rep.get("stems", []):
+			names.append(str(p).replace("\\", "/").get_file().get_basename())
+		assert_bool(names.has(str(st.get("stem", "")))).override_failure_message(
+				"%s: primary stem %s not in sync stems %s" % [id, st.get("stem"), names]).is_true()
+		var fill: Variant = st.get("fill_stem")
+		if fill != null and str(fill) != "":
+			assert_bool(names.has(str(fill))).override_failure_message(
+					"%s: fill stem %s not in sync stems %s" % [id, fill, names]).is_true()
 
 
 # ---- chart statistics: melody and honest band flags (SPEC req 4, 6) ----

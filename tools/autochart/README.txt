@@ -111,6 +111,11 @@ CHART (one song, end to end)
            --out songs/<id> --stem <stem> --target-nps 3.5 --name <s> --artist <s> --genre <s>
      -> songs/<id>/notes.chart, song.ini, tools/autochart/reports/<id>.chart_stats.json, sections.json
      Prints [k/7] progress, per-difficulty stats, BAND FLAG lines and CHART_OK <id> <sha256>.
+     --fill-stem <stem> [--fill-mode bars|sections] (stages/fill.py, RESEARCH Pitfall 9): bars = every
+     bar with no primary onset takes the fill stem's onsets; sections = a section whose primary density
+     is below 50% of the median section density takes all its notes from the fill stem. The audibility
+     filter is never lowered instead. chart_stats.json records fill_stem, fill_mode and fill_share
+     (share of Expert notes from the fill stem). Gate a filled chart with one --stem per charted stem.
   3. bundle (BundledSongs.SONGS + songs/CREDITS.txt), then measure with the SYNC GATE above,
      writing --json tools/autochart/reports/<id>.sync.json. If suggested_delay_ms differs from the ini
      delay, re-run chart with --delay-ms <suggested> --song-length-ms <decoded_length_ms> and re-gate.
@@ -126,6 +131,26 @@ PER-SONG GATE (Expert, game's decoded stream, D3 delta 0.1; chance levels in bra
   (2026-10-10, plan 02.1-05. 428 unique Expert times / 471 gems, IQR mix [-6.0, +7.7] ms, Godot decode
    lag +0.16 ms, decoded length 127850 ms, single B 199998 at 200 BPM, direction match 0.785.
    Full numbers: reports/sea_shanty_2.sync.json, reports/sea_shanty_2.chart_stats.json.)
+  hrt           other  3.0     2.30        -0.4 ms     91.9 (24.9)     100.0 (47.0)     4.0 / 4.0 ms   +1.33 ms  -4     PASS
+                +drums fill (bars), fill_share 0.0: "other" has onsets in every bar, so no bar was filled.
+  (2026-10-10, plan 02.1-06. 360 unique Expert times / 396 gems, IQR mix [-6.5, +9.0] ms, stems
+   other + drums unioned, Godot decode lag +0.16 ms, decoded length 161877 ms, 224 B events (per beat,
+   ~86 BPM), direction match 0.829. The tick-0 chord sits at -4 ms in song time (game preroll plays it;
+   the gate dump skips it, so the report counts 359 times). Attempt (a) passed; (b)-(d) not needed.)
+  invisible     other  2.8     2.12        +0.1 ms     80.5 (24.1)     100.0 (64.2)     1.0 / 1.0 ms   +1.33 ms  1      PASS
+                +bass fill (sections), fill_share 0.005 (one sparse section switched to bass).
+  (2026-10-10, plan 02.1-06. 400 unique Expert times / 440 gems, IQR mix [-9.5, +11.3] ms, stems
+   other + bass unioned, Godot decode lag +0.16 ms, decoded length 191635 ms, 360 B events (per beat,
+   ~114 BPM), direction match 0.823.
+   Attempts (Expert, gated with every charted stem, delay fitted until stable):
+     (a) other, target 3.0                       2.24 n/s  mix 79.0% (chance 23.5%)  median -0.3  PASS_BASELINE
+     (b) other + bass sections, target 3.0       2.23 n/s  mix 79.4% (chance 24.0%)  median -0.0  PASS_BASELINE
+     (c) other + bass sections, target 2.5       1.95 n/s  mix 82.4% (chance 22.0%)  median +0.2  PASS, but Expert
+         average 1.95 n/s is below the SPEC 2..5 n/s range (test_density_caps_and_expert_average fails)
+     (d) other + drums bars, target 3.0          2.24 n/s  mix 79.0% (chance 23.5%)  median -0.3  PASS_BASELINE
+         (no bar of "other" is silent, so the chart equals (a))
+     shipped: (c) with target 2.8 (2.7 gave 2.06 n/s, 80.7%), the lowest target that passes both the
+     fixed gate and the density range.)
 
 LANE RULE
 ---------
@@ -160,10 +185,27 @@ band +- 0.05 (bands: keep hard 0.90-1.00, medium 0.65-0.75, easy 0.45-0.55; step
 +-1 0.40-0.60, +-2 0.15-0.30, +-3+ 0.00-0.05). Reported for the ear check, never fixed by padding notes.
   song          difficulty  metric  value  band
   sea_shanty_2  easy        repeat  0.389  0.20-0.30   (Easy re-contours on 3 lanes; the tune repeats notes)
+  hrt           easy        keep    0.386  0.45-0.55
+  hrt           easy        step2   0.362  0.15-0.30
+  hrt           medium      keep    0.578  0.65-0.75
+  hrt           medium      step1   0.324  0.40-0.60
+  hrt           hard        step2   0.393  0.15-0.30
+  hrt           expert      step2   0.393  0.15-0.30
+  invisible     easy        keep    0.315  0.45-0.55
+  invisible     easy        step1   0.328  0.40-0.60
+  invisible     medium      keep    0.398  0.65-0.75
 Other UAT notes for sea_shanty_2: kept at 200 BPM (RESEARCH open question 2: do the beat lines look too
 dense?); section names are generic (Intro, Section 2, Chorus 1, Chorus 2, Section 5, Outro) and the
 boundaries are not ear-checked; the vocals stem is near-silent, so its relative gate marks every bar
 vocal-active and the solo falls back to the densest 4-8 bar window (bars 94-99).
+hrt: GATE PASS, no PASS_BASELINE and no fallback used. The drums fill added nothing (fill_share 0.0),
+so the chart is the "other" synth line only. The RESEARCH drums-only fallback (98.9% mix, centroid
+lanes) stays available if the ear check says "other" is inaudible. Preview starts at 2789 ms (the
+loudest section by the generic sectioner is the first one); sections are generic and not ear-checked.
+The tick-0 chord plays at -4 ms (inside the game's preroll).
+invisible: GATE PASS at 80.5% mix (chance 24.1%), only 0.5 points over the 80% line, at target 2.8
+(the plan's attempt (c) target 2.5 went below the 2 n/s Expert floor). Ear-check the verse density:
+Medium keeps only 40% of Expert and Easy 32% (band flags above).
 
 MODEL HASHES (SHA-256)
 ----------------------
