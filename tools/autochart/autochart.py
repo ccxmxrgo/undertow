@@ -29,7 +29,7 @@ from stages.errors import AutochartError  # noqa: E402
 BUILD = (ROOT / "build" / "autochart").resolve()
 ID_RE = re.compile(r"^[a-z0-9_]{1,48}$")
 STAGES = ["decode", "separate", "beats", "onsets", "pitch"]
-WIRED = 2  # stages wired so far (plan 02.1-04 tasks 1-3)
+WIRED = 4  # stages wired so far (plan 02.1-04 tasks 1-3)
 DEFAULT_STEMS = ["other", "drums", "bass", "vocals"]
 
 

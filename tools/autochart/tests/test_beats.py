@@ -61,8 +61,7 @@ class PhaseTest(unittest.TestCase):
         out = B.phase_correct(beats, onsets, constant=True)
         np.testing.assert_allclose(out - beats, -0.0065, atol=1e-4)
         self.assertTrue(B.is_constant(out))
-        ibi = np.diff(out)
-        self.assertLess(ibi.max() - ibi.min(), 0.0021)  # no wobble beyond the input jitter
+        np.testing.assert_allclose(np.diff(out), np.diff(beats), atol=1e-9)  # no added wobble
 
     def test_local_shift_ignores_far_onsets(self):
         beats = _drifting()
