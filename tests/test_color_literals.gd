@@ -17,7 +17,6 @@ const ALLOW: Array[String] = [
 ## Files that still hold literals and are waiting for their migration plan.
 ## Each migration plan removes its file; plan 24 empties this list.
 const PENDING_MIGRATION: Array[String] = [
-	"res://src/ui/arena.gd",
 	"res://src/ui/goggles_intro.gd",
 	"res://src/ui/hud.gd",
 	"res://src/ui/settings_screen.gd",

@@ -163,6 +163,9 @@ func test_arena_and_streak_layering_and_restart() -> void:
 	for i in range(order.size() - 1):
 		assert_int((order[i] as Node).get_index()).is_less((order[i + 1] as Node).get_index())
 	assert_object(gp.fx_layer._board).is_same(gp.board_root)  # the Miss shake moves the board only
+	# Living trench (02.2-11): the arena follows the streak tier and is seeded by the chart id.
+	assert_bool(gp.score.multiplier_changed.is_connected(gp.arena.set_tier)).is_true()
+	assert_str(gp.arena.creature_key).is_equal(gp.chart.id)
 	assert_object(gp.highway_notes.highway).is_same(gp.highway)
 	gp.score.combo_changed.emit(10)
 	assert_str(gp.streak_counter.popup_text()).is_equal("10 STREAK")
