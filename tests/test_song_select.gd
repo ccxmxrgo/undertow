@@ -486,6 +486,66 @@ func test_scan_status_text_follows_library_state() -> void:
 	assert_str(s.debug_state()["scan_text"]).is_equal("3 songs  ·  1 unplayable")
 
 
+## UI-SPEC 4.11: notes per second over the chart length -> 1..5 pips.
+func test_intensity_thresholds() -> void:
+	var cases := [[100, 100.0, 1], [199, 100.0, 1], [200, 100.0, 2], [349, 100.0, 2], [350, 100.0, 3],
+		[499, 100.0, 3], [500, 100.0, 4], [699, 100.0, 4], [700, 100.0, 5], [5000, 100.0, 5],
+		[0, 100.0, 1], [1204, 0.0, 1], [1204, -1.0, 1]]
+	for c in cases:
+		assert_int(SongSelect.intensity(int(c[0]), float(c[1]))).override_failure_message(str(c)).is_equal(int(c[2]))
+
+
+func test_tiles_are_176_by_96_at_y_468() -> void:
+	var s := _screen(_lib(_songs(1)))
+	assert_float(SongSelect.TILE_Y).is_equal(468.0)
+	assert_float(SongSelect.TILE_H).is_equal(96.0)
+	for i in 4:
+		assert_object(s.tile_rect(i)).is_equal(Rect2(SongSelect.TILE_X[i], 468.0, 176.0, 96.0))
+	assert_float(s.tile_rect(3).end.x).is_equal(1832.0)
+	assert_float(s.tile_rect(0).end.y).is_equal(564.0)
+
+
+func test_tile_click_uses_new_rect() -> void:
+	var s := _screen(_lib([_entry("a", "Aaa", ["easy", "medium", "hard", "expert"])]))
+	assert_str(s.debug_state()["difficulty"]).is_equal("expert")
+	# y 560 was outside the old 72 px tile (488..560); the new tile spans 468..564.
+	s._click(Vector2(1272.0 + 88.0, 562.0), false)
+	assert_str(s.debug_state()["difficulty"]).is_equal("medium")
+	s._click(Vector2(1080.0 + 10.0, 470.0), false)
+	assert_str(s.debug_state()["difficulty"]).is_equal("easy")
+	# Above the tile row (caption area) and in the gap between tiles: no change.
+	s._click(Vector2(1464.0 + 20.0, 466.0), false)
+	s._click(Vector2(1260.0, 500.0), false)
+	assert_str(s.debug_state()["difficulty"]).is_equal("easy")
+
+
+func test_unavailable_tile_click_is_ignored() -> void:
+	var s := _screen(_lib([_entry("a", "Aaa", ["easy", "expert"])]))
+	s._click(Vector2(1272.0 + 88.0, 520.0), false)
+	assert_str(s.debug_state()["difficulty"]).is_equal("expert")
+
+
+func test_debug_state_tiles_show_note_count_and_intensity() -> void:
+	var e := _entry("a", "Aaa", ["easy", "expert"])
+	e.length_sec = 100.0
+	e.difficulties[0]["note_count"] = 150
+	e.difficulties[1]["note_count"] = 1204
+	var s := _screen(_lib([e]))
+	var tiles: Array = s.debug_state()["tiles"]
+	assert_int(tiles.size()).is_equal(4)
+	assert_dict(tiles[0]).is_equal({"name": "easy", "available": true, "text": "150 NOTES", "intensity": 1})
+	assert_dict(tiles[1]).is_equal({"name": "medium", "available": false, "text": "-", "intensity": 0})
+	assert_dict(tiles[2]).is_equal({"name": "hard", "available": false, "text": "-", "intensity": 0})
+	assert_dict(tiles[3]).is_equal({"name": "expert", "available": true, "text": "1,204 NOTES", "intensity": 5})
+
+
+func test_debug_state_tiles_for_broken_song_are_unavailable() -> void:
+	var s := _screen(_lib([_entry("bad", "Broken one", [], "broken")]))
+	for t in s.debug_state()["tiles"]:
+		assert_bool(t["available"]).is_false()
+		assert_str(t["text"]).is_equal("-")
+
+
 func test_drawing_every_state_runs_without_errors() -> void:
 	# _draw runs on the next frames; script errors there show in the log (checked by the runner output).
 	var list := _songs(12)
