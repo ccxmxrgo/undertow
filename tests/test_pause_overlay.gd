@@ -134,3 +134,24 @@ func test_settings_overlay_keeps_run_intact_and_is_freed_on_close() -> void:
 	assert_int(gp.score.score).is_equal(1234)
 	assert_float(gp.conductor.song_time()).is_equal_approx(frozen, 1e-6)
 	assert_object(get_tree().current_scene).is_same(scene_before)
+
+
+## 02.2-20: Gameplay passes the run line (title, difficulty, progress) when the pause action opens it.
+func test_pause_action_fills_run_line_from_gameplay() -> void:
+	var gp := _launch()
+	await _wait_msec(1200)
+	assert_bool(gp.is_began()).is_true()
+	var ev := InputEventAction.new()
+	ev.action = &"pause"
+	ev.pressed = true
+	get_viewport().push_input(ev)
+	var up := InputEventAction.new()
+	up.action = &"pause"
+	up.pressed = false
+	get_viewport().push_input(up)
+	await _frames(2)
+	assert_bool(gp.pause_menu.is_open()).is_true()
+	var expect := PauseMenu.run_line(gp.chart.title, gp.chart.difficulty, gp.progress_pct())
+	assert_str(gp.pause_menu.run_label.text).is_equal(expect)
+	assert_bool(gp.pause_menu.run_label.text.begins_with(gp.chart.title + " · ")).is_true()
+	assert_float(gp.progress_pct()).is_between(0.0, 100.0)

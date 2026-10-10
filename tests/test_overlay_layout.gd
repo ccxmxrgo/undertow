@@ -73,6 +73,13 @@ func _assert_dim(root: Control, alpha: float) -> void:
 		assert_float(dim.color.a).is_equal_approx(alpha, 0.001)
 
 
+func _assert_dim_colour(root: Control, token: Color) -> void:
+	var dim := _find_dim(root)
+	if dim != null:
+		assert_bool(Color(dim.color, 1.0).is_equal_approx(token)).override_failure_message(
+			"dim colour %s is not the token %s" % [dim.color, token]).is_true()
+
+
 func _assert_centered(content: Control) -> void:
 	var center := content.get_global_rect().get_center()
 	var vc := _vp(content) * 0.5
@@ -119,9 +126,11 @@ func test_pause_menu_fills_viewport_dims_and_centers() -> void:
 	var pm: PauseMenu = gp.pause_menu
 	_assert_full(pm)
 	_assert_full(pm._panel_root)
-	_assert_dim(pm, 0.7)
+	_assert_dim(pm, 0.85)  # 02.2-20: ABYSS_900 85% (UI-SPEC 9.1)
+	_assert_dim_colour(pm, Palette.ABYSS_900)
 	assert_int(pm._panel_root.mouse_filter).is_equal(Control.MOUSE_FILTER_STOP)
-	_assert_centered(pm.resume_button.get_parent())
+	assert_object(pm.panel.get_global_rect()).is_equal(PauseMenu.PANEL_RECT)
+	_assert_centered(pm.panel)
 	await _click_blocked(gp)
 
 
@@ -133,8 +142,10 @@ func test_fail_screen_fills_viewport_dims_and_blocks() -> void:
 	var fs: FailScreen = gp.fail_screen
 	_assert_full(fs)
 	_assert_dim(fs, 0.9)
+	_assert_dim_colour(fs, Palette.ABYSS_900)
 	assert_int(fs.mouse_filter).is_equal(Control.MOUSE_FILTER_STOP)
-	_assert_centered(fs.retry_button.get_parent())
+	assert_object(fs.panel.get_global_rect()).is_equal(FailScreen.PANEL_RECT)
+	_assert_centered(fs.panel)
 	await _click_blocked(gp)
 
 
@@ -176,8 +187,10 @@ func test_confirm_dialog_from_pause_fills_viewport() -> void:
 	assert_object(dlg).is_not_null()
 	_assert_full(dlg)
 	_assert_dim(dlg, 0.7)
+	_assert_dim_colour(dlg, Palette.ABYSS_900)
 	assert_int(dlg.mouse_filter).is_equal(Control.MOUSE_FILTER_STOP)
-	_assert_centered(dlg.safe_button.get_parent().get_parent().get_parent())
+	assert_object(dlg.panel.get_global_rect()).is_equal(ConfirmDialog.PANEL_RECT)
+	_assert_centered(dlg.panel)
 	await _click_blocked(gp)
 
 
@@ -192,7 +205,8 @@ func test_confirm_dialog_standalone_fills_viewport() -> void:
 	await _frames(3)
 	_assert_full(dlg)
 	_assert_dim(dlg, 0.7)
-	_assert_centered(dlg.safe_button.get_parent().get_parent().get_parent())
+	assert_object(dlg.panel.get_global_rect()).is_equal(ConfirmDialog.PANEL_RECT)
+	_assert_centered(dlg.panel)
 
 
 func test_settings_overlay_fills_viewport() -> void:
@@ -624,3 +638,173 @@ func test_grade_emblem_reduce_motion_and_low() -> void:
 	assert_bool(c["ring"]).is_false()
 	Settings.reduce_motion = saved_rm
 	Settings.low_effects = saved_low
+
+
+# --- 02.2-20: pause, IMPLOSION and confirm dialog in the design system (UI-SPEC 9.1, 9.2, 9.6) ---
+
+
+func _host() -> Control:
+	var host := Control.new()
+	UiLayout.fill_rect(host)
+	add_child(host)
+	auto_free(host)
+	return host
+
+
+func test_pause_panel_geometry_buttons_and_copy() -> void:
+	var gp := _launch()
+	await _frames(3)
+	var pm: PauseMenu = gp.pause_menu
+	pm.set_run_info("Sea Shanty 2", "expert", 42.6)
+	pm.open()
+	await _frames(2)
+	assert_object(PauseMenu.PANEL_RECT).is_equal(Rect2(672, 288, 576, 504))
+	var order: Array[Button] = [pm.resume_button, pm.restart_button, pm.settings_button, pm.menu_button]
+	var texts := ["Resume Dive", "Restart Dive", "Settings", "Back to Menu"]
+	var tops := [416.0, 488.0, 560.0, 632.0]
+	for i in order.size():
+		assert_str(order[i].text).is_equal(texts[i])
+		assert_object(_rect_of(order[i])).is_equal(Rect2(704, tops[i], 512, 64))
+	assert_str(String(pm.resume_button.get_meta(&"ui_variant", ""))).is_equal("primary")
+	assert_str(pm.title_label.text).is_equal("PAUSED")
+	assert_int(pm.title_label.get_theme_font_size("font_size")).is_equal(Palette.SIZE_HEADING)
+	assert_str(pm.run_label.text).is_equal("Sea Shanty 2 · EXPERT · 42%")
+	assert_str(pm.hint_label.text).is_equal("ESC RESUME")
+	assert_str(PauseMenu.run_line("A", "hard", 0.0)).is_equal("A · HARD · 0%")
+	assert_str(PauseMenu.run_line("A", "hard", 100.0)).is_equal("A · HARD · 100%")
+	# One focus marker that lives inside the pause panel (not over a dialog).
+	assert_int(pm._panel_root.find_children("*", "FocusMarker", true, false).size()).is_equal(1)
+	assert_bool(pm.resume_button.has_focus()).is_true()
+
+
+func test_pause_countdown_numeral_and_ring() -> void:
+	var host := _host()
+	var pm := PauseMenu.new()
+	host.add_child(pm)
+	await _frames(1)
+	var lbl: Label = pm.countdown_label
+	assert_int(lbl.get_theme_font_size("font_size")).is_equal(Palette.SIZE_DISPLAY)
+	assert_bool(lbl.get_global_rect().get_center().is_equal_approx(PauseMenu.COUNTDOWN_CENTER)).is_true()
+	assert_float(PauseMenu.RING_R).is_equal(80.0)
+	assert_float(PauseMenu.ring_fraction_at(0.0, 0.5)).is_equal_approx(1.0, 0.001)
+	assert_float(PauseMenu.ring_fraction_at(0.25, 0.5)).is_equal_approx(0.5, 0.001)
+	assert_float(PauseMenu.ring_fraction_at(0.9, 0.5)).is_equal(0.0)
+
+
+func test_fail_screen_panel_title_progress_and_buttons() -> void:
+	var host := _host()
+	var f := FailScreen.new()
+	host.add_child(f)
+	f.setup(612.0, 17, 716.0, 37.4)
+	await _frames(1)
+	assert_object(FailScreen.PANEL_RECT).is_equal(Rect2(600, 240, 720, 600))
+	assert_object(f.panel.get_global_rect()).is_equal(FailScreen.PANEL_RECT)
+	assert_str(f.panel_variant).is_equal("danger")
+	assert_str(f.title_label.text).is_equal("IMPLOSION")
+	assert_int(f.title_label.get_theme_font_size("font_size")).is_equal(Palette.SIZE_DISPLAY)
+	assert_bool(f.title_label.get_theme_color("font_color").is_equal_approx(Palette.WARNING_RED)).is_true()
+	assert_float(f.title_label.get_global_rect().get_center().x).is_equal_approx(960.0, 1.0)
+	assert_str(f.progress_label.text).is_equal("SONG PROGRESS 37%")
+	assert_float(f.progress_fill_width()).is_equal_approx(560.0 * 0.374, 0.5)
+	assert_object(_rect_of(f.retry_button)).is_equal(Rect2(680, 664, 560, 64))
+	assert_object(_rect_of(f.menu_button)).is_equal(Rect2(680, 744, 560, 64))
+	assert_str(String(f.retry_button.get_meta(&"ui_variant", ""))).is_equal("primary")
+	assert_str(f.retry_button.text).is_equal("Retry Dive")
+	assert_str(f.menu_button.text).is_equal("Back to Menu")
+	assert_int(f.find_children("*", "FocusMarker", true, false).size()).is_equal(1)
+	# Kept copy and the old 3-argument setup.
+	assert_str(f.body_label.text).is_equal("Hull breached at 612 m.")
+	var g := FailScreen.new()
+	host.add_child(g)
+	g.setup(5.0)
+	assert_str(g.body_label.text).is_equal("Hull breached at 5 m.")
+
+
+func test_fail_screen_cracks_shake_and_effects() -> void:
+	var cracks := FailScreen.crack_lines()
+	assert_int(cracks.size()).is_equal(6)
+	var corners: Array[Vector2] = [Vector2(0, 0), Vector2(1920, 0), Vector2(0, 1080), Vector2(1920, 1080)]
+	for line: PackedVector2Array in cracks:
+		assert_int(line.size()).is_greater_equal(4)
+		var start := line[0]
+		var nearest := 1e9
+		for c in corners:
+			nearest = minf(nearest, start.distance_to(c))
+		assert_float(nearest).is_less_equal(1.0)
+		for p in line:
+			assert_float(p.distance_to(start)).is_less_equal(360.0)
+	assert_bool(FailScreen.crack_lines() == cracks).is_true()  # static, same every time
+	assert_float(FailScreen.SHAKE_SEC).is_equal_approx(0.12, 0.0001)
+	var peak := 0.0
+	for i in 12:
+		peak = maxf(peak, absf(FailScreen.shake_offset(i * 0.01)))
+	assert_float(peak).is_less_equal(8.0)
+	assert_float(peak).is_greater(4.0)
+	assert_float(FailScreen.shake_offset(0.12)).is_equal(0.0)
+	var saved_rm: bool = Settings.reduce_motion
+	var saved_low: bool = Settings.low_effects
+	var host := _host()
+	var f := FailScreen.new()
+	host.add_child(f)
+	f.setup(10.0, 1, -1.0, 20.0)
+	Settings.reduce_motion = false
+	Settings.low_effects = false
+	f.apply_effect_settings()
+	assert_bool(f.is_in_group(UiKit.FX_GROUP)).is_true()
+	var c := f.effect_counts()
+	assert_bool(c["shake"]).is_true()
+	assert_bool(c["glow"]).is_true()
+	assert_bool(c["cracks"]).is_true()
+	assert_int(f.title_label.get_theme_constant("outline_size")).is_equal(12)
+	Settings.low_effects = true
+	f.apply_effect_settings()
+	assert_bool(f.effect_counts()["glow"]).is_false()
+	assert_int(f.title_label.get_theme_constant("outline_size")).is_equal(0)
+	assert_bool(f.effect_counts()["cracks"]).is_true()
+	Settings.reduce_motion = true
+	f.apply_effect_settings()
+	assert_bool(f.effect_counts()["shake"]).is_false()
+	Settings.reduce_motion = saved_rm
+	Settings.low_effects = saved_low
+	f.apply_effect_settings()
+
+
+func test_fail_screen_buttons_inert_until_visible() -> void:
+	var host := _host()
+	var f := FailScreen.new()
+	host.add_child(f)
+	f.setup(10.0, 1, -1.0, 50.0)
+	f.play(0.05)
+	assert_bool(f.retry_button.disabled).is_true()
+	assert_bool(f.menu_button.disabled).is_true()
+	await _wait_sec(0.6)
+	assert_bool(f.retry_button.disabled).is_false()
+	assert_bool(f.retry_button.has_focus()).is_true()
+	assert_float(f.title_label.position.x).is_equal_approx(f.title_rest_x(), 0.01)
+
+
+func _wait_sec(s: float) -> void:
+	var end := Time.get_ticks_msec() + int(s * 1000.0)
+	while Time.get_ticks_msec() < end:
+		await get_tree().process_frame
+
+
+func test_confirm_dialog_geometry_variants_and_focus() -> void:
+	var host := _host()
+	var dlg := ConfirmDialog.new()
+	host.add_child(dlg)
+	dlg.setup("BACK TO MENU", "Leave this dive? Your progress will be lost.", "Leave Dive", "Stay")
+	await _frames(2)
+	assert_object(ConfirmDialog.PANEL_RECT).is_equal(Rect2(600, 380, 720, 320))
+	assert_object(_rect_of(dlg.confirm_button)).is_equal(Rect2(632, 604, 304, 64))
+	assert_object(_rect_of(dlg.safe_button)).is_equal(Rect2(984, 604, 304, 64))
+	assert_str(String(dlg.confirm_button.get_meta(&"ui_variant", ""))).is_equal("destructive")
+	assert_str(String(dlg.safe_button.get_meta(&"ui_variant", "default"))).is_equal("default")
+	assert_bool(dlg.safe_button.has_focus()).is_true()
+	assert_str(dlg.title_label.text).is_equal("BACK TO MENU")
+	assert_int(dlg.title_label.get_theme_font_size("font_size")).is_equal(Palette.SIZE_HEADING)
+	assert_float(dlg.body_label.size.x).is_equal(656.0)
+	assert_float(dlg.body_label.position.x).is_equal(632.0)
+	assert_int(dlg.body_label.autowrap_mode).is_equal(TextServer.AUTOWRAP_WORD_SMART)
+	assert_bool(dlg.body_label.get_theme_color("font_color").is_equal_approx(Palette.TEXT_MID)).is_true()
+	assert_int(dlg.find_children("*", "FocusMarker", true, false).size()).is_equal(1)

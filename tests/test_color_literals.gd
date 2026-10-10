@@ -138,3 +138,24 @@ func test_no_colour_literals_in_scenes() -> void:
 	assert_array(bad).override_failure_message(
 		"Colour values in scenes (set them from Palette in code):\n" + "\n".join(bad)
 	).is_empty()
+
+
+## 02.2-20: overlays restyled in this plan use the Abyssal Cockpit tokens, not the legacy
+## aliases (BG, PANEL, DIM, TEXT, ACCENT, DESTRUCTIVE, REC_TEXT) that plan 24 deletes.
+const LEGACY_FREE: Array[String] = [
+	"res://src/ui/pause_menu.gd",
+	"res://src/ui/fail_screen.gd",
+	"res://src/ui/confirm_dialog.gd",
+]
+const LEGACY_PATTERN := "Palette\\.(BG|PANEL|DIM|TEXT|ACCENT|DESTRUCTIVE|REC_TEXT)\\b"
+
+
+func test_restyled_overlays_use_no_legacy_aliases() -> void:
+	var re := RegEx.create_from_string(LEGACY_PATTERN)
+	var bad: Array[String] = []
+	for p in LEGACY_FREE:
+		var lines := FileAccess.get_file_as_string(p).split("\n")
+		for i in lines.size():
+			if not lines[i].strip_edges().begins_with("#") and re.search(lines[i]) != null:
+				bad.append("%s:%d: %s" % [p, i + 1, lines[i].strip_edges()])
+	assert_array(bad).override_failure_message("Legacy Palette aliases:\n" + "\n".join(bad)).is_empty()
