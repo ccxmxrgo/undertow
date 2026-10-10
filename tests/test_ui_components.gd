@@ -611,6 +611,7 @@ func test_focus_marker_breathes_between_20_and_32_percent() -> void:
 	var m: FocusMarker = parts[3]
 	m.set_process(false)
 	m.apply_effect_settings()
+	(parts[1] as Button).grab_focus()
 	var lo := 1.0
 	var hi := 0.0
 	for i in 64:
