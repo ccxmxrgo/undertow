@@ -316,12 +316,15 @@ func visible_main_menus() -> Array:
 	return out
 
 
-## Design-space rects of the MainMenu title ("UNDERTOW") and its button column (read before hiding).
+## Design-space rects of the MainMenu title (the UNDERTOW wordmark) and its button column (read before hiding).
 func menu_text_rects(m: MainMenu) -> Array:
 	var rects: Array = []
 	for l in m.find_children("*", "Label", true, false):
 		if (l as Label).text == "UNDERTOW":
 			rects.append((l as Control).get_global_rect())
+	# 02.2-06: the title is the wordmark TextureRect (LogoWordmark), not a Label.
+	if m.logo != null and m.logo.is_visible_in_tree():
+		rects.append(m.logo.get_global_rect())
 	var col := Rect2()
 	for b in [m.start_button, m.practice_button, m.calibrate_button, m.settings_button, m.autoplay_button,
 			m.open_folder_button, m.quit_button]:
@@ -1917,7 +1920,30 @@ func sc_polish() -> void:
 		"start #%d, practice #%d" % [m.start_button.get_index(), m.practice_button.get_index() if m.practice_button else -1])
 	check("menu best line shows the empty-state copy (fresh temp record book)",
 		m.best_label != null and m.best_label.text == MainMenu.NO_RECORD_COPY, m.best_label.text if m.best_label else null)
+	m.finish_entrance()
+	await frame()
 	await shot("menu")
+	# 02.2-06 living title screen: abyss backdrop, wordmark top-left, icon buttons at x 128.
+	check("menu: AbyssBackdrop (title) is the first child", m.get_child(0) is AbyssBackdrop
+		and (m.get_child(0) as AbyssBackdrop).variant == "title", m.get_child(0))
+	var sonar_px := 0
+	var ex := 128.0
+	while ex < 640.0:
+		for ey in [417.0, 478.0]:
+			var px_c := _img_px(last_img, Vector2(ex, ey))
+			if px_c.b > 0.55 and px_c.g > 0.45 and px_c.r < 0.35:
+				sonar_px += 1
+		ex += 4.0
+	check("menu: SONAR edge pixels on the focused Start Dive button (x 128..640, y 416..480)", sonar_px > 20, sonar_px)
+	var logo_lum := 0.0
+	var ly := 180.0
+	while ly < 310.0:
+		var lx := 130.0
+		while lx < 1070.0:
+			logo_lum = maxf(logo_lum, _luma(_img_px(last_img, Vector2(lx, ly))))
+			lx += 6.0
+		ly += 6.0
+	check("menu: wordmark rect (120, 168, 960 x 152) has bright pixels", logo_lum > 0.7, logo_lum)
 
 	# --- practice entry ---------------------------------------------------------------------
 	m.start_button.grab_focus()
