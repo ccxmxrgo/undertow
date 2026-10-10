@@ -59,7 +59,7 @@ try {
     foreach ($s in $Scenarios) {
         if ($SkipDrift -and $s -eq "drift") { continue }
         # Hard external watchdog on top of the driver's own TIMEOUTS: a hung Godot is killed, not waited on.
-        $limit = if ($s -eq "drift") { 600 } elseif ($s -eq "perf") { 480 } elseif ($s -eq "visual") { 450 } elseif ($s -eq "songs") { 420 } elseif ($s -eq "autoplay5") { 630 } else { 300 }
+        $limit = if ($s -eq "drift") { 600 } elseif ($s -eq "perf") { 480 } elseif ($s -eq "visual") { 450 } elseif ($s -eq "songs") { 420 } elseif ($s -eq "autoplay5") { 1530 } else { 300 }
         $log = Join-Path $root "build\playtest\${s}_stdout.txt"
         $err = Join-Path $root "build\playtest\${s}_stderr.txt"
         $p = Start-Process -FilePath $godot -ArgumentList @("--path", ".", "--position", $testPos, "res://tools/playtest/playtest.tscn", "--", $s, "--no-boot-scan") `

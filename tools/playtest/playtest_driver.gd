@@ -43,7 +43,7 @@ const EMPTY_SONGS := LIB_ROOT + "/empty_songs"
 const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
 	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0, "immersion": 240.0,
-	"songs": 360.0, "align": 150.0, "perf": 470.0, "visual": 420.0, "autoplay5": 600.0}
+	"songs": 360.0, "align": 150.0, "perf": 470.0, "visual": 420.0, "autoplay5": 1500.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note. Values stay >= 5 ms
 ## from window edges (35 / 70 / 100 ms) so frame jitter cannot flip the expected judgment.
 const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
@@ -4115,7 +4115,199 @@ func sc_visual() -> void:
 	if ok and is_instance_valid(g):
 		await _visual_bursts(g)
 	await _visual_hud()
+	# 02.2-24: readability / Full vs Low on a fresh dive, so the burst and trench shots above keep
+	# their song moments (judgment popup crowding depends on where in the song they land).
 	await goto(MENU)
+	SongSelect.run_autoplay = true
+	Gameplay.pending_intro = IntroTimeline.Mode.NONE
+	await goto(SONG_SELECT)
+	var g2 := await dive_from_song_select(str(b["dir"]), "expert")
+	if g2 != null and await wait_for_began(g2) and await _wait_song_time(g2, 6.0, 20.0):
+		await _visual_readability(g2)
+	else:
+		check("readability dive reached 6 s", false)
+	await goto(MENU)
+
+
+## WCAG relative luminance of an sRGB colour (alpha ignored).
+func _wcag_lum(c: Color) -> float:
+	var ch := func(v: float) -> float:
+		return v / 12.92 if v <= 0.04045 else pow((v + 0.055) / 1.055, 2.4)
+	return 0.2126 * float(ch.call(c.r)) + 0.7152 * float(ch.call(c.g)) + 0.0722 * float(ch.call(c.b))
+
+
+func _wcag_ratio(a: Color, b: Color) -> float:
+	var la := _wcag_lum(a)
+	var lb := _wcag_lum(b)
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
+
+
+## Rim vs the strip just outside a gem, on rays from its centre (left, right and down; `rays`
+## lists the ones to use): the rim is the brightest pixel between 0.5 r and 1.4 r (the top-light
+## sits above the centre line, so each ray crosses core -> rim -> keyline -> strip), the keyline
+## the darkest pixel within 6 px past it, and the strip pixel sits 4 px outside the keyline's outer
+## edge. Returns the worst ray: {ratio, rim, out, ray}.
+func _gem_rim_contrast(img: Image, center: Vector2, r: float, rays: Array = [Vector2.LEFT, Vector2.RIGHT, Vector2.DOWN]) -> Dictionary:
+	var worst := {"ratio": INF}
+	for dir: Vector2 in rays:
+		var best_l := -1.0
+		var best_x := 0.0
+		var x := 0.5 * r
+		while x <= 1.4 * r:
+			var l := _wcag_lum(_img_px(img, center + dir * x))
+			if l > best_l:
+				best_l = l
+				best_x = x
+			x += 1.0
+		var key_l := INF
+		var key_x := best_x
+		var k := best_x + 1.0
+		while k <= best_x + 6.0:
+			var l2 := _wcag_lum(_img_px(img, center + dir * k))
+			if l2 < key_l:
+				key_l = l2
+				key_x = k
+			k += 1.0
+		var rim := _img_px(img, center + dir * best_x)
+		var out := _img_px(img, center + dir * (key_x + NotePainter.KEYLINE_W * 0.5 + 4.0))
+		var ratio := _wcag_ratio(rim, out)
+		if ratio < float(worst["ratio"]):
+			worst = {"ratio": snappedf(ratio, 0.01), "rim": rim.to_html(false), "out": out.to_html(false),
+				"ray": dir, "rim_dx": snappedf(best_x, 0.1)}
+	return worst
+
+
+## Rays for _gem_rim_contrast that do not cross a chord bar or a neighbouring gem: left / right
+## are dropped when another pending note lies within 2 lanes on that side at about the same depth,
+## down when a note in the same lane is close below.
+func _clear_rays(g: Gameplay, info: Dictionary) -> Array:
+	var rays: Array = []
+	var lane := int(info["lane"])
+	var d := float(info["d"])
+	var left_busy := false
+	var right_busy := false
+	var down_busy := false
+	for v in _visible_pending(g):
+		if int(v["i"]) == int(info["i"]):
+			continue
+		var dd := absf(float(v["d"]) - d)
+		var vl := int(v["lane"])
+		if vl < lane and dd < 0.08:
+			left_busy = true
+		elif vl > lane and dd < 0.08:
+			right_busy = true
+		elif vl == lane and float(v["d"]) < d and d - float(v["d"]) < 0.12:
+			down_busy = true
+	if not left_busy:
+		rays.append(Vector2.LEFT)
+	if not right_busy:
+		rays.append(Vector2.RIGHT)
+	if not down_busy:
+		rays.append(Vector2.DOWN)
+	return rays
+
+
+## True when another note starts within 2 ms of note i (a chord: a chord bar joins the gems).
+func _is_chord(g: Gameplay, i: int) -> bool:
+	var t := float(g.chart.notes[i]["time"])
+	for j in range(maxi(i - 4, 0), mini(i + 5, g.chart.notes.size())):
+		if j != i and absf(float(g.chart.notes[j]["time"]) - t) < 0.002:
+			return true
+	return false
+
+
+## Pauses the conductor when the next single (non-chord) pending note in `lane` (at least `min_ahead` s ahead of the
+## pause) sits at depth `d`; returns its index or -1. Input is disabled for the frozen frame.
+func _freeze_gem_at_depth(g: Gameplay, lane: int, d: float, min_ahead: float = 0.4) -> int:
+	var approach := Trench.approach_for(Settings.scroll_speed)
+	var st := g.conductor.song_time()
+	var pick := -1
+	for i in range(g.chart.notes.size()):
+		var n: Dictionary = g.chart.notes[i]
+		if g.highway._state[i] != Highway.S_PENDING or (lane >= 0 and int(n["lane"]) != lane):
+			continue
+		if float(n["time"]) - Settings.visual_offset - d * approach > st + min_ahead and not _is_chord(g, i):
+			pick = i
+			break
+	if pick < 0:
+		return -1
+	var gw: WeakRef = weakref(g)
+	var c := g.conductor
+	var t := float(g.chart.notes[pick]["time"]) - Settings.visual_offset - d * approach
+	var sched := [{"t": t, "o": 0, "fn": func() -> void:
+		c.pause()
+		g.lane_input.enabled = false}]
+	await run_schedule(c, sched, func() -> bool: return _gone_or_stopped(gw))
+	return pick if is_instance_valid(g) and g.conductor != null and g.conductor.is_paused() else -1
+
+
+## Readability of the gem `idx` in the last shot: core matches the lane colour within r 6 and the
+## rim-to-strip WCAG ratio. {ok, core_cos, rim, d, r, lane}.
+func _gem_readable(g: Gameplay, idx: int) -> Dictionary:
+	var info := {}
+	for v in _visible_pending(g):
+		if int(v["i"]) == idx:
+			info = v
+	if info.is_empty():
+		return {"ok": false, "why": "gem %d not visible in the shot" % idx}
+	var d := float(info["d"])
+	var r := Trench.note_radius(Trench.scale_at(d))
+	var lane := int(info["lane"])
+	var core := _colour_near(last_img, info["center"], Palette.lane_color(lane), 6.0)
+	var rays := _clear_rays(g, info)
+	if rays.is_empty():
+		return {"ok": false, "why": "gem %d boxed in by neighbours" % idx}
+	var rim := _gem_rim_contrast(last_img, info["center"], r, rays)
+	return {"ok": bool(core["ok"]) and float(rim["ratio"]) >= 4.5, "core_cos": snappedf(float(core["cos"]), 0.001),
+		"rim": rim, "rays": rays.size(), "d": snappedf(d, 0.01), "r": snappedf(r, 0.1), "lane": lane}
+
+
+## 02.2-24 (VIS-10, S-10, AV-01): gems readable at scroll 0.5x and 3x, gem rim crisp at Full, and a
+## Full vs Low pair of the same frozen frame. The amber lane (circle gem) is used so the rim ray
+## meets the outline square-on; the gem is frozen at depth 0.35 (mid-board, not yet ready, no halo).
+func _visual_readability(g: Gameplay) -> void:
+	var orig_speed := Settings.scroll_speed
+	var gw: WeakRef = weakref(g)
+	for sp in [[0.5, "gameplay_scroll_0_5x", "0.5x"], [3.0, "gameplay_scroll_3x", "3x"]]:
+		if _gone_or_stopped(gw):
+			check("gems readable at %s" % sp[2], false, "run stopped")
+			break
+		Settings.set_scroll_speed(float(sp[0]))
+		await wait(0.3)
+		var idx := await _freeze_gem_at_depth(g, 1, 0.35)
+		if idx < 0:
+			_unfreeze(g)
+			check("gems readable at %s" % sp[2], false, "no amber gem to freeze")
+			continue
+		await wait(0.2)
+		await shot(String(sp[1]), g)
+		var res := _gem_readable(g, idx)
+		check("gems readable at %s" % sp[2], bool(res["ok"]), res)
+		_unfreeze(g)
+	Settings.set_scroll_speed(orig_speed)
+	await wait(0.3)
+	if _gone_or_stopped(gw):
+		check("gem rim crisp", false, "run stopped")
+		return
+	var idx1 := await _freeze_gem_at_depth(g, 1, 0.35)
+	if idx1 < 0:
+		_unfreeze(g)
+		check("gem rim crisp", false, "no amber gem to freeze")
+		return
+	await wait(0.2)
+	await shot("gameplay_full", g)
+	var full := _gem_readable(g, idx1)
+	check("gem rim crisp", full.has("rim") and float(full["rim"]["ratio"]) >= 4.5, full)
+	Settings.low_effects = true
+	Settings.settings_changed.emit()
+	await wait(0.3)
+	await shot("gameplay_low", g)
+	var low := _gem_readable(g, idx1)
+	check("gems readable in Low effects (same frame)", bool(low.get("ok", false)), low)
+	Settings.low_effects = false
+	Settings.settings_changed.emit()
+	await wait(0.1)
+	_unfreeze(g)
 
 
 ## 02.2-14: the HUD screenshot set (UI-SPEC 15): streak 0 / 25 / 100, hull 100 / 40 / critical
@@ -4314,8 +4506,9 @@ func _visual_trench(g: Gameplay) -> void:
 
 
 # ------------------------------------------------------------------------------------------------
-# autoplay5 (02.2-11, W2): Sea Shanty 2 (densest bundled song) on Expert with Full effects and the
-# real board/FX, autoplay to the results. The visuals must not disturb judgment: 0 Good / 0 Miss.
+# autoplay5 (02.2-11, W2; all 5 bundled songs since 02.2-24): every bundled song on Expert with Full
+# effects and the real board/FX, autoplay to the results. The visuals must not disturb judgment:
+# 0 Good / 0 Miss on each song.
 # ------------------------------------------------------------------------------------------------
 func sc_autoplay5() -> void:
 	isolate_settings(true)
@@ -4323,50 +4516,53 @@ func sc_autoplay5() -> void:
 	Settings.low_effects = false
 	Settings.reduce_motion = false
 	Settings.settings_changed.emit()
-	var dir := ""
+	var per_song := {}
 	for b in BundledSongs.SONGS:
-		if str(b["id"]) == "sea_shanty_2":
-			dir = str(b["dir"])
-	if not check("Sea Shanty 2 is bundled", dir != "", dir):
-		return
+		var res := await _autoplay5_song(str(b["id"]), str(b["dir"]))
+		per_song[str(b["id"])] = res
+	metrics["per_song"] = per_song
+	await goto(MENU)
+
+
+## One full Expert autoplay dive at Full effects; returns {title, perfect, good, miss, notes}.
+func _autoplay5_song(id: String, dir: String) -> Dictionary:
 	await goto(MENU)
 	SongSelect.run_autoplay = true
 	Gameplay.pending_intro = IntroTimeline.Mode.NONE
 	await goto(SONG_SELECT)
 	var g := await dive_from_song_select(dir, "expert")
+	var label := id
 	if g == null or not await wait_for_began(g):
-		check("autoplay5 dive began", false)
-		return
+		check("%s Expert autoplay at Full effects: 0 Good / 0 Miss" % label, false, "dive did not begin")
+		return {"title": label, "began": false}
+	if g.chart.title != "":
+		label = g.chart.title
 	var counts: Dictionary = g.arena.effect_counts()
-	check("Full effects on the live board (arena 36 colonies, creature on; FX Full)",
+	check("%s: Full effects on the live board (arena 36 colonies, creature on; FX Full)" % label,
 		int(counts["colonies"]) == 36 and bool(counts["creature"]) and not Settings.low_effects
 		and int(g.fx_layer.effect_counts()["perfect_amount"]) == 24, {"arena": counts})
 	var length := 0.0
 	for n in g.chart.notes:
 		length = maxf(length, float(n["time"]) + float(n["duration"]))
-	metrics["song_length_s"] = snappedf(length, 0.1)
-	metrics["notes"] = g.chart.notes.size()
-	note("Sea Shanty 2 Expert: %d notes, last note end %.1f s" % [g.chart.notes.size(), length])
+	note("%s Expert: %d notes, last note end %.1f s" % [label, g.chart.notes.size(), length])
 	await wait_until(func() -> bool: return not is_instance_valid(g) or g.conductor.song_time() > minf(40.0, length * 0.3),
 		60.0)
 	if is_instance_valid(g):
-		await shot("autoplay5_midsong", g)
+		await shot("autoplay5_%s_midsong" % id, g)
 	var done: bool = await wait_until(func() -> bool:
 		return not is_instance_valid(g) or g.state == Gameplay.State.DONE, length + 60.0)
 	if not is_instance_valid(g):
-		check("autoplay5 run reached the results", false, "gameplay freed")
-		return
-	check("autoplay5 run reached the results", done and g.state == Gameplay.State.DONE, g.state)
+		check("%s Expert autoplay at Full effects: 0 Good / 0 Miss" % label, false, "gameplay freed")
+		return {"title": label, "began": true, "done": false}
 	await wait(0.8)
-	await shot("autoplay5_results", g)
+	await shot("autoplay5_%s_results" % id, g)
 	var sc := g.score
-	metrics["perfect"] = sc.perfect_count
-	metrics["good"] = sc.good_count
-	metrics["miss"] = sc.miss_count
-	check("Sea Shanty 2 Expert autoplay at Full effects: 0 Good / 0 Miss",
-		done and sc.good_count == 0 and sc.miss_count == 0 and sc.perfect_count > 0,
+	var res := {"title": label, "perfect": sc.perfect_count, "good": sc.good_count, "miss": sc.miss_count,
+		"notes": g.chart.notes.size(), "length_s": snappedf(length, 0.1)}
+	check("%s Expert autoplay at Full effects: 0 Good / 0 Miss" % label,
+		done and g.state == Gameplay.State.DONE and sc.good_count == 0 and sc.miss_count == 0 and sc.perfect_count > 0,
 		"P%d G%d M%d of %d" % [sc.perfect_count, sc.good_count, sc.miss_count, g.chart.notes.size()])
-	await goto(MENU)
+	return res
 
 
 ## 02.2-10: hit bursts and the judgment popup. Shot ~40 ms after a PERFECT; "burst visible"
