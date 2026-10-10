@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-09-PLAN.md
-last_updated: "2026-10-10T12:47:39.479Z"
+stopped_at: Completed 02.2-10-PLAN.md
+last_updated: "2026-10-10T16:04:46.045Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 49
+  completed_plans: 50
   percent: 56
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 10 of 25
+Plan: 11 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
@@ -78,6 +78,7 @@ Progress: [#########.] 93%
 | Phase 02.2 P07 | 25 min | 2 tasks | 13 files |
 | Phase 02.2 P08 | 25 min | 2 tasks | 10 files |
 | Phase 02.2 P09 | 20 min | 2 tasks | 7 files |
+| Phase 02.2 P10 | 75 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -134,6 +135,8 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-08: halo size 2.6 r read as reach from centre (mockup proportions); cable_bright is an extra intro brightness over normal play (0 = normal)
 - [Phase 02.2]: 02.2-09: strip tint rises toward the hit line (receptor light pool, peak 26% at x4) plus lane-coloured glass edges so lanes read as their hue; contrast pairs C1-C5/C8 proven by test
 - [Phase 02.2]: 02.2-09: strip fill lives in Highway's child Polygon2D Surface (show_behind_parent) carrying sonar_surface.gdshader; Low = no material, Reduce motion = sweep off
+- [Phase 02.2]: 02.2-10: the Miss shake has one path, FxLayer.request_shake moving board_root only (Feedback nudge removed); bursts clipped by Control.clip_contents (works in Compatibility)
+- [Phase 02.2]: 02.2-10: burst sprites drawn at 4x dot size and spawned on the receptor rim for readability (motion values per spec); a new popup within 150 px fades the older one
 
 ### Pending Todos
 
@@ -149,6 +152,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T12:47:39.468Z
-Stopped at: Completed 02.2-09-PLAN.md
+Last session: 2026-10-10T16:04:46.038Z
+Stopped at: Completed 02.2-10-PLAN.md
 Resume file: None
