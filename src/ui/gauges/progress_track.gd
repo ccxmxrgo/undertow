@@ -51,6 +51,10 @@ var _len: float = 0.0
 var _t: float = 0.0
 var _scrim: GradientTexture2D
 var _sections: Array[Dictionary] = []
+## Change detection so the per-frame poll only touches labels / redraws when something visible changed.
+var _shown_section: int = -2
+var _shown_secs: int = -1
+var _shown_px: int = -1
 
 
 func _ready() -> void:
@@ -66,7 +70,7 @@ func _ready() -> void:
 	time_label = _make_label(Palette.TEXT_LO, HORIZONTAL_ALIGNMENT_LEFT, Rect2(TIME_POS.x, TIME_POS.y, tw, 0.0))
 	if _chart != null:
 		_apply_chart()
-	_refresh()
+	_refresh(true)
 
 
 ## Chart for the title, sections and length; conductor for the live song time (may be null in tests).
@@ -76,7 +80,7 @@ func setup(chart: ChartData, conductor: Conductor) -> void:
 	_t = 0.0
 	if is_node_ready():
 		_apply_chart()
-		_refresh()
+		_refresh(true)
 
 
 func _apply_chart() -> void:
@@ -231,12 +235,21 @@ func _process(_delta: float) -> void:
 		set_song_time(t)
 
 
-func _refresh() -> void:
+func _refresh(force: bool = false) -> void:
 	if section_label == null:
 		return
-	section_label.text = truncate_px(current_section_name(_t), Palette.font(), Palette.SIZE_LABEL, SECTION_MAX_W)
-	time_label.text = time_remaining_text(_t) if _len > 0.0 else ""
-	queue_redraw()
+	var si := section_index(_sections, _t)
+	if force or si != _shown_section:
+		_shown_section = si
+		section_label.text = truncate_px(current_section_name(_t), Palette.font(), Palette.SIZE_LABEL, SECTION_MAX_W)
+	var secs := int(ceil(maxf(_len - maxf(_t, 0.0), 0.0) - 1e-6)) if _len > 0.0 else -1
+	if force or secs != _shown_secs:
+		_shown_secs = secs
+		time_label.text = time_remaining_text(_t) if _len > 0.0 else ""
+	var px := int(round(TRACK.size.x * fill()))
+	if force or px != _shown_px:
+		_shown_px = px
+		queue_redraw()
 
 
 ## W4 keep-out contract: global polygons of the scrim band, the text and the track.

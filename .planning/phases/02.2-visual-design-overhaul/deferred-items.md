@@ -23,3 +23,12 @@
   suite.** It waits 1500 ms, which is exactly the 3-beat lead-in at 120 BPM, then asserts
   song_time > 0 (seen -0.0066). It passes when rerun alone. Fix candidate: wait 1800 ms, or wait
   until song_time > 0 with a timeout.
+
+## Found in 02.2-14
+
+- **Scenario b "bot hit intended offsets (max |actual - intended| < 2 ms)" fails with one outlier
+  of 2.5..5 ms per run (p50 0.05 ms).** It fails the same way at the pre-plan-14 commit 27b88e9
+  (reproduced in a clean worktree on 2026-10-10, max 3.2 ms), on both the primary (240 Hz) and the
+  secondary (180 Hz) monitor, so it is environmental (bot spin-wait / OS scheduling), not the HUD.
+  All judgment checks in b pass. Fix candidate: judge the bot on p99 instead of the single max, or
+  allow one outlier.
