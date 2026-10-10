@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-14-PLAN.md
-last_updated: "2026-10-10T17:55:45.814Z"
+stopped_at: Completed 02.2-15-PLAN.md
+last_updated: "2026-10-10T18:53:02.713Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 54
+  completed_plans: 55
   percent: 56
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 15 of 25
+Plan: 16 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [#########.] 93%
+Progress: [█████████░] 85%
 
 ## Performance Metrics
 
@@ -83,6 +83,7 @@ Progress: [#########.] 93%
 | Phase 02.2 P12 | 17 min | 2 tasks | 10 files |
 | Phase 02.2 P13 | 35 min | 2 tasks | 6 files |
 | Phase 02.2 P14 | 35 min | 2 tasks | 14 files |
+| Phase 02.2 P15 | 60min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -149,6 +150,7 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-14: Section banner cross-fades on a new section during the hold and restarts the 1.6 s hold; names cut at 28 chars then by pixel width
 - [Phase 02.2]: 02.2-14: Progress track polish (fill stroke glow, playhead diamond, lit reached ticks) identical in all effect modes
 - [Phase 02.2]: 02.2-14: Windowed test launches open on the secondary monitor (run_all --position, tools/test_screen.gd, UNDERTOW_TEST_SCREEN override)
+- [Phase 02.2]: 02.2-15: Best grade/misses are stored only when the grade rank improves; results opacity = calm AbyssBackdrop + ABYSS_900 55% (backdrop_opaque()); the three results buttons wrap focus and Esc = Back to Menu — D-16 keeps best-of semantics without changing record ids; the calm backdrop is the UI-SPEC 8 opaque look; the closed loop keeps focus inside the results
 
 ### Pending Todos
 
@@ -164,6 +166,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T17:55:45.808Z
-Stopped at: Completed 02.2-14-PLAN.md
+Last session: 2026-10-10T18:52:48.174Z
+Stopped at: Completed 02.2-15-PLAN.md
 Resume file: None
