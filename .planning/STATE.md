@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-07-PLAN.md
-last_updated: "2026-10-10T11:55:25.030Z"
+stopped_at: Completed 02.2-08-PLAN.md
+last_updated: "2026-10-10T12:22:56.656Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 47
+  completed_plans: 48
   percent: 56
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 8 of 25
+Plan: 9 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
@@ -76,6 +76,7 @@ Progress: [#########.] 93%
 | Phase 02.2 P05 | 10min | 2 tasks | 4 files |
 | Phase 02.2 P06 | 25 min | 3 tasks | 13 files |
 | Phase 02.2 P07 | 25 min | 2 tasks | 13 files |
+| Phase 02.2 P08 | 25 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -128,6 +129,8 @@ Recent decisions affecting current work:
 - [Phase 02.2]: Menu searchlight cone follows the mockup (57 deg below horizontal) instead of the literal 25 deg; Reduce motion keeps the static logo glow (UI-SPEC 11)
 - [Phase 02.2]: MenuMusic autoload on a Preview bus (sends to Music, spectrum analyzer at effect 0); fades stepped in _process, two-player 400 ms loop cross-fade; waits for entries_added at boot; harness disables it in isolate_settings
 - [Phase 02.2]: Song Select preview stays on the Music bus until plan 18 moves it to Preview with the visualizer
+- [Phase 02.2]: 02.2-08: gems drawn by HighwayNotes (above Feedback) via NotePainter.draw_note keyed by type; Highway stays the state owner and draws strips/rails/hit line/sustains/chord bars/receptors; BoardRoot holds Arena, Highway, Feedback, HighwayNotes and is the Miss nudge target
+- [Phase 02.2]: 02.2-08: halo size 2.6 r read as reach from centre (mockup proportions); cable_bright is an extra intro brightness over normal play (0 = normal)
 
 ### Pending Todos
 
@@ -143,6 +146,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T11:55:25.024Z
-Stopped at: Completed 02.2-07-PLAN.md
+Last session: 2026-10-10T12:22:56.649Z
+Stopped at: Completed 02.2-08-PLAN.md
 Resume file: None
