@@ -43,7 +43,7 @@ const EMPTY_SONGS := LIB_ROOT + "/empty_songs"
 const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
 	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0, "immersion": 240.0,
-	"songs": 360.0, "align": 150.0}
+	"songs": 360.0, "align": 150.0, "perf": 470.0, "visual": 420.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note. Values stay >= 5 ms
 ## from window edges (35 / 70 / 100 ms) so frame jitter cannot flip the expected judgment.
 const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
@@ -109,6 +109,8 @@ func _run() -> void:
 		"immersion": await sc_immersion()
 		"songs": await sc_songs()
 		"align": await sc_align()
+		"perf": await sc_perf()
+		"visual": await sc_visual()
 		_: check("known scenario", false, scenario)
 	_finish()
 
@@ -3094,3 +3096,266 @@ func sc_align() -> void:
 			metrics["%s_recorded_s" % b["id"]] = wav.get_length()
 		await wait(0.3)
 	AudioServer.remove_bus(bus)
+
+
+
+# ------------------------------------------------------------------------------------------------
+# Phase 2.2 Wave 0: frame-time capture (D-06 / D-17) and the visual screenshot scenario (D-15)
+# ------------------------------------------------------------------------------------------------
+
+const PERF_WINDOW_S := 30.0
+const PERF_MAX_START_S := 60.0  # Conductor has no seek (timing core): the window must start early
+const PERF_P95_GATE_MS := 4.35  # 4.35 ms p95 uncapped = the build can sustain >= 230 fps
+const PERF_RES := Vector2i(1920, 1080)
+
+
+## Priority-1000 per-frame recorder: Time.get_ticks_usec() deltas plus the root viewport's measured
+## render CPU/GPU time. Read-only, like frame_probe.gd.
+class FrameCapture extends Node:
+	var deltas_ms: PackedFloat64Array = PackedFloat64Array()
+	var cpu_ms: PackedFloat64Array = PackedFloat64Array()
+	var gpu_ms: PackedFloat64Array = PackedFloat64Array()
+	var vp_rid: RID
+	var _last: int = -1
+
+	func _ready() -> void:
+		process_priority = 1000
+		process_mode = Node.PROCESS_MODE_ALWAYS
+
+	func _process(_delta: float) -> void:
+		var now := Time.get_ticks_usec()
+		if _last >= 0:
+			deltas_ms.append((now - _last) / 1000.0)
+			cpu_ms.append(RenderingServer.viewport_get_measured_render_time_cpu(vp_rid))
+			gpu_ms.append(RenderingServer.viewport_get_measured_render_time_gpu(vp_rid))
+		_last = now
+
+
+static func _quantile(sorted: Array, q: float) -> float:
+	if sorted.is_empty():
+		return 0.0
+	return float(sorted[int(q * (sorted.size() - 1))])
+
+
+## Records `seconds` of frames uncapped (vsync off, Engine.max_fps = 0) and restores both after
+## (T-02.2-01). uncapped = false measures with vsync on (240 Hz screens only). Returns n,
+## p50/p95/p99/max frame ms, avg fps, render cpu/gpu p95 ms.
+func capture_frames(seconds: float, uncapped: bool = true) -> Dictionary:
+	var prev_vsync := DisplayServer.window_get_vsync_mode()
+	var prev_max := Engine.max_fps
+	if uncapped:
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	else:
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+	Engine.max_fps = 0
+	var rid := get_viewport().get_viewport_rid()
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	await frame()
+	await frame()
+	var cap := FrameCapture.new()
+	cap.vp_rid = rid
+	add_child(cap)
+	var t0 := Time.get_ticks_usec()
+	await wait(seconds)
+	var elapsed := (Time.get_ticks_usec() - t0) / 1000000.0
+	remove_child(cap)
+	RenderingServer.viewport_set_measure_render_time(rid, false)
+	DisplayServer.window_set_vsync_mode(prev_vsync)
+	Engine.max_fps = prev_max
+	var d := Array(cap.deltas_ms)
+	var c := Array(cap.cpu_ms)
+	var gg := Array(cap.gpu_ms)
+	cap.free()
+	d.sort()
+	c.sort()
+	gg.sort()
+	return {"n": d.size(), "p50": _quantile(d, 0.50), "p95": _quantile(d, 0.95), "p99": _quantile(d, 0.99),
+		"max": float(d[-1]) if not d.is_empty() else 0.0, "avg_fps": d.size() / maxf(elapsed, 0.001),
+		"cpu_p95": _quantile(c, 0.95), "gpu_p95": _quantile(gg, 0.95)}
+
+
+## Densest 30 s Expert window per bundled song, starting within the first PERF_MAX_START_S seconds.
+## Parses the chart only (no audio decode). Returns {id, dir, start, count, per_song}.
+func _densest_bundled_window() -> Dictionary:
+	var best := {"id": "", "dir": "", "start": 0.0, "count": -1}
+	var per_song := {}
+	for b in BundledSongs.SONGS:
+		var e := SongLibrary.find(str(b["dir"]))
+		if e == null or e.status != "ok" or e.difficulty("expert").is_empty():
+			per_song[str(b["id"])] = "unavailable"
+			continue
+		var parsed := ChartParser.parse_bytes(FileAccess.get_file_as_bytes(e.chart_path))
+		if not parsed.ok:
+			per_song[str(b["id"])] = "parse failed"
+			continue
+		var chart := ChartImporter.build(parsed, "expert", e.delay_ms)
+		var times: Array = []
+		for n in chart.notes:
+			times.append(float(n["time"]))
+		times.sort()
+		var j := 0
+		var top := 0
+		var top_start := 0.0
+		for i in range(times.size()):
+			var s: float = times[i]
+			if s > PERF_MAX_START_S:
+				break
+			if j < i:
+				j = i
+			while j < times.size() and float(times[j]) < s + PERF_WINDOW_S:
+				j += 1
+			if j - i > top:
+				top = j - i
+				top_start = s
+		per_song[str(b["id"])] = {"start": top_start, "count": top}
+		if top > int(best["count"]):
+			best = {"id": str(b["id"]), "dir": str(b["dir"]), "start": top_start, "count": top}
+	best["per_song"] = per_song
+	return best
+
+
+## Forces a 1920x1080 render (B1: project.godot overrides the window to 1600x900). On a 1920x1080
+## screen this is the game's own default, borderless WINDOW_MODE_FULLSCREEN (D-06 settings): a
+## hand-made borderless window covering the screen is promoted to EXCLUSIVE_FULLSCREEN by Windows /
+## Godot, where vsync can no longer be turned off (measured: 16.7 ms frames). On any other screen
+## size a 1920x1080 window is used. Returns the saved window state for _restore_window().
+func _force_capture_window() -> Dictionary:
+	var saved := {
+		"mode": DisplayServer.window_get_mode(),
+		"size": DisplayServer.window_get_size(),
+		"pos": DisplayServer.window_get_position(),
+		"borderless": DisplayServer.window_get_flag(DisplayServer.WINDOW_FLAG_BORDERLESS),
+	}
+	var scr := DisplayServer.window_get_current_screen()
+	var screen := DisplayServer.screen_get_size(scr)
+	saved["screen"] = screen
+	if screen == PERF_RES:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		await frame()
+		DisplayServer.window_set_size(PERF_RES)
+	for k in range(3):
+		await frame()
+	saved["capture_mode"] = DisplayServer.window_get_mode()
+	return saved
+
+
+func _restore_window(saved: Dictionary) -> void:
+	if saved["mode"] == DisplayServer.WINDOW_MODE_WINDOWED or saved["mode"] == DisplayServer.WINDOW_MODE_MAXIMIZED:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		await frame()
+		DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_BORDERLESS, bool(saved["borderless"]))
+		DisplayServer.window_set_size(saved["size"])
+		DisplayServer.window_set_position(saved["pos"])
+	DisplayServer.window_set_mode(saved["mode"])
+	await frame()
+
+
+## Waits until the run's song clock reaches `t` (re-reads the conductor: restarts replace it).
+func _wait_song_time(g: Gameplay, t: float, timeout: float) -> bool:
+	return await wait_until(func() -> bool:
+		return is_instance_valid(g) and g.conductor != null and g.conductor.song_time() >= t, timeout)
+
+
+## D-17 frame-time capture: uncapped p95 over the densest 30 s of a bundled Expert chart, Full and
+## Low effects, at a forced 1920x1080 window. Refresh rate is logged, never a failure.
+func sc_perf() -> void:
+	isolate_settings(true)
+	await wait_library_idle(60.0)
+	var win := _densest_bundled_window()
+	metrics["perf_windows"] = win["per_song"]
+	if not check("perf: densest bundled window found", int(win["count"]) > 0, win):
+		return
+	# Gameplay exposes no start-position option and Conductor (timing core) has no public seek: wait.
+	var method := "wait"
+	note("perf window: %s @ %.1f s, %d notes in %d s (%s)" % [win["id"], win["start"], win["count"],
+		int(PERF_WINDOW_S), method])
+	metrics["song_id"] = win["id"]
+	metrics["window_start_s"] = win["start"]
+	metrics["window_notes"] = win["count"]
+	metrics["window_method"] = method
+	metrics["refresh_hz"] = DisplayServer.screen_get_refresh_rate()
+	metrics["gpu"] = RenderingServer.get_video_adapter_name()
+	var saved := await _force_capture_window()
+	var sz := get_window().size
+	var vis := get_viewport().get_visible_rect().size
+	metrics["capture_resolution"] = "%dx%d" % [sz.x, sz.y]
+	metrics["screen_size"] = str(saved["screen"])
+	metrics["capture_window_mode"] = saved["capture_mode"]
+	check("capture window is 1920x1080", sz == PERF_RES and Vector2i(vis) == PERF_RES,
+		"window %s, visible rect %s, screen %s, mode %d" % [sz, vis, saved["screen"], saved["capture_mode"]])
+	check("capture window is not exclusive fullscreen (vsync could not be disabled)",
+		saved["capture_mode"] != DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN, saved["capture_mode"])
+	Settings.low_effects = false
+	Settings.settings_changed.emit()
+	await goto(MENU)
+	SongSelect.run_autoplay = true
+	await goto(SONG_SELECT)
+	var g := await dive_from_song_select(str(win["dir"]), "expert")
+	if g == null or not await wait_for_began(g):
+		check("perf dive began", false)
+		await _restore_window(saved)
+		return
+	var start_t: float = win["start"]
+	var wait_limit := start_t + 20.0
+	check("perf: Full reached window start", await _wait_song_time(g, start_t, wait_limit))
+	var full := await capture_frames(PERF_WINDOW_S)
+	metrics["frames"] = full["n"]
+	metrics["frame_ms_p50_full"] = full["p50"]
+	metrics["frame_ms_p95_full"] = full["p95"]
+	metrics["frame_ms_p99_full"] = full["p99"]
+	metrics["frame_ms_max_full"] = full["max"]
+	metrics["avg_fps_full"] = full["avg_fps"]
+	metrics["render_cpu_ms_p95"] = full["cpu_p95"]
+	metrics["render_gpu_ms_p95"] = full["gpu_p95"]
+	if float(metrics["refresh_hz"]) >= 239.0:
+		var vs := await capture_frames(5.0, false)
+		metrics["vsync_avg_fps"] = vs["avg_fps"]
+	note("Full: n=%d p50 %.3f p95 %.3f p99 %.3f ms (cpu p95 %.3f, gpu p95 %.3f)" % [full["n"], full["p50"],
+		full["p95"], full["p99"], full["cpu_p95"], full["gpu_p95"]])
+	# Low effects: the same window on a restarted run.
+	Settings.low_effects = true
+	Settings.settings_changed.emit()
+	if is_instance_valid(g):
+		g.restart(true)
+		await frame()
+	var began_low: bool = is_instance_valid(g) and await wait_for_began(g)
+	check("perf: Low run began", began_low)
+	var reached_low: bool = began_low and await _wait_song_time(g, start_t, wait_limit)
+	check("perf: Low reached window start", reached_low)
+	var low := await capture_frames(PERF_WINDOW_S)
+	metrics["frames_low"] = low["n"]
+	metrics["frame_ms_p50_low"] = low["p50"]
+	metrics["frame_ms_p95_low"] = low["p95"]
+	metrics["frame_ms_p99_low"] = low["p99"]
+	metrics["frame_ms_max_low"] = low["max"]
+	metrics["avg_fps_low"] = low["avg_fps"]
+	metrics["render_cpu_ms_p95_low"] = low["cpu_p95"]
+	metrics["render_gpu_ms_p95_low"] = low["gpu_p95"]
+	note("Low: n=%d p50 %.3f p95 %.3f p99 %.3f ms" % [low["n"], low["p50"], low["p95"], low["p99"]])
+	Settings.low_effects = false
+	Settings.settings_changed.emit()
+	await _restore_window(saved)
+	note("refresh %.2f Hz (logged only, never a failure)" % float(metrics["refresh_hz"]))
+	check("perf Full capture has >= 1000 frames", int(full["n"]) >= 1000, full["n"])
+	check("Full p95 <= 4.35 ms (uncapped, D-17)", float(full["p95"]) <= PERF_P95_GATE_MS, "%.3f ms" % full["p95"])
+	check("Low p95 <= 4.35 ms (uncapped)", float(low["p95"]) <= PERF_P95_GATE_MS, "%.3f ms" % low["p95"])
+	await goto(MENU)
+
+
+## Board/HUD screenshots of later 02.2 slices go here (not into sc_immersion).
+func sc_visual() -> void:
+	isolate_settings(true)
+	await wait_library_idle(60.0)
+	var b: Dictionary = BundledSongs.SONGS[0]
+	await goto(MENU)
+	SongSelect.run_autoplay = true
+	await goto(SONG_SELECT)
+	var g := await dive_from_song_select(str(b["dir"]), "expert")
+	var ok: bool = g != null and await wait_for_began(g)
+	if ok:
+		ok = await _wait_song_time(g, 6.0, 20.0)
+		await shot("visual_baseline", g)
+	check("visual scenario runs", ok and is_instance_valid(g) and g.state == Gameplay.State.RUNNING)
+	await goto(MENU)
