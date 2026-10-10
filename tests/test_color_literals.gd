@@ -17,7 +17,6 @@ const ALLOW: Array[String] = [
 ## Files that still hold literals and are waiting for their migration plan.
 ## Each migration plan removes its file; plan 24 empties this list.
 const PENDING_MIGRATION: Array[String] = [
-	"res://src/ui/goggles_intro.gd",
 	"res://src/ui/settings_screen.gd",
 ]
 
@@ -146,6 +145,7 @@ const LEGACY_FREE: Array[String] = [
 	"res://src/ui/pause_menu.gd",
 	"res://src/ui/fail_screen.gd",
 	"res://src/ui/confirm_dialog.gd",
+	"res://src/ui/goggles_intro.gd",
 ]
 const LEGACY_PATTERN := "Palette\\.(BG|PANEL|DIM|TEXT|ACCENT|DESTRUCTIVE|REC_TEXT)\\b"
 
