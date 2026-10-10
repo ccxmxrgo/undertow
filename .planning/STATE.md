@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Completed 02.2-24-PLAN.md
-last_updated: "2026-10-10T22:30:13.262Z"
+status: checkpoint
+stopped_at: 02.2-25 Task 1 complete; awaiting Task 2 human-verify checkpoint (end-of-phase UAT)
+last_updated: "2026-10-10T23:11:34.495Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
 Plan: 25 of 25
-Status: Ready to execute
+Status: Awaiting human checkpoint (02.2-25 Task 2: end-of-phase UAT, 02.2-HUMAN-UAT.md). Task 1 done: v0.5 zip built, UAT sheet + 30 screenshots committed. Phase NOT complete.
 Last activity: 2026-10-10
 
 Progress: [██████████] 98%
@@ -93,6 +93,7 @@ Progress: [██████████] 98%
 | Phase 02.2 P22 | ~32min | 2 tasks | 10 files |
 | Phase 02.2 P23 | 25 min | 2 tasks | 9 files |
 | Phase 02.2 P24 | 38min | 2 tasks | 19 files |
+| Phase 02.2 P25 | 40 min | 1 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -176,10 +177,13 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-24: Song Select's focus-marker owner is SongSelect (it draws its own list bar/caret); results gained a FocusMarker (UI-SPEC 4.3)
 - [Phase 02.2]: 02.2-24: HighwayNotes is a registered effect node (Low hides the additive halo layer); effect counts expose capability flags (glint_enabled, frozen)
 - [Phase 02.2]: 02.2-24: cloud perf capture (xvfb llvmpipe) logged as NOT representative; no cut steps; plan 24 (final) perf row pending the user's PC
+- [Phase 02.2]: 02.2-25: perf gate unmeasured (not failed) in the cloud, so the UAT has no perf decision row; the PENDING PERF.md row stays for the Windows PC
+- [Phase 02.2]: 02.2-25: the v0.5 zip ships TESTER-CHECKLIST.txt (user request); dist.ps1 runs under Windows PowerShell and pwsh
 
 ### Pending Todos
 
-None yet.
+- 02.2-25 Task 2: user plays v0.5 (one Expert, one Easy song), walks every screen and answers 02.2-HUMAN-UAT.md
+- Windows PC: perf capture (fill the PENDING 02.2-PERF.md row), run_all.ps1 -SkipDrift, exe launch, listen to menu music / blips (02.2-HUMAN-UAT.md "Remaining for the Windows PC")
 
 ### Blockers/Concerns
 
@@ -191,6 +195,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T22:30:13.232Z
-Stopped at: Completed 02.2-24-PLAN.md
-Resume file: None
+Last session: 2026-10-10T23:11:30.696Z
+Stopped at: 02.2-25 Task 1 complete; awaiting Task 2 human-verify checkpoint
+Resume file: .planning/phases/02.2-visual-design-overhaul/02.2-HUMAN-UAT.md
