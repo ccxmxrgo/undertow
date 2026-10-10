@@ -249,9 +249,9 @@ def cmd_chart(args) -> int:
     solo = structure.pick_solo(tracks["hard"], tracks["expert"], tm["bar_ticks"], vocal_active)
     if solo is None:
         raise AutochartError("chart", "no 4-8 bar window with 16 notes")
-    preview = structure.pick_preview(secs["starts_ms"], secs["energies"])
     song_length = (args.song_length_ms if args.song_length_ms is not None
                    else int(round(float(dec["length_s"]) * 1000.0)))
+    preview = structure.pick_preview(secs["starts_ms"], secs["energies"], song_length)
     if not 0 < preview < song_length:
         preview = max(1, min(song_length - 1, preview))
     step(6, f"solo ticks {solo[0]}..{solo[1]}, preview {preview} ms")

@@ -14,7 +14,11 @@ both Hard and Expert hold >= min_notes distinct ticks in [start, end]. Score = H
 An instrumental window (vocal_active share < 0.5, or no vocal data) is preferred; otherwise the
 densest eligible window; None when nothing is eligible. Ties: earliest start, then the longer window.
 
-pick_preview: start (ms) of the loudest section by mean RMS.
+pick_preview: start (ms) of the loudest section by mean RMS among the candidates: a section that starts
+in the first PREVIEW_MIN_START_MS (10 s, usually an intro) is skipped, and so is one that starts less
+than PREVIEW_TAIL_MS (30 s) before the song end, so the preview always has >= 30 s of audio after it.
+When no section qualifies: 30% of the song length, clamped to song_length - 30 s (and >= 0). Without a
+song length only the intro rule applies (falls back to the loudest section overall).
 """
 from __future__ import annotations
 
@@ -97,8 +101,23 @@ def pick_solo(hard: list[dict], expert: list[dict], bar_ticks: list[int],
     return chosen[1] if chosen else None
 
 
-def pick_preview(section_starts_ms: list[int], section_rms: list[float]) -> int:
-    if not section_starts_ms:
-        return 0
-    i = min(range(len(section_starts_ms)), key=lambda k: (-float(section_rms[k]), k))
-    return int(section_starts_ms[i])
+PREVIEW_MIN_START_MS = 10000
+PREVIEW_TAIL_MS = 30000
+
+
+def pick_preview(section_starts_ms: list[int], section_rms: list[float],
+                 song_length_ms: int | None = None) -> int:
+    idx = range(len(section_starts_ms))
+    cands = [k for k in idx if int(section_starts_ms[k]) >= PREVIEW_MIN_START_MS
+             and (song_length_ms is None
+                  or int(section_starts_ms[k]) <= int(song_length_ms) - PREVIEW_TAIL_MS)]
+    if cands:
+        i = min(cands, key=lambda k: (-float(section_rms[k]), k))
+        return int(section_starts_ms[i])
+    if song_length_ms is None:
+        if not section_starts_ms:
+            return 0
+        i = min(idx, key=lambda k: (-float(section_rms[k]), k))
+        return int(section_starts_ms[i])
+    length = int(song_length_ms)
+    return max(0, min(int(round(0.3 * length)), length - PREVIEW_TAIL_MS))

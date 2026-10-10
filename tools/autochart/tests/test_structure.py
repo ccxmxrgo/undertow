@@ -80,7 +80,7 @@ class PreviewTest(unittest.TestCase):
     def test_skips_sections_starting_less_than_30_s_before_the_end(self):
         # Space Synth Wave: the loudest section starts 2.4 s before the end
         starts = [162, 16157, 160142, 176143, 189642]
-        rms = [0.1, 0.5, 0.4, 0.8, 0.9]
+        rms = [0.1, 0.3, 0.4, 0.8, 0.9]
         self.assertEqual(structure.pick_preview(starts, rms, 192014), 160142)
         self.assertEqual(structure.pick_preview([20000, 70000], [0.1, 0.9], 100000), 70000)
         self.assertEqual(structure.pick_preview([20000, 70001], [0.1, 0.9], 100000), 20000)

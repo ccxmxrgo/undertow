@@ -2,6 +2,8 @@
   "id": "sea_shanty_2",
   "stem": "other",
   "fill_stem": null,
+  "fill_mode": null,
+  "fill_share": 0.0,
   "target_nps": 3.5,
   "difficulties": {
     "easy": {
