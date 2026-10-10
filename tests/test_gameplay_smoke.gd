@@ -63,6 +63,11 @@ func test_autoplay_run_is_all_perfect_and_flagged() -> void:
 	assert_object(gp.results).is_not_null()
 	assert_bool(gp.results.flags.has("AUTOPLAY USED")).is_true()
 	assert_bool(gp.hud.is_autoplay_shown()).is_true()
+	# D-09: every Perfect/Good hit recorded an offset; D-08 accuracy and grade reach the results.
+	assert_int(gp.offset_recorder.offsets().size()).is_equal(gp.score.perfect_count + gp.score.good_count)
+	assert_int((gp.record_info["offsets"] as PackedFloat32Array).size()).is_equal(gp.score.perfect_count)
+	assert_float(float(gp.record_info["accuracy"])).is_equal_approx(100.0, 0.001)
+	assert_str(str(gp.record_info["grade"])).is_equal("S")
 
 
 func test_f4_restarts_with_autoplay_and_shows_badge() -> void:
@@ -248,3 +253,49 @@ func test_failed_dive_never_writes() -> void:
 	assert_str(FileAccess.get_file_as_string(SCORES_TMP)).is_equal(saved)
 	assert_str(gp2.fail_screen.stats_label.text).is_equal("Max combo: 77")
 	assert_bool(gp2.fail_screen.best_label.text.begins_with("Saved best: ")).is_true()
+
+
+func test_finish_submits_d08_accuracy_and_grade() -> void:
+	var gp := _launch(false)
+	await get_tree().process_frame
+	gp.score.score = 5000
+	gp.score.perfect_count = 6
+	gp.score.good_count = 2
+	gp.score.miss_count = 2
+	gp.score.max_combo = 6
+	gp._finish()
+	# (6 x 100 + 2 x 50) / 10 = 70.0 -> D (hit rate would have been 80).
+	assert_float(float(gp.record_info["accuracy"])).is_equal_approx(70.0, 0.001)
+	assert_str(str(gp.record_info["grade"])).is_equal("D")
+	var store := ScoreStore.new()
+	store.load()
+	var b := store.best(gp.chart.id)
+	assert_float(float(b["accuracy"])).is_equal_approx(70.0, 0.001)
+	assert_str(str(b["grade"])).is_equal("D")
+	assert_int(int(b["misses"])).is_equal(2)
+
+
+func test_restart_resets_offset_recorder() -> void:
+	var gp := _launch(false)
+	await get_tree().process_frame
+	gp.judge.judged.emit(0, 0, InputJudge.Judgment.PERFECT, 0.004)
+	assert_int(gp.offset_recorder.offsets().size()).is_equal(1)
+	gp.restart(false)
+	await get_tree().process_frame
+	assert_int(gp.offset_recorder.offsets().size()).is_equal(0)
+	gp.judge.judged.emit(0, 0, InputJudge.Judgment.GOOD, -0.02)
+	assert_int(gp.offset_recorder.offsets().size()).is_equal(1)
+
+
+func test_go_to_song_select_keeps_run_flags() -> void:
+	Gameplay.pending_practice = true
+	var gp := _launch(false)
+	await get_tree().process_frame
+	SongSelect.run_autoplay = false
+	SongSelect.run_practice = false
+	gp.prepare_song_select()
+	assert_bool(SongSelect.run_practice).is_true()
+	assert_bool(SongSelect.run_autoplay).is_false()
+	assert_str(Gameplay.SONG_SELECT_SCENE).is_equal("res://scenes/song_select.tscn")
+	assert_bool(ResourceLoader.exists(Gameplay.SONG_SELECT_SCENE)).is_true()
+	SongSelect.run_practice = false

@@ -183,3 +183,89 @@ func test_chart_ids() -> void:
 		assert_bool(i != "").is_true()
 	assert_int(ids.size()).is_equal(3)
 	assert_bool(ids[0] != ids[1] and ids[1] != ids[2] and ids[0] != ids[2]).is_true()
+
+
+# --- D-16: best grade and miss count per record ---------------------------------------------------
+
+
+func test_grade_and_misses_round_trip() -> void:
+	var s := ScoreStore.new(P)
+	s.submit("g", 100.0, 95.0, 30, true, "2026-10-10", "A", 2)
+	var t := ScoreStore.new(P)
+	t.load()
+	var b := t.best("g")
+	assert_str(b.grade).is_equal("A")
+	assert_int(b.misses).is_equal(2)
+
+
+func test_better_grade_replaces_worse_grade_keeps() -> void:
+	var s := ScoreStore.new(P)
+	s.submit("g", 100.0, 80.0, 30, true, "", "C", 9)
+	s.submit("g", 50.0, 99.0, 10, true, "", "S", 0)  # shallower but a better grade
+	assert_str(s.best("g").grade).is_equal("S")
+	assert_int(s.best("g").misses).is_equal(0)
+	assert_float(s.best("g").depth).is_equal_approx(100.0, 0.001)
+	var before := FileAccess.get_file_as_string(P)
+	s.submit("g", 10.0, 50.0, 5, true, "", "D", 30)  # worse in every way: file unchanged
+	assert_str(s.best("g").grade).is_equal("S")
+	assert_int(s.best("g").misses).is_equal(0)
+	assert_str(FileAccess.get_file_as_string(P)).is_equal(before)
+	s.submit("g", 10.0, 50.0, 5, true, "", "S", 0)  # equal grade: kept
+	assert_str(s.best("g").grade).is_equal("S")
+
+
+func test_ungraded_submit_and_legacy_defaults() -> void:
+	var s := ScoreStore.new(P)
+	s.submit("u", 100.0, 90.0, 10, true)
+	assert_str(s.best("u").grade).is_equal("")
+	assert_int(s.best("u").misses).is_equal(-1)
+
+
+func test_legacy_file_loads_unchanged_with_no_grade() -> void:
+	_write("[chart:old.song]\nbest_depth=1240.5\nbest_accuracy=96.25\nmax_combo=321\ndate=\"2026-10-01\"\n")
+	var s := ScoreStore.new(P)
+	s.load()
+	var b := s.best("old.song")
+	assert_float(b.depth).is_equal_approx(1240.5, 0.001)
+	assert_float(b.accuracy).is_equal_approx(96.25, 0.001)
+	assert_int(b.max_combo).is_equal(321)
+	assert_str(b.date).is_equal("2026-10-01")
+	assert_str(b.grade).is_equal("")
+	assert_int(b.misses).is_equal(-1)
+	# A first graded submit on a legacy record stores the grade; the id is unchanged.
+	s.submit("old.song", 10.0, 50.0, 5, true, "", "B", 4)
+	var t := ScoreStore.new(P)
+	t.load()
+	assert_str(t.best("old.song").grade).is_equal("B")
+	assert_float(t.best("old.song").depth).is_equal_approx(1240.5, 0.001)
+	assert_str(FileAccess.get_file_as_string(P)).contains("[chart:old.song]")
+
+
+func test_hostile_grade_and_misses_sanitized() -> void:
+	_write("[chart:h1]\nbest_depth=5.0\ngrade=\"SSS\"\nmisses=-7\n\n"
+		+ "[chart:h2]\nbest_depth=5.0\ngrade=5\nmisses=1e30\n\n"
+		+ "[chart:h3]\nbest_depth=5.0\ngrade=\"a\"\nmisses=\"lots\"\n\n"
+		+ "[chart:h4]\nbest_depth=5.0\ngrade=\"S\"\nmisses=nan\n\n"
+		+ "[chart:h5]\nbest_depth=5.0\ngrade=\"D\"\nmisses=12\n")
+	var s := ScoreStore.new(P)
+	s.load()
+	assert_str(s.best("h1").grade).is_equal("")
+	assert_int(s.best("h1").misses).is_equal(-1)
+	assert_str(s.best("h2").grade).is_equal("")
+	assert_int(s.best("h2").misses).is_equal(int(ScoreStore.MAX_COMBO))
+	assert_str(s.best("h3").grade).is_equal("")
+	assert_int(s.best("h3").misses).is_equal(-1)
+	assert_str(s.best("h4").grade).is_equal("S")
+	assert_int(s.best("h4").misses).is_equal(-1)
+	assert_str(s.best("h5").grade).is_equal("D")
+	assert_int(s.best("h5").misses).is_equal(12)
+
+
+func test_submit_rejects_unknown_grade_and_clamps_misses() -> void:
+	var s := ScoreStore.new(P)
+	s.submit("z", 10.0, 10.0, 1, true, "X", 5)
+	assert_str(s.best("z").grade).is_equal("")
+	assert_int(s.best("z").misses).is_equal(-1)
+	s.submit("z", 10.0, 10.0, 1, true, "D", -3)
+	assert_str(s.best("z").grade).is_equal("D")
+	assert_int(s.best("z").misses).is_equal(0)
