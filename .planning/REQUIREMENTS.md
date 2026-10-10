@@ -125,7 +125,7 @@
 - [x] **VIS-06**: Song select shows album art or a generated cover, difficulty intensity, and a preview visualizer
 - [x] **VIS-07**: Pause, fail, settings and calibration screens use the design system
 - [x] **VIS-08**: Goggles intro has no placeholder rectangles (drawn scene or trimmed)
-- [ ] **VIS-09**: Screen transitions, micro-animations, miss shake, milestone bursts and UI navigation sounds
+- [x] **VIS-09**: Screen transitions, micro-animations, miss shake, milestone bursts and UI navigation sounds
 - [ ] **VIS-10**: Readability and accessibility guardrails (contrast, scroll-speed range, colour-blind shapes)
 
 ## v2 Requirements
@@ -239,7 +239,7 @@
 | VIS-06 | Phase 2.2 | Complete |
 | VIS-07 | Phase 2.2 | Complete |
 | VIS-08 | Phase 2.2 | Complete |
-| VIS-09 | Phase 2.2 | Pending |
+| VIS-09 | Phase 2.2 | Complete |
 | VIS-10 | Phase 2.2 | Pending |
 
 **Coverage:**

@@ -87,3 +87,16 @@
   of the 300 ms wipe: 349 ms in the final run, 422 ms in one earlier run before the load
   compensation. The wipe itself (started -> finished) was 314 ms. On the PC (60-240 Hz) the
   frame terms are 4-17 ms; re-run polish there to confirm.
+
+## Found in 02.2-23
+
+- **Song Select list navigation is silent.** The list moves its selection while its root Control keeps
+  focus, so `UiSounds` sees no focus change. A follow-up can call `UiSounds.play("move")` from
+  song_select.gd when the selection changes (outside plan 23's files).
+- **Mouse clicks on buttons do not blip.** Only ui_accept plays confirm. UI-SPEC 9 lists a confirm
+  blip on "Pressed", which a mouse click would also need. Possible follow-up.
+- **Blips are untested by ear.** The Dummy audio driver in the cloud is silent. On the Windows PC,
+  check that the blips are soft next to the menu music, that they follow the SFX volume, and that
+  none are heard during a dive or the calibration pings.
+- **Scenario a gave one 68.87 ms run** among 58.46 / 59.97 ms runs (the known 58-60 ms cloud value).
+  This is xvfb frame-cost noise; the run 1 path did not change in this plan.
