@@ -635,7 +635,7 @@ func _leave() -> void:
 	if navigate.is_valid():
 		navigate.call(MENU_SCENE)
 	elif is_inside_tree():
-		get_tree().change_scene_to_file(MENU_SCENE)
+		ScreenTransition.change_scene(MENU_SCENE)
 
 
 # --- input / frame -----------------------------------------------------------------------------

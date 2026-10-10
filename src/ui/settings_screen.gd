@@ -153,7 +153,7 @@ class PillToggle:
 
 
 var overlay: bool = false
-## Scene changes go through this so tests can observe them. Default: SceneTree.change_scene_to_file.
+## Scene changes go through this so tests can observe them. Default: the ScreenTransition sonar wipe.
 var navigate: Callable = Callable()
 
 var cells: Dictionary = {}  # "<action>:<device>" -> RebindCell
@@ -921,4 +921,4 @@ func _go(path: String) -> void:
 	if navigate.is_valid():
 		navigate.call(path)
 	elif is_inside_tree():
-		get_tree().change_scene_to_file(path)
+		ScreenTransition.change_scene(path)

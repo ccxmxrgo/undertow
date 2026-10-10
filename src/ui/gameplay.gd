@@ -432,9 +432,9 @@ func prepare_song_select() -> void:
 func go_to_song_select() -> void:
 	prepare_song_select()
 	var target := SONG_SELECT_SCENE if ResourceLoader.exists(SONG_SELECT_SCENE) else MENU_SCENE
-	get_tree().change_scene_to_file(target)
+	ScreenTransition.change_scene(target)
 
 
 func go_to_menu() -> void:
 	var target := MENU_SCENE if ResourceLoader.exists(MENU_SCENE) else FALLBACK_SCENE
-	get_tree().change_scene_to_file(target)
+	ScreenTransition.change_scene(target)

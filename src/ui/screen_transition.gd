@@ -57,6 +57,8 @@ var _swapped: bool = false
 var _skip: bool = false
 var _t0: float = 0.0
 var _t_reveal: float = 0.0
+var _t_swap: float = 0.0
+var _reveal_len: float = REVEAL_MS
 var _start_frame: int = -1
 var _material: ShaderMaterial
 
@@ -68,8 +70,7 @@ func _init() -> void:
 	rect = ColorRect.new()
 	rect.name = "Wipe"
 	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-	rect.size = SCREEN_SIZE
+	UiLayout.fill_rect(rect)
 	rect.color = Palette.ABYSS_900
 	rect.visible = false
 	_material = ShaderMaterial.new()
@@ -169,7 +170,7 @@ func step() -> void:
 			_swapped = true
 			_swap()
 		return
-	var pr := clampf((now - _t_reveal) / _reveal_ms(), 0.0, 1.0)
+	var pr := clampf((now - _t_reveal) / _reveal_len, 0.0, 1.0)
 	_apply(pr)
 	if pr >= 1.0:
 		_finish()
@@ -207,6 +208,10 @@ func notify_scene_changed() -> void:
 		return
 	_phase = Phase.REVEAL
 	_t_reveal = _now()
+	# The new scene's load time (swap request -> scene_changed) comes out of the reveal, down to
+	# half of it, so a slow load keeps the wipe near 300 ms instead of stretching to the cap.
+	var load_ms := maxf(0.0, _t_reveal - _t_swap)
+	_reveal_len = maxf(_reveal_ms() - load_ms, _reveal_ms() * 0.5)
 	_apply(0.0)
 	swapped.emit()
 
@@ -267,6 +272,7 @@ func _default_focal() -> Vector2:
 
 
 func _swap() -> void:
+	_t_swap = _now()
 	if swap_fn.is_valid():
 		swap_fn.call(_path)
 		if swap_starts_reveal:

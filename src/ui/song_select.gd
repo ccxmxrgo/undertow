@@ -136,7 +136,6 @@ var _last_pad: bool = false
 var _t: float = 0.0
 var _ping_t: float = 99.0
 var _diving: bool = false
-var _fade: float = 0.0
 var _message: String = ""
 var _message_kind: String = ""
 var _message_until_msec: int = 0
@@ -208,7 +207,6 @@ var _p_detail: Pane
 var _p_scan: Pane
 var _p_footer: Pane
 var _p_credits: Pane
-var _p_fade: Pane
 
 
 func _ready() -> void:
@@ -234,7 +232,6 @@ func _ready() -> void:
 	_p_footer = _pane("FooterHints", Rect2(64, 928, 1792, 104), _paint_footer)
 	_p_scan = _pane("ScanStatus", Rect2(704, 928, 480, 48), _paint_scan)
 	_p_credits = _pane("CreditsLine", Rect2(1184, 928, 672, 48), _paint_credits)
-	_p_fade = _pane("DiveFade", Rect2(0, 0, 1920, 1080), _paint_fade)
 	_store = ScoreStore.new()
 	_store.load()
 	if library != null:
@@ -707,7 +704,7 @@ func _go(path: String) -> void:
 	if navigate.is_valid():
 		navigate.call(path)
 	elif is_inside_tree():
-		get_tree().change_scene_to_file(path)
+		ScreenTransition.change_scene(path)
 
 
 func _back() -> void:
@@ -752,13 +749,8 @@ func _dive() -> void:
 	library.last_difficulty = _diff
 	_stop_preview(true)
 	MenuMusic.stop(0.4)
-	if Settings.reduce_motion or not is_inside_tree():
-		_fade = 1.0
-		_go(GAMEPLAY_SCENE)
-		return
-	var tw := create_tween()
-	tw.tween_property(self, "_fade", 1.0, 0.15)
-	tw.tween_callback(_go.bind(GAMEPLAY_SCENE))
+	# 02.2-22: the ScreenTransition sonar wipe replaces the old 0.15 s fade; the goggles intro follows.
+	_go(GAMEPLAY_SCENE)
 
 
 # ---- input ----
@@ -1418,11 +1410,6 @@ func filter_count_text() -> String:
 
 func _paint_credits(c: CanvasItem) -> void:
 	_txt_r(c, 1856, 960, CREDITS, Palette.SIZE_LABEL, Palette.TEXT_LO)
-
-
-func _paint_fade(c: CanvasItem) -> void:
-	if _fade > 0.0:
-		c.draw_rect(Rect2(0, 0, 1920, 1080), Palette.alpha(Palette.ABYSS_900, clampf(_fade, 0.0, 1.0)))
 
 
 # -- list --

@@ -189,6 +189,35 @@ func test_failsafe_swaps_once_when_frames_stall_in_the_cover() -> void:
 	assert_int(_finished).is_equal(1)
 
 
+func test_slow_scene_load_comes_out_of_the_reveal() -> void:
+	var st := _st()
+	st.swap_starts_reveal = false
+	st.change_scene(TARGET)
+	_at(st, 150.0)
+	_now = 190.0  # the new scene arrives 40 ms after the swap request
+	st.notify_scene_changed()
+	assert_str(st.phase()).is_equal("reveal")
+	_at(st, 299.0)
+	assert_bool(st.is_busy()).is_true()
+	_at(st, 300.0)  # reveal shortened to 110 ms: total stays 300 ms
+	assert_bool(st.is_busy()).is_false()
+	assert_int(st.last_duration_msec).is_equal(300)
+
+
+func test_very_slow_load_keeps_half_the_reveal() -> void:
+	var st := _st()
+	st.swap_starts_reveal = false
+	st.change_scene(TARGET)
+	_at(st, 150.0)
+	_now = 250.0  # 100 ms load
+	st.notify_scene_changed()
+	_at(st, 324.0)
+	assert_bool(st.is_busy()).is_true()
+	_at(st, 325.0)  # floor: 75 ms of reveal
+	assert_bool(st.is_busy()).is_false()
+	assert_int(st.last_duration_msec).is_less_equal(400)
+
+
 # ---- input ---------------------------------------------------------------------------------
 
 func test_key_press_during_cover_is_consumed_and_jumps_to_the_end() -> void:

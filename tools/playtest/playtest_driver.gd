@@ -2038,6 +2038,108 @@ func review_results(label: String, rs: ResultsScreen, score: HullScore, offsets:
 		check("no menu text behind results (%s)" % label, int(lum["samples"]) > 0 and float(lum["max"]) < 0.35, lum)
 
 
+## 02.2-22 (VIS-09, D-13, T-02.2-42): times the menu -> Song Select sonar wipe from the Enter press
+## to ScreenTransition.finished, shoots a Song Select -> menu wipe mid-cover and mid-reveal, then
+## presses a list key at the start of a reveal and checks that the new screen took it.
+func _check_screen_transition() -> void:
+	var m := cur() as MainMenu
+	if not check("transition: main menu shown", m != null, cur()):
+		return
+	m.finish_entrance()
+	m.start_button.grab_focus()
+	await frame()
+	var tr := {"start": -1, "swap": -1, "end": -1, "mode": ""}
+	var on_start := func() -> void:
+		tr["start"] = Time.get_ticks_msec()
+		tr["mode"] = ScreenTransition.mode()
+	var on_swap := func() -> void: tr["swap"] = Time.get_ticks_msec()
+	var on_end := func() -> void: tr["end"] = Time.get_ticks_msec()
+	ScreenTransition.started.connect(on_start, CONNECT_ONE_SHOT)
+	ScreenTransition.swapped.connect(on_swap, CONNECT_ONE_SHOT)
+	ScreenTransition.finished.connect(on_end, CONNECT_ONE_SHOT)
+	var t_press := Time.get_ticks_msec()
+	key(KEY_ENTER, true)
+	await frame()
+	key(KEY_ENTER, false)
+	var done: bool = await wait_until(func() -> bool: return int(tr["end"]) >= 0, 3.0)
+	for sig_cb in [[ScreenTransition.started, on_start], [ScreenTransition.swapped, on_swap],
+			[ScreenTransition.finished, on_end]]:
+		if (sig_cb[0] as Signal).is_connected(sig_cb[1]):
+			(sig_cb[0] as Signal).disconnect(sig_cb[1])
+	var key_to_end := int(tr["end"]) - t_press
+	var detail := {"key_to_finished_ms": key_to_end, "wipe_ms": int(tr["end"]) - int(tr["start"]),
+		"cover_ms": int(tr["swap"]) - int(tr["start"]), "reported_ms": ScreenTransition.last_duration_msec,
+		"mode": tr["mode"], "fps": Engine.get_frames_per_second()}
+	metrics["screen_transition"] = detail
+	check("screen transition finishes within 400 ms", done and int(tr["start"]) >= 0 and key_to_end <= 400, detail)
+	check("transition: Song Select shown after the wipe", cur() is SongSelect, cur())
+	var ss := cur() as SongSelect
+	if ss == null:
+		return
+	await wait_library_idle()
+	await wait(0.3)
+	# Song Select -> menu (Esc): shots of the cover and the reveal for the visual review. The wipe
+	# runs on a frozen clock here (clock_fn seam) so the shots land at fixed radii at any frame rate.
+	var fake := [0.0]
+	ScreenTransition.clock_fn = func() -> float: return fake[0]
+	key(KEY_ESCAPE, true)
+	await frame()
+	key(KEY_ESCAPE, false)
+	if await wait_until(func() -> bool: return ScreenTransition.phase() == "cover", 1.0):
+		fake[0] = 100.0  # cubic-in: r = 2200 * (100/150)^3 = 652
+		await frame()
+		await shot("sonar_wipe_cover")
+		fake[0] = ScreenTransition.COVER_MS
+		if await wait_until(func() -> bool: return ScreenTransition.phase() == "reveal", 2.0):
+			fake[0] = ScreenTransition.COVER_MS + 15.0  # cubic-out: r = 2200 * (1 - 0.9^3) = 596
+			await frame()
+			await shot("sonar_wipe_reveal")
+	ScreenTransition.clock_fn = Callable()  # real clock again: the failsafe ends the wipe at once
+	var back: bool = await wait_until(func() -> bool:
+		return not ScreenTransition.is_busy() and cur() is MainMenu, 3.0)
+	check("transition: Esc on Song Select wipes back to the menu", back, cur())
+	m = cur() as MainMenu
+	if m == null:
+		return
+	await wait(0.3)
+	m.finish_entrance()
+	m.start_button.grab_focus()
+	await frame()
+	# Menu -> Song Select again; press a list key on the first frame of the reveal.
+	key(KEY_ENTER, true)
+	await frame()
+	key(KEY_ENTER, false)
+	var in_reveal: bool = await wait_until(func() -> bool:
+		return ScreenTransition.phase() == "reveal" and cur() is SongSelect, 3.0)
+	var ss2 := cur() as SongSelect
+	if not check("transition: reveal into Song Select observed", in_reveal and ss2 != null,
+			{"phase": ScreenTransition.phase(), "scene": cur()}):
+		return
+	var before := str(ss2.debug_state()["selected"])
+	# Down unless the selection is already the last selectable row (null rows are dividers).
+	var idx := -1
+	var has_next := false
+	for i in range(ss2._view.size()):
+		if ss2._view[i] == null:
+			continue
+		if (ss2._view[i] as SongEntry).id == before:
+			idx = i
+		elif idx >= 0:
+			has_next = true
+	var code := KEY_DOWN if has_next or idx < 0 else KEY_UP
+	var phase_at := ScreenTransition.phase()
+	key(code, true)
+	await frame()
+	key(code, false)
+	await frame()
+	await frame()
+	var after := str(ss2.debug_state()["selected"])
+	check("input works from the start of the reveal", phase_at == "reveal" and after != before,
+		{"key": OS.get_keycode_string(code), "phase_at_press": phase_at, "before": before.get_file(),
+			"after": after.get_file()})
+	await wait_until(func() -> bool: return not ScreenTransition.is_busy(), 1.0)
+
+
 func sc_polish() -> void:
 	isolate_settings(true)
 	_use_temp_scores(POLISH_SCORES)
@@ -2170,6 +2272,10 @@ func sc_polish() -> void:
 	MenuMusic.stop(0.0)
 	await shot("practice_hud")
 	await goto(MENU)
+	await wait(0.3)
+	await _check_screen_transition()
+	if not scene_is(MENU):
+		await goto(MENU)
 	await wait(0.3)
 
 	# --- normal dive with the keyboard bot ------------------------------------------------------
