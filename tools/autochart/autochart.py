@@ -16,6 +16,15 @@ track); sections.json; solo + preview; write. Deterministic: the same intermedia
 notes.chart (D-04). --delay-ms replaces the song.ini delay only: chart ticks stay the same and every note,
 beat and section moves by the same amount in song time, which is how the measured gate median is fitted
 (the decoded audio does not change). Last line on success: `CHART_OK <id> <sha256 of notes.chart>`.
+
+  build/autochart/venvA/Scripts/python.exe -I -B tools/autochart/autochart.py extract --src <audio.mp3|.ogg|.wav>       [--name <s>] [--artist <s>] [--genre <s>] [--mode single|lanes] [--stem other] [--target-nps 3.5]       [--songs-root <dir>] [--force]
+
+extract (player flow, STEM-02/04/05; wrapper tools/autochart/extract_song.ps1): analyze + chart for
+work id user_<slug>, then copies the source audio (byte-for-byte, song.<ext>), notes.chart and song.ini
+into <songs-root>/<slug> (default: Godot user://songs of UNDERTOW). --mode lanes = INSTRUMENT LANES
+(stages/instrument_lanes.py: bass, drums, other, vocals from left to right). Chart stats go to
+build/autochart/<id>/, never tools/autochart/reports/. Never writes outside the Songs folder and never
+replaces an existing song folder without --force. Last line on success: `EXTRACT_OK <song folder>`.
 """
 from __future__ import annotations
 
@@ -174,12 +183,8 @@ def band_flags(per: dict) -> list:
 
 
 def cmd_chart(args) -> int:
-    import hashlib
-    import json
-
-    from stages import lanes, quantize, reduce as red, structure, write_chart
-    from stages.write_chart import render_chart, render_ini
-    from stages.tempo_map import build_tempo_map, tick_to_sec
+    from stages import lanes, quantize
+    from stages.tempo_map import build_tempo_map
 
     work = work_dir(args.id)
     out_dir = _out_dir(args.out)
@@ -212,6 +217,26 @@ def cmd_chart(args) -> int:
     from stages import sections as sec_stage
     secs = sec_stage.sections_stage(work, tm)
 
+    mode = getattr(args, "mode", "single")
+    easy_map = None
+    if mode == "lanes":
+        # INSTRUMENT LANES (STEM-04): lane = stem index, no contour; Easy drops the sparsest lane
+        from stages import instrument_lanes as il
+        obs = {}
+        for s in il.LANE_ORDER:
+            o = _load_json(work / f"onsets_{s}.json", "chart")
+            obs[s] = [x for x in o["onsets"] if x.get("audible") and x.get("loud")]
+        expert = il.instrument_expert(obs, tm, target_nps=args.target_nps)
+        if len(expert) < 32:
+            raise AutochartError("chart", f"only {len(expert)} Expert notes from the four stems")
+        step(2, f"expert: {len(expert)} notes from " + ", ".join(f"{s} {len(obs[s])}" for s in il.LANE_ORDER)
+             + f" onsets (target {args.target_nps} n/s)")
+        easy_map = il.easy_lane_map(expert)
+        step(3, "lanes: instrument lanes " + ", ".join(f"{i}={s}" for i, s in enumerate(il.LANE_ORDER))
+             + f"; Easy lane map {easy_map}")
+        return _chart_tail(args, work, out_dir, stats_dir, step, tm, beats, dec, secs, n_b, expert,
+                           easy_map, mode)
+
     # 2. Expert notes from the stem's audible + loud onsets; silent bars / sparse sections are filled
     #    from --fill-stem (RESEARCH Pitfall 9: never lower the audibility filter instead)
     ons = _load_json(work / f"onsets_{args.stem}.json", "chart")
@@ -235,9 +260,22 @@ def cmd_chart(args) -> int:
     #    (assign_lanes never runs on a reduced track: reduce derives chords from Expert, Easy re-contours)
     expert = lanes.assign_lanes(expert, "expert")
     step(3, f"lanes: direction match {lanes.direction_match(expert):.3f}")
+    return _chart_tail(args, work, out_dir, stats_dir, step, tm, beats, dec, secs, n_b, expert,
+                       easy_map, mode)
+
+
+def _chart_tail(args, work, out_dir, stats_dir, step, tm, beats, dec, secs, n_b, expert,
+                easy_map, mode) -> int:
+    import hashlib
+    import json
+
+    from stages import lanes, quantize, reduce as red, structure
+    from stages.write_chart import render_chart, render_ini
+    from stages.tempo_map import tick_to_sec
+
     tracks = {"expert": expert}
     for d in ("hard", "medium", "easy"):
-        tracks[d] = red.reduce(expert, d, tm)
+        tracks[d] = red.reduce(expert, d, tm, easy_lane_map=easy_map if d == "easy" else None)
     step(4, "reductions: " + ", ".join(f"{d} {len(tracks[d])}" for d in ("hard", "medium", "easy")))
 
     # 5. sections (computed above)
@@ -278,7 +316,8 @@ def cmd_chart(args) -> int:
     per = {d: _track_stats(tracks[d], expert) for d in CHART_DIFFS}
     flags = band_flags(per)
     stats = {
-        "id": args.id, "stem": args.stem, "fill_stem": args.fill_stem,
+        "id": args.id, "stem": "bass,drums,other,vocals" if mode == "lanes" else args.stem,
+        "fill_stem": args.fill_stem,
         "fill_mode": args.fill_mode if args.fill_stem else None,
         "fill_share": _r4(sum(1 for x in expert if x.get("src") == args.fill_stem) / len(expert))
         if args.fill_stem else 0.0,
@@ -294,6 +333,9 @@ def cmd_chart(args) -> int:
         "band_tolerance": BAND_TOL, "band_flags": flags,
         "chart_sha256": sha,
     }
+    if mode == "lanes":
+        stats["mode"] = "lanes"
+        stats["easy_lane_map"] = {str(k): v for k, v in easy_map.items()}
     stats_dir.mkdir(parents=True, exist_ok=True)
     with open(stats_dir / f"{args.id}.chart_stats.json", "w", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(stats, indent=2) + "\n")
@@ -310,6 +352,94 @@ def cmd_chart(args) -> int:
     step(7, f"wrote {out_dir / 'notes.chart'}, song.ini (delay {delay}, song_length {song_length}), "
             f"{stats_dir / (args.id + '.chart_stats.json')}")
     print(f"CHART_OK {args.id} {sha}", flush=True)
+    return 0
+
+
+# ---------------------------------------------------------------- extract (player flow, STEM-02/04/05)
+PLAYABLE_SUFFIXES = (".mp3", ".ogg", ".wav")
+EXTRACT_STEPS = 3
+
+
+def slugify(name: str) -> str:
+    """Song folder name: lowercase, every run outside [a-z0-9] -> "_", trimmed, <= 40 chars, else "song"."""
+    s = re.sub(r"[^a-z0-9]+", "_", (name or "").lower()).strip("_")[:40].strip("_")
+    return s or "song"
+
+
+def default_songs_root() -> Path:
+    """Godot user://songs for project "UNDERTOW" on Windows (SongLibrary DEFAULT_SONGS_DIR)."""
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        raise AutochartError("extract", "APPDATA is not set; pass --songs-root <folder>")
+    return Path(appdata) / "Godot" / "app_userdata" / "UNDERTOW" / "songs"
+
+
+def _extract_dest(root_arg: str | None, slug: str, force: bool) -> tuple[Path, Path]:
+    """T-02.1-24 / T-02.1-25: dest is a direct child of the resolved Songs root; no overwrite without force."""
+    root = Path(root_arg) if root_arg else default_songs_root()
+    root.mkdir(parents=True, exist_ok=True)
+    root_r = root.resolve()
+    dest = (root_r / slug).resolve()
+    if dest.parent != root_r or dest == root_r:
+        raise AutochartError("extract", "refusing to write outside the Songs folder")
+    if dest.exists() and not force:
+        raise AutochartError("extract", f"{dest} already exists (use --force to replace)")
+    return root_r, dest
+
+
+def cmd_extract(args) -> int:
+    import argparse as _ap
+    import json
+    import shutil
+
+    from stages import decode as dec_stage
+
+    src = Path(args.src).resolve()
+    ext = src.suffix.lower()
+    if not src.is_file():
+        raise AutochartError("extract", f"{src} does not exist")
+    if ext in (".flac", ".opus"):
+        raise AutochartError("extract", f"Godot cannot play {ext}; convert to .ogg/.mp3/.wav")
+    if ext not in PLAYABLE_SUFFIXES:
+        raise AutochartError("extract", f"unsupported file type '{src.suffix}' (use .mp3, .ogg or .wav)")
+    if not 0.5 <= args.target_nps <= 8.0:
+        raise AutochartError("args", f"--target-nps {args.target_nps} must be within 0.5..8")
+    name = args.name or src.stem
+    slug = slugify(name)
+    song_id = "user_" + slug
+    work = work_dir(song_id)
+    root, dest = _extract_dest(args.songs_root, slug, args.force)
+    n = EXTRACT_STEPS
+
+    # 1. analyze (decode, separate, beats, onsets, pitch). Stems from an earlier run are reused only
+    #    when they came from the same source file.
+    print(f"[1/{n}] analyze {src.name} -> {work}", flush=True)
+    old = work / "decode.json"
+    same_src = old.is_file() and json.loads(old.read_text(encoding="utf-8")).get(
+        "source_sha256") == dec_stage._sha256(src)
+    cmd_analyze(_ap.Namespace(id=song_id, src=str(src), from_stage="decode", godot_wav=None,
+                              force=not same_src, stems=list(DEFAULT_STEMS)))
+
+    # 2. chart into build/autochart/<id>/out (stats next to the intermediates, never reports/)
+    out = work / "out"
+    print(f"[2/{n}] chart ({args.mode}{' ' + args.stem if args.mode == 'single' else ''})", flush=True)
+    cmd_chart(_ap.Namespace(id=song_id, out=str(out), stem=args.stem, fill_stem=None, fill_mode="bars",
+                            target_nps=args.target_nps, name=name, artist=args.artist, genre=args.genre,
+                            delay_ms=None, song_length_ms=None, godot_wav=None, stats_dir=str(work),
+                            mode=args.mode))
+
+    # 3. install: source audio byte-for-byte as song.<ext>, notes.chart, song.ini
+    print(f"[3/{n}] install -> {dest}", flush=True)
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    shutil.copyfile(src, dest / f"song{ext}")
+    shutil.copyfile(out / "notes.chart", dest / "notes.chart")
+    shutil.copyfile(out / "song.ini", dest / "song.ini")
+    print(f"Stems: {work / 'stems'}", flush=True)
+    print(f"Song folder: {dest}", flush=True)
+    print("In the game: Settings > LIBRARY > Rescan (or restart)", flush=True)
+    print(f"EXTRACT_OK {dest}", flush=True)
     return 0
 
 
@@ -339,12 +469,25 @@ def main(argv=None) -> int:
     c.add_argument("--song-length-ms", type=int)
     c.add_argument("--godot-wav")
     c.add_argument("--stats-dir", default=str(ROOT / "tools" / "autochart" / "reports"))
+    x = sub.add_parser("extract", help="audio file -> stems + a song folder in the UNDERTOW Songs folder")
+    x.add_argument("--src", required=True, help=".mp3, .ogg or .wav file you own")
+    x.add_argument("--name", help="song name (default: the file name)")
+    x.add_argument("--artist", default="Unknown")
+    x.add_argument("--genre", default="Unknown")
+    x.add_argument("--mode", choices=("single", "lanes"), default="single",
+                   help="single: one instrument over 4 lanes; lanes: bass, drums, other, vocals left to right")
+    x.add_argument("--stem", choices=DEFAULT_STEMS, default="other", help="instrument for --mode single")
+    x.add_argument("--target-nps", type=float, default=3.5)
+    x.add_argument("--songs-root", help="Songs folder (default %%APPDATA%%/Godot/app_userdata/UNDERTOW/songs)")
+    x.add_argument("--force", action="store_true", help="replace an existing song folder")
     args = ap.parse_args(argv)
     try:
         if args.cmd == "analyze":
             return cmd_analyze(args)
         if args.cmd == "chart":
             return cmd_chart(args)
+        if args.cmd == "extract":
+            return cmd_extract(args)
     except AutochartError as e:
         print(f"AUTOCHART_ERROR {e.stage}: {e.message}", file=sys.stderr, flush=True)
         return 2

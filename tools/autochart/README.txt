@@ -152,6 +152,50 @@ PER-SONG GATE (Expert, game's decoded stream, D3 delta 0.1; chance levels in bra
      shipped: (c) with target 2.8 (2.7 gave 2.06 n/s, 80.7%), the lowest target that passes both the
      fixed gate and the density range.)
 
+PLAYER FLOW (STEM-02/04/05)
+---------------------------
+One command turns an audio file you own into separated stems and a ready-to-play song folder in
+your UNDERTOW Songs folder:
+
+  powershell -NoProfile -File tools/autochart/extract_song.ps1 -Audio "C:\Music\song.mp3" -Name "My Song" -Artist "Me"
+  powershell -NoProfile -File tools/autochart/extract_song.ps1 -Audio "C:\Music\song.mp3" -Name "My Song" -Mode lanes
+  (same as: build/autochart/venvA/Scripts/python.exe -I -B tools/autochart/autochart.py extract --src <file> ...)
+
+Why a command and not an in-game button: the separator stack (about 1.5 GB of venvs and models) is
+not packaged for friends' PCs (CONTEXT "Deferred Ideas"), so a button would only work on the dev PC.
+An in-game screen and friend packaging are deferred. The game needs no changes: the folder lands
+where the library already scans.
+
+Modes:
+  -Mode single (default)  one instrument over the 4 lanes, lanes follow its melody contour
+                          (-Stem other|drums|bass|vocals, default other). Same rules as the bundled songs.
+  -Mode lanes             INSTRUMENT LANES: each lane is one instrument, left to right
+                          lane 0 = bass, lane 1 = drums, lane 2 = other, lane 3 = vocals
+                          (low on the left, high on the right, like "right = up"). Stems hitting on the
+                          same tick become a 2-lane chord (the two strongest, strength normalised per
+                          stem). Easy drops the instrument lane with the fewest notes and uses 3 lanes.
+                          (stages/instrument_lanes.py)
+Only .mp3, .ogg and .wav are accepted (Godot cannot play FLAC/Opus at runtime: convert first).
+
+Where things go:
+  - Stems (drums/bass/other/vocals WAVs): build/autochart/user_<slug>/stems (printed as "Stems: ...").
+  - Song folder: <Songs folder>/<slug>/ with song.<ext> (your file, byte-for-byte), notes.chart,
+    song.ini. Default Songs folder: %APPDATA%\Godot\app_userdata\UNDERTOW\songs (user://songs);
+    -SongsRoot <folder> picks another one. The slug is the name lowercased, every run of other
+    characters -> "_", at most 40 characters (so "..\..\x" becomes "x").
+  - Chart stats: build/autochart/user_<slug>/user_<slug>.chart_stats.json (never tools/autochart/reports).
+  - The tool never writes outside the Songs folder, and never replaces an existing song folder
+    unless you pass -Force. Errors print AUTOCHART_ERROR <stage>: <message> and exit 2.
+  - The song.ini delay comes from the tempo map: the soundfile decode matches Godot's MP3/WAV decode
+    within 0.05 ms, so no align run is needed for player songs.
+  - Re-running with the same name reuses the stems only when the source file is the same (SHA-256).
+Then in the game: Settings > LIBRARY > Rescan (or restart). Last line on success: EXTRACT_OK <folder>.
+
+Generated charts are written as 4-lane `N 0..3`; the importer maps gems 0..3 to lanes 0..3
+(identity), no 5->4 folding is involved (SPEC req 9). A generated folder is an ordinary library song:
+tests/test_generated_song_library.gd copies a bundled song into a Songs folder and checks status ok,
+the same fingerprints and the identity mapping.
+
 LANE RULE
 ---------
 From tools/autochart/stages/lanes.py (module docstring):
