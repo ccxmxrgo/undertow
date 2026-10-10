@@ -22,8 +22,6 @@ const RECEPTOR_PULSE_USEC := 120000
 const SCREEN_W := 1920.0
 const SCREEN_H := 1080.0
 const GRAPH_SAMPLES := 128
-const INDICATOR_FADE_USEC := 400000
-const INDICATOR_BASE_Y := 1004.0
 const RIBBON_SAMPLES := 10
 const RECEPTOR_R := 41.0
 const RECEPTOR_INNER_R := 30.0
@@ -117,9 +115,6 @@ var tier: int = 1
 var _first_visible: int = 0
 var _state := PackedByteArray()
 var _holding: Array[int] = [-1, -1, -1, -1]
-var _last_error_ms: float = 0.0
-var _last_ticks: int = -INDICATOR_FADE_USEC
-var _show_indicator: bool = false
 var _graph := PackedFloat32Array()  # song_time delta per frame, ms
 var _prev_song_time: float = 0.0
 var _good_window: float = 0.070
@@ -404,12 +399,11 @@ func _refresh_labels() -> void:
 		_lane_labels[lane] = Settings.bindings.display_name(LaneInput.ACTIONS[lane], &"keyboard")
 
 
-func on_judged(lane: int, note_index: int, judgment: int, error_s: float) -> void:
+func on_judged(lane: int, note_index: int, judgment: int, _error_s: float) -> void:
 	if note_index < 0 or note_index >= _state.size():
 		return
 	if judgment == InputJudge.Judgment.MISS:
 		_state[note_index] = S_MISSED
-		_show_indicator = false
 		return
 	if float(chart.notes[note_index]["duration"]) > 0.0:
 		_state[note_index] = S_HOLDING
@@ -417,9 +411,6 @@ func on_judged(lane: int, note_index: int, judgment: int, error_s: float) -> voi
 		hold_changed.emit(lane, true)
 	else:
 		_state[note_index] = S_HIT
-	_last_error_ms = error_s * 1000.0
-	_last_ticks = Time.get_ticks_usec()
-	_show_indicator = true
 
 
 func on_stray(_lane: int) -> void:
@@ -494,7 +485,6 @@ func _draw() -> void:
 		_draw_sustains(phase)
 		_draw_chord_bars()
 	_draw_receptors()
-	_draw_indicator()
 	if show_spike_readout:
 		_draw_spike_readout()
 
@@ -945,35 +935,7 @@ func _draw_lane_numbers(ci: CanvasItem) -> void:
 			100.0, Palette.SIZE_LABEL, Palette.alpha(Palette.lane_color(lane), LANE_LABEL_ALPHA * ra))
 
 
-# ---- Early/late indicator and spike readout -------------------------------------------------
-
-## "EARLY 12 MS" / "LATE 8 MS" with a left/right arrow glyph, fading over 400 ms.
-func _draw_indicator() -> void:
-	if not Settings.early_late_indicator or not _show_indicator:
-		return
-	var age := Time.get_ticks_usec() - _last_ticks
-	if age >= INDICATOR_FADE_USEC:
-		return
-	var a := 1.0 - float(age) / INDICATOR_FADE_USEC
-	var col := Palette.alpha(Palette.TEXT, a)
-	var early := _last_error_ms < 0.0
-	var txt := "%s %d MS" % ["EARLY" if early else "LATE", int(round(absf(_last_error_ms)))]
-	var font := Palette.font()
-	var sz := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL)
-	var cx := Trench.VP.x
-	var base_y := INDICATOR_BASE_Y
-	var gap := 12.0
-	var arrow_w := 14.0
-	var x0 := cx - (arrow_w + gap + sz.x) * 0.5
-	var ay := base_y - 7.0
-	var tri: PackedVector2Array
-	if early:
-		tri = PackedVector2Array([Vector2(x0, ay), Vector2(x0 + arrow_w, ay - 8.0), Vector2(x0 + arrow_w, ay + 8.0)])
-	else:
-		tri = PackedVector2Array([Vector2(x0 + arrow_w, ay), Vector2(x0, ay - 8.0), Vector2(x0, ay + 8.0)])
-	draw_colored_polygon(tri, col)
-	draw_string(font, Vector2(x0 + arrow_w + gap, base_y), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, col)
-
+# ---- Spike readout (early/late moved to Feedback, 02.2-10) -------------------------------------------------
 
 func _draw_spike_readout() -> void:
 	var font := Palette.font()

@@ -1,35 +1,82 @@
 class_name Feedback
 extends Control
-## Per-judgment feedback (UI-SPEC feedback table, D-22/D-23): lane flash (+ ring for Perfect,
-## X glyph for Miss), floating PERFECT/GOOD/MISS text (pool capped at 6, oldest recycled),
-## hit SFX and the Miss screen nudge. Shape and text always accompany color.
-## Place as a full-rect sibling above the Highway. Hull bar damage flash lives in Hud.
-
-enum Kind { PERFECT, GOOD, MISS, STRAY }
+## Per-judgment text feedback and hit sounds (UI-SPEC 7.3 "Judgment popup" and "Early/late",
+## 11 "Judgment pop / rise"). One shared popup per chord: judgments whose note time matches a
+## popup that is still alive merge into it (centred on the mean lane x, worst judgment kept,
+## timeline not restarted). The early/late readout lives here too (moved from Highway).
+## Bursts, rings, the Miss crack and the board shake are FxLayer's job (02.2-10); this node
+## draws text only and keeps the SfxPool hit sounds exactly as before.
+## Place as a full-rect sibling above FxLayer and below HighwayNotes (gems stay on top).
 
 const MAX_FLOATING := 6
-const FLASH_USEC := {Kind.PERFECT: 120000, Kind.GOOD: 120000, Kind.MISS: 160000, Kind.STRAY: 80000}
-const RING_USEC := 200000
-const FLOAT_USEC := 500000
-const FLOAT_RISE := 48.0
-const FLOAT_START_OFFSET := 84.0
-const FLASH_GLOW_D := 0.12
-const FLASH_SAMPLES := 8
-const NUDGE_PX := 8.0
-const NUDGE_USEC := 100000
 
-## Gameplay root that gets the Miss nudge (optional).
-var nudge_target: Control
+## Popup (UI-SPEC 7.3): Heading 40 Oxanium, 3 px KEYLINE outline, spawn centred (hit.x, 846).
+const POP_SIZE := Palette.SIZE_HEADING
+const POP_Y := 846.0
+const OUTLINE_PX := 6  # draw_string_outline size = both sides: 3 px outline
+const POP_SCALE0 := 1.4
+const POP_IN := Palette.DUR_FAST  # 120 ms back-out pop
+const POP_HOLD_END := 0.40  # pop + 280 ms full opacity
+const POP_DIM := 0.60
+const POP_LIFE := 0.62  # then 60% and a 220 ms fade while rising
+const POP_RISE := 24.0
+## Popups closer than this (x) are crowding: the older one skips to its fade.
+const CROWD_PX := 150.0
+## ...halfway into its fade (about 30% opacity).
+const CROWD_SKIP_TO := POP_HOLD_END + 0.5 * (POP_LIFE - POP_HOLD_END)
+const POP_TEXT: Array[String] = ["PERFECT", "GOOD", "MISS"]
+
+## Early/late (UI-SPEC 7.3): Label 20 TEXT_MID + KEYLINE outline, 10x12 SONAR triangle.
+const INDICATOR_POS := Vector2(960.0, 1004.0)
+const ARROW_SIZE := Vector2(10.0, 12.0)
+const ARROW_GAP := 10.0
+const INDICATOR_HOLD := 0.40
+const INDICATOR_FADE := Palette.DUR_FAST
+
 ## Created in _ready unless a pool is assigned first or audio_enabled is false.
 var sfx: SfxPool
 var audio_enabled: bool = true
+## Note times group chord popups. Set by Gameplay or taken from the judge in connect_judge.
+var chart: ChartData
+## Test clock override (microseconds); -1 = real time.
+var clock_usec: int = -1
 
-var _flashes: Array = [null, null, null, null]  # per lane: {kind, born} or null
-var _floating: Array[Dictionary] = []  # {text, color, lane, born}
-var _nudging: bool = false
-var _nudge_base: Vector2 = Vector2.ZERO
-var _nudge_end: int = 0
-var _glow := PackedVector2Array()
+var _floating: Array[Dictionary] = []  # {key, judgment, x_sum, n, born}
+var _ind_err_ms: float = 0.0
+var _ind_born: int = -10000000
+var _ind_on: bool = false
+var _tri := PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
+
+
+static func judgment_color(judgment: int) -> Color:
+	match judgment:
+		InputJudge.Judgment.PERFECT:
+			return Palette.SONAR_PALE
+		InputJudge.Judgment.GOOD:
+			return Palette.TEXT_MID
+		_:
+			return Palette.WARNING_RED
+
+
+static func popup_font() -> Font:
+	return Palette.display_font()
+
+
+## Popup look at `age` seconds: {scale, alpha, rise}. Reduce motion: no scale, no rise.
+static func popup_state(age: float, reduce: bool) -> Dictionary:
+	var scale := 1.0
+	if not reduce and age < POP_IN:
+		var t := clampf(age / POP_IN, 0.0, 1.0)
+		var e: float = Tween.interpolate_value(0.0, 1.0, t, 1.0, Tween.TRANS_BACK, Tween.EASE_OUT)
+		scale = lerpf(POP_SCALE0, 1.0, float(e))
+	var alpha := 1.0
+	var rise := 0.0
+	if age >= POP_HOLD_END:
+		var k := clampf((age - POP_HOLD_END) / (POP_LIFE - POP_HOLD_END), 0.0, 1.0)
+		alpha = POP_DIM * (1.0 - k)
+		if not reduce:
+			rise = POP_RISE * (1.0 - pow(1.0 - k, 2.0))
+	return {"scale": scale, "alpha": alpha, "rise": rise}
 
 
 func _ready() -> void:
@@ -41,144 +88,164 @@ func _ready() -> void:
 
 
 func connect_judge(judge: InputJudge) -> void:
+	if chart == null:
+		chart = judge._chart
 	judge.judged.connect(on_judged)
 	judge.stray.connect(on_stray)
+
+
+func now() -> int:
+	return clock_usec if clock_usec >= 0 else Time.get_ticks_usec()
 
 
 func floating_count() -> int:
 	return _floating.size()
 
 
-func on_judged(lane: int, _note_index: int, judgment: int, _error_s: float) -> void:
-	var now := Time.get_ticks_usec()
-	var kind: int
-	var text: String
-	var color: Color
-	match judgment:
-		InputJudge.Judgment.PERFECT:
-			kind = Kind.PERFECT
-			text = "PERFECT"
-			color = Palette.ACCENT
-		InputJudge.Judgment.GOOD:
-			kind = Kind.GOOD
-			text = "GOOD"
-			color = Palette.TEXT
-		_:
-			kind = Kind.MISS
-			text = "MISS"
-			color = Palette.DESTRUCTIVE
+## Popup i for tests and the harness: {text, color, x, judgment, born, key}.
+func popup(i: int) -> Dictionary:
+	var e: Dictionary = _floating[i]
+	var j := int(e["judgment"])
+	return {"text": POP_TEXT[j], "color": judgment_color(j), "x": float(e["x_sum"]) / float(e["n"]),
+		"judgment": j, "born": int(e["born"]), "key": float(e["key"])}
+
+
+func _note_key(note_index: int) -> float:
+	if chart != null and note_index >= 0 and note_index < chart.notes.size():
+		return float(chart.notes[note_index]["time"])
+	return -1.0 - float(note_index)  # unknown note: its own popup
+
+
+func on_judged(lane: int, note_index: int, judgment: int, error_s: float) -> void:
+	var t := now()
+	var j := clampi(judgment, 0, 2)
 	if lane >= 0 and lane < Highway.LANES:
-		_flashes[lane] = {"kind": kind, "born": now}
-		_spawn_text(text, color, lane, now)
+		_add_popup(_note_key(note_index), j, Trench.hit_point(lane).x, t)
+	if j == InputJudge.Judgment.MISS:
+		_ind_on = false
+	else:
+		_ind_on = true
+		_ind_err_ms = error_s * 1000.0
+		_ind_born = t
 	if sfx != null:
 		sfx.play_judgment(judgment)
-	if kind == Kind.MISS:
-		_start_nudge(now)
 	queue_redraw()
 
 
-func on_stray(lane: int) -> void:
-	if lane >= 0 and lane < Highway.LANES:
-		_flashes[lane] = {"kind": Kind.STRAY, "born": Time.get_ticks_usec()}
-	queue_redraw()
+## Stray presses show only the receptor press (Highway); no text, no sound change.
+func on_stray(_lane: int) -> void:
+	pass
 
 
-func _spawn_text(text: String, color: Color, lane: int, now: int) -> void:
+func _add_popup(key: float, j: int, x: float, t: int) -> void:
+	expire()
+	for e in _floating:
+		if float(e["key"]) == key:
+			e["judgment"] = maxi(int(e["judgment"]), j)  # MISS > GOOD > PERFECT
+			e["x_sum"] = float(e["x_sum"]) + x
+			e["n"] = int(e["n"]) + 1
+			return
+	# A new popup next to an older one (same lane area) pushes the older one into its fade,
+	# so two words never sit on top of each other at full opacity.
+	for e in _floating:
+		if absf(float(e["x_sum"]) / float(e["n"]) - x) < CROWD_PX:
+			var fade_born := t - int(CROWD_SKIP_TO * 1e6)
+			if int(e["born"]) > fade_born:
+				e["born"] = fade_born
 	while _floating.size() >= MAX_FLOATING:
 		_floating.pop_front()  # recycle the oldest
-	_floating.append({"text": text, "color": color, "lane": lane, "born": now})
+	_floating.append({"key": key, "judgment": j, "x_sum": x, "n": 1, "born": t})
 
 
-func _start_nudge(now: int) -> void:
-	if Settings.reduce_motion or nudge_target == null:
-		return
-	if not _nudging:
-		_nudge_base = nudge_target.position
-		_nudging = true
-	nudge_target.position = _nudge_base + Vector2(NUDGE_PX, 0.0)
-	_nudge_end = now + NUDGE_USEC
+func expire() -> void:
+	var t := now()
+	var i := 0
+	while i < _floating.size():
+		if float(t - int(_floating[i]["born"])) / 1e6 >= POP_LIFE:
+			_floating.remove_at(i)
+		else:
+			i += 1
 
 
-func _end_nudge() -> void:
-	if _nudging and is_instance_valid(nudge_target):
-		nudge_target.position = _nudge_base
-	_nudging = false
+func indicator_text() -> String:
+	return "%s %d MS" % ["EARLY" if _ind_err_ms < 0.0 else "LATE", int(round(absf(_ind_err_ms)))]
 
 
-func _exit_tree() -> void:
-	_end_nudge()
+func indicator_early() -> bool:
+	return _ind_err_ms < 0.0
+
+
+func indicator_visible() -> bool:
+	return Settings.early_late_indicator and _ind_on and indicator_alpha() > 0.0
+
+
+func indicator_alpha() -> float:
+	var age := float(now() - _ind_born) / 1e6
+	if age < INDICATOR_HOLD:
+		return 1.0
+	return clampf(1.0 - (age - INDICATOR_HOLD) / INDICATOR_FADE, 0.0, 1.0)
 
 
 func _process(_delta: float) -> void:
-	var now := Time.get_ticks_usec()
-	if _nudging and now >= _nudge_end:
-		_end_nudge()
-	while not _floating.is_empty() and now - int(_floating[0]["born"]) >= FLOAT_USEC:
-		_floating.pop_front()
-	var active := not _floating.is_empty()
-	for lane in range(Highway.LANES):
-		var f = _flashes[lane]
-		if f != null:
-			if now - int(f["born"]) >= _flash_life(int(f["kind"])):
-				_flashes[lane] = null
-			else:
-				active = true
-	if active:
+	expire()
+	if not _floating.is_empty() or (_ind_on and indicator_alpha() > 0.0):
 		queue_redraw()
 
 
-func _flash_life(kind: int) -> int:
-	return maxi(int(FLASH_USEC[kind]), RING_USEC if kind == Kind.PERFECT else 0)
-
-
 func _draw() -> void:
-	var now := Time.get_ticks_usec()
-	for lane in range(Highway.LANES):
-		var f = _flashes[lane]
-		if f != null:
-			_draw_flash(lane, int(f["kind"]), now - int(f["born"]))
-	var font := Palette.bold()
+	var t := now()
+	var reduce: bool = Settings.reduce_motion
+	var font := popup_font()
+	var asc := font.get_ascent(POP_SIZE)
+	var desc := font.get_descent(POP_SIZE)
 	for e in _floating:
-		var t := clampf(float(now - int(e["born"])) / FLOAT_USEC, 0.0, 1.0)
-		var rise := FLOAT_RISE * (1.0 - pow(1.0 - t, 2.0))  # ease-out
-		var hit := Trench.hit_point(int(e["lane"]))
-		var y := hit.y - FLOAT_START_OFFSET - rise
-		var col: Color = Palette.alpha(e["color"], 1.0 - t)
-		draw_string(font, Vector2(hit.x - 100.0, y), e["text"], HORIZONTAL_ALIGNMENT_CENTER, 200.0, Palette.SIZE_BODY, col)
+		var age := float(t - int(e["born"])) / 1e6
+		if age >= POP_LIFE:
+			continue
+		var s := popup_state(age, reduce)
+		var j := int(e["judgment"])
+		var text := POP_TEXT[j]
+		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, POP_SIZE).x
+		var cx := float(e["x_sum"]) / float(e["n"])
+		var cy := POP_Y - float(s["rise"])
+		var a: float = s["alpha"]
+		var pos := Vector2(-w * 0.5, (asc - desc) * 0.5)
+		draw_set_transform(Vector2(cx, cy), 0.0, Vector2.ONE * float(s["scale"]))
+		draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, POP_SIZE, OUTLINE_PX,
+			Palette.alpha(Palette.KEYLINE, Palette.KEYLINE.a * a))
+		draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, POP_SIZE, Palette.alpha(judgment_color(j), a))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if indicator_visible():
+		_draw_early_late()
 
 
-func _draw_flash(lane: int, kind: int, age: int) -> void:
-	var life: int = FLASH_USEC[kind]
-	var hit := Trench.hit_point(lane)
-	var lane_col := Palette.lane_color(lane)
-	if age < life:
-		var fade := 1.0 - float(age) / life
-		var base_col := lane_col
-		var strength := 1.0
-		match kind:
-			Kind.PERFECT:
-				strength = 1.0
-			Kind.GOOD:
-				strength = 0.5
-			Kind.MISS:
-				base_col = Palette.DESTRUCTIVE
-				strength = 0.8
-			_:
-				strength = 0.25
-		var col := Palette.alpha(base_col, strength * fade)
-		if _glow.size() != FLASH_SAMPLES:
-			_glow.resize(FLASH_SAMPLES)
-		var f := Trench.lane_f(lane)
-		for i in range(FLASH_SAMPLES):
-			_glow[i] = Trench.point(f, FLASH_GLOW_D * float(i) / float(FLASH_SAMPLES - 1))
-		draw_polyline(_glow, col, 8.0, true)
-		draw_circle(hit, 30.0, Palette.alpha(base_col, 0.5 * strength * fade))
-	if kind == Kind.PERFECT and age < RING_USEC:
-		var t := float(age) / RING_USEC
-		var r := lerpf(41.0, 82.0, t)
-		draw_arc(hit, r, 0.0, TAU, 48, Palette.alpha(lane_col, 1.0 - t), 3.0, true)
-	elif kind == Kind.MISS and age < life:
-		var h := 20.0
-		var col := Palette.alpha(Palette.DESTRUCTIVE, 1.0 - float(age) / life)
-		draw_line(hit + Vector2(-h, -h), hit + Vector2(h, h), col, 4.0)
-		draw_line(hit + Vector2(-h, h), hit + Vector2(h, -h), col, 4.0)
+func _draw_early_late() -> void:
+	var a := indicator_alpha()
+	var font := Palette.font()
+	var size := Palette.SIZE_LABEL
+	var txt := indicator_text()
+	var tw := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var total := ARROW_SIZE.x + ARROW_GAP + tw
+	var x0 := INDICATOR_POS.x - total * 0.5
+	var base := INDICATOR_POS.y
+	var ay := base - font.get_ascent(size) * 0.35
+	var early := indicator_early()
+	var text_x := x0 + ARROW_SIZE.x + ARROW_GAP if early else x0
+	var ax := x0 if early else x0 + tw + ARROW_GAP
+	var hw := ARROW_SIZE.x
+	var hh := ARROW_SIZE.y * 0.5
+	if early:  # left-pointing, before the text
+		_tri[0] = Vector2(ax, ay)
+		_tri[1] = Vector2(ax + hw, ay - hh)
+		_tri[2] = Vector2(ax + hw, ay + hh)
+	else:  # right-pointing, after the text
+		_tri[0] = Vector2(ax + hw, ay)
+		_tri[1] = Vector2(ax, ay - hh)
+		_tri[2] = Vector2(ax, ay + hh)
+	var key := Palette.alpha(Palette.KEYLINE, Palette.KEYLINE.a * a)
+	var outline := PackedVector2Array([_tri[0], _tri[1], _tri[2], _tri[0]])
+	draw_polyline(outline, key, 4.0, true)
+	draw_colored_polygon(_tri, Palette.alpha(Palette.SONAR, a))
+	var p := Vector2(text_x, base)
+	draw_string_outline(font, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, OUTLINE_PX, key)
+	draw_string(font, p, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Palette.alpha(Palette.TEXT_MID, a))

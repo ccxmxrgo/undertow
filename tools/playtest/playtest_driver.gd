@@ -3597,7 +3597,104 @@ func sc_visual() -> void:
 		ok = await _wait_song_time(g, maxf(6.0, g.conductor.song_time()), 20.0)
 		await shot("visual_baseline", g)
 	check("visual scenario runs", ok and is_instance_valid(g) and g.state == Gameplay.State.RUNNING)
+	if ok and is_instance_valid(g):
+		await _visual_bursts(g)
 	await goto(MENU)
+
+
+func grab() -> Image:
+	await RenderingServer.frame_post_draw
+	return get_viewport().get_texture().get_image()
+
+
+## 02.2-10: hit bursts and the judgment popup. Shot ~40 ms after a PERFECT; "burst visible"
+## counts bright pixels beside the receptor between y 895 and 922 (ring + particles, away from
+## the popup at y 846 and the neighbouring receptors); an upcoming gem above the clip line
+## must keep its lane colour. Then autoplay stops so the next note is missed for the crack shot.
+func _visual_bursts(g: Gameplay) -> void:
+	var got := {"lane": -1, "ms": 0, "miss_lane": -1, "miss_ms": 0}
+	var cb := func(lane: int, _idx: int, j: int, _err: float) -> void:
+		if j == InputJudge.Judgment.PERFECT and int(got["lane"]) < 0:
+			got["lane"] = lane
+			got["ms"] = Time.get_ticks_msec()
+		elif j == InputJudge.Judgment.MISS and int(got["miss_lane"]) < 0:
+			got["miss_lane"] = lane
+			got["miss_ms"] = Time.get_ticks_msec()
+	g.judge.judged.connect(cb)
+	var seen: bool = await wait_until(func() -> bool:
+		return not is_instance_valid(g) or int(got["lane"]) >= 0, 10.0)
+	if not is_instance_valid(g) or not check("perfect judged for the burst shot", seen):
+		return
+	var t0 := int(got["ms"])
+	await _wait_elapsed(t0, 0.04)
+	await shot("gameplay_burst_perfect", g)
+	var img := last_img
+	var hit := Trench.hit_point(int(got["lane"]))
+	var bright := 0
+	var dx := 48.0
+	while dx <= 110.0:
+		var y := 895.0
+		while y <= 922.0:
+			for sx in [-1.0, 1.0]:
+				if _chan_max(_img_px(img, Vector2(hit.x + sx * dx, y))) >= 0.55:
+					bright += 1
+			y += 3.0
+		dx += 3.0
+	check("perfect burst visible near the hit point", bright >= 10, {"bright": bright, "lane": got["lane"]})
+	var gem := {}
+	for v in _visible_pending(g):
+		var vy := float(v["y"])
+		if vy >= 450.0 and vy <= 830.0 and (gem.is_empty() or vy > float(gem["y"])):
+			gem = v
+	if gem.is_empty():
+		note("no upcoming gem between y 450 and 830 in the burst shot")
+		check("upcoming gem above the burst stays full lane colour", true, "no gem in range")
+	else:
+		var c := _colour_near(img, gem["center"], Palette.lane_color(int(gem["lane"])), 6.0)
+		check("upcoming gem above the burst stays full lane colour", bool(c["ok"]),
+			{"lane": gem["lane"], "y": snappedf(float(gem["y"]), 0.1), "cos": snappedf(float(c["cos"]), 0.001)})
+	# Popup readability: bright text at (popup x, 846) at 0.1 s and 0.35 s after the judgment.
+	var lumas: Array = []
+	for at in [0.10, 0.35]:
+		await _wait_elapsed(t0, at)
+		if not is_instance_valid(g):
+			return
+		var im: Image
+		if at < 0.2:
+			await shot("gameplay_burst_spread", g)  # particles past the flash, for the visual review
+			im = last_img
+		else:
+			im = await grab()
+		var px := hit.x
+		if g.feedback.floating_count() > 0:
+			px = float(g.feedback.popup(0)["x"])
+			for i in range(g.feedback.floating_count()):
+				var pp: Dictionary = g.feedback.popup(i)
+				if int(pp["born"]) / 1000 <= t0 + 5:
+					px = float(pp["x"])
+		lumas.append(snappedf(_region_max(im, Vector2(px, Feedback.POP_Y), 16.0), 0.001))
+	check("judgment popup readable", float(lumas[0]) >= 0.6 and float(lumas[1]) >= 0.6, {"max_chan": lumas})
+	# Miss: stop autoplay; the next note passes the window.
+	g._autoplay_player = null
+	g.lane_input.enabled = false
+	var missed: bool = await wait_until(func() -> bool:
+		return not is_instance_valid(g) or int(got["miss_lane"]) >= 0, 10.0)
+	if not is_instance_valid(g) or not check("miss judged for the crack shot", missed):
+		return
+	await _wait_elapsed(int(got["miss_ms"]), 0.04)
+	await shot("gameplay_miss", g)
+	var mh := Trench.hit_point(int(got["miss_lane"]))
+	var red := 0
+	var yy := 875.0
+	while yy <= 990.0:
+		var xx := -62.0
+		while xx <= 62.0:
+			var c2 := _img_px(last_img, Vector2(mh.x + xx, yy))
+			if c2.r >= 0.6 and c2.g <= 0.45 and c2.b <= 0.4:
+				red += 1
+			xx += 2.0
+		yy += 2.0
+	check("red crack near hit point", red >= 8, {"red_px": red, "lane": got["miss_lane"]})
 
 
 ## 02.2-09: x1 and x4 board shots. "x4 rails brighter than x1" samples both outer rails at

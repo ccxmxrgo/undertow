@@ -291,26 +291,6 @@ func test_feedback_reacts_to_real_judge_signals() -> void:
 	await get_tree().process_frame
 
 
-func test_feedback_miss_nudge_and_reduce_motion() -> void:
-	var target: Control = auto_free(Control.new())
-	add_child(target)
-	target.position = Vector2(10.0, 20.0)
-	var fb: Feedback = auto_free(Feedback.new())
-	fb.audio_enabled = false
-	fb.nudge_target = target
-	add_child(fb)
-	Settings.reduce_motion = false
-	fb.on_judged(0, 0, M, 0.2)
-	assert_vector(target.position).is_equal(Vector2(18.0, 20.0))
-	var end := Time.get_ticks_usec() + 250000
-	while Time.get_ticks_usec() < end:
-		await get_tree().process_frame
-	assert_vector(target.position).is_equal(Vector2(10.0, 20.0))
-	Settings.reduce_motion = true
-	fb.on_judged(0, 1, M, 0.2)
-	assert_vector(target.position).is_equal(Vector2(10.0, 20.0))
-
-
 func test_feedback_with_sfx_pool_plays_without_error() -> void:
 	var fb: Feedback = auto_free(Feedback.new())
 	add_child(fb)
@@ -321,15 +301,14 @@ func test_feedback_with_sfx_pool_plays_without_error() -> void:
 	await get_tree().process_frame
 
 
-func test_feedback_flash_state_per_lane_and_spawn_offset() -> void:
+func test_feedback_popup_spawns_at_the_hit_line() -> void:
 	var fb: Feedback = auto_free(Feedback.new())
 	fb.audio_enabled = false
 	add_child(fb)
 	fb.on_judged(2, 0, P, 0.0)
-	assert_object(fb._flashes[2]).is_not_null()
-	assert_object(fb._flashes[0]).is_null()
 	assert_int(fb.floating_count()).is_equal(1)
-	assert_float(Trench.hit_point(1).y - Feedback.FLOAT_START_OFFSET).is_equal_approx(Trench.HIT_Y - Feedback.FLOAT_START_OFFSET, 0.5)
+	assert_float(float(fb.popup(0)["x"])).is_equal_approx(Trench.hit_point(2).x, 0.01)
+	assert_float(Feedback.POP_Y).is_equal_approx(Trench.HIT_Y - 84.0, 0.5)
 
 
 # ---- Plan 05: component kit (make_button, chips, brackets, glow, numerals, pop, fx contract).

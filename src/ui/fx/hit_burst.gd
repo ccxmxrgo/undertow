@@ -26,11 +26,14 @@ const REDUCE_SPEED := 0.5
 const DOT_MIN_PX := 3.0
 const DOT_MAX_PX := 6.0
 const GOOD_DOT_SCALE := 0.85
-const DOT_TEX_FACTOR := 2.4
+const DOT_TEX_FACTOR := 4.0  # soft glow sprite: its bright core reads as the 3..6 px dot
 const PERFECT_WHITE_MIX := 0.25
 const MISS_ALPHA := 0.70
 const EXPLOSIVENESS := 0.92
-const LIFETIME_RANDOMNESS := 0.35
+## Hits spawn on the receptor rim (inner radius 30) so the spray starts at the pad edge.
+const EMIT_RIM_R := 28.0
+const MISS_EMIT_R := 12.0
+const LIFETIME_RANDOMNESS := 0.15
 
 ## Ring timelines (UI-SPEC 7.5): PERFECT r 41 -> 120 over 260 ms, width 6 -> 1, alpha 0.9 -> 0;
 ## GOOD r 41 -> 80 over 200 ms, alpha 0.5 -> 0.
@@ -83,6 +86,8 @@ static func configure(p: CPUParticles2D, judgment: int, lane: int, low: bool, re
 	p.use_fixed_seed = true
 	var hit := j != InputJudge.Judgment.MISS
 	p.direction = Vector2.UP if hit else Vector2.DOWN
+	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE_SURFACE
+	p.emission_sphere_radius = EMIT_RIM_R if hit else MISS_EMIT_R
 	p.spread = SPREAD[j]
 	p.gravity = Vector2(0.0, GRAVITY[j])
 	var k := REDUCE_SPEED if reduce else 1.0

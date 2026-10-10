@@ -208,3 +208,17 @@ func test_feedback_connect_judge_reads_chart() -> void:
 	assert_int(fb.floating_count()).is_equal(1)
 	judge.tick(5.0)  # note 3 (1.5 s) expires as a miss
 	assert_int(fb.floating_count()).is_equal(2)
+
+
+func test_new_popup_in_same_lane_pushes_older_into_fade() -> void:
+	var fb := _fb()
+	fb.on_judged(0, _idx(fb, 0, 1.0), P, 0.0)
+	fb.clock_usec = 1100000
+	fb.on_judged(0, 100, M, 0.2)  # next note in the same lane
+	assert_int(fb.floating_count()).is_equal(2)
+	var old_age := float(fb.clock_usec - int(fb.popup(0)["born"])) / 1e6
+	assert_float(old_age).is_equal_approx(Feedback.CROWD_SKIP_TO, 0.001)
+	assert_float(float(Feedback.popup_state(old_age, false)["alpha"])).is_equal_approx(0.30, 0.01)
+	assert_int(int(fb.popup(1)["born"])).is_equal(1100000)
+	fb.on_judged(3, 101, G, 0.0)  # far lane: the MISS popup keeps its hold
+	assert_int(int(fb.popup(1)["born"])).is_equal(1100000)

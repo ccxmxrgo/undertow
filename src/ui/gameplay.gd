@@ -35,8 +35,8 @@ var lane_input: LaneInput
 var highway: Highway
 ## Gem layer above Feedback (02.2-08): gems, missed remnants, lane numbers.
 var highway_notes: HighwayNotes
-## One Control holding Arena, Highway, Feedback, HighwayNotes (in that order): the board
-## moves as one on a Miss nudge; Hud and StreakCounter stay outside it.
+## One Control holding Arena, Highway, FxLayer, Feedback, HighwayNotes (in that order): the board
+## moves as one on the FxLayer Miss shake; Hud and StreakCounter stay outside it.
 var board_root: Control
 var hud: Hud
 var arena: Arena
@@ -141,6 +141,7 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	score.multiplier_changed.connect(fx_layer.set_tier)
 	highway.hold_changed.connect(fx_layer.on_sustain_state)
 	feedback = Feedback.new()
+	feedback.chart = chart  # chord popups group by note time
 	board_root.add_child(feedback)
 	feedback.connect_judge(judge)
 	highway_notes = HighwayNotes.new()
