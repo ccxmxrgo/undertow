@@ -1,0 +1,83 @@
+{
+  "verdict": "PASS",
+  "difficulty": "expert",
+  "source": "godot ChartImporter dump",
+  "chart": "C:\\Users\\user\\Documents\\undertow\\songs\\space_synth_wave\\notes.chart",
+  "chart_sha256": "5e1479e5f9414ff252a7b7bbf330fc3ecd867eaa1bbd875d2eb22f58390b9e26",
+  "notes_json": null,
+  "notes_json_sha256": null,
+  "ini_delay_ms": 164,
+  "decoded_wav": "C:\\Users\\user\\Documents\\undertow\\build\\playtest\\align_space_synth_wave_decoded.wav",
+  "extra_mix": [],
+  "decoded_length_ms": 192014,
+  "note_count": 569,
+  "unique_note_times": 517,
+  "mix_onsets": 1055,
+  "median_mix_ms": 0.04500000000007276,
+  "iqr_mix_ms": [
+    -5.764499999997952,
+    7.526499999997327
+  ],
+  "mix_pct": 95.55125725338492,
+  "mix_chance_pct": 22.011605415860735,
+  "stems": [
+    "C:\\Users\\user\\Documents\\undertow\\build\\autochart\\space_synth_wave\\stems\\other.wav"
+  ],
+  "median_stem_ms": 1.5870000000006712,
+  "iqr_stem_ms": [
+    -3.827000000001135,
+    7.003999999994903
+  ],
+  "stem_pct": 100.0,
+  "stem_chance_pct": 27.504835589941973,
+  "tempo": {
+    "refined": {
+      "n": 383,
+      "median_abs_ms": 1.9998564135086383,
+      "p90_abs_ms": 2.001578099336143
+    },
+    "raw": {
+      "n": 383,
+      "median_abs_ms": 6.222514803994272,
+      "p90_abs_ms": 16.633615948830997
+    }
+  },
+  "live_lag_ms": 1.333926796913147,
+  "suggested_delay_ms": 164,
+  "fixed_misses": [],
+  "baseline_misses": [],
+  "thresholds": {
+    "fixed": {
+      "median_mix_abs_ms": 5.0,
+      "stem_pct": 90.0,
+      "mix_pct": 80.0,
+      "tempo_median_ms": 10.0,
+      "tempo_p90_ms": 20.0,
+      "live_lag_abs_ms": 3.0
+    },
+    "baseline": {
+      "median_mix_abs_ms": 5.9,
+      "stem_pct": 54.5,
+      "mix_pct": 73.5,
+      "mix_chance_max_pct": 45.0,
+      "tempo_median_ms": 10.0,
+      "tempo_p90_ms": 20.0,
+      "live_lag_abs_ms": 3.0
+    }
+  },
+  "detector": {
+    "name": "D3",
+    "delta": 0.1,
+    "hop": 64,
+    "back_ms": 30
+  },
+  "error_sign": "note - onset (negative = note before the sound)",
+  "versions": {
+    "python": "3.12.15",
+    "numpy": "2.5.3",
+    "librosa": "1.0.0",
+    "soundfile": "0.14.0",
+    "scipy": "1.18.1",
+    "soxr": "1.1.0"
+  }
+}

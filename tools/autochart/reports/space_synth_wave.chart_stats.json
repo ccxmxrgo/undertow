@@ -1,0 +1,213 @@
+{
+  "id": "space_synth_wave",
+  "stem": "other",
+  "fill_stem": null,
+  "fill_mode": null,
+  "fill_share": 0.0,
+  "target_nps": 3.5,
+  "difficulties": {
+    "easy": {
+      "notes": 197,
+      "gems": 197,
+      "notes_per_s": 1.0315,
+      "max_per_1s": 3,
+      "keep_share": 0.381,
+      "chord_count": 0,
+      "chord_share": 0.0,
+      "sustain_share": 0.0355,
+      "lane_step_hist": {
+        "repeat": 0.3214,
+        "step1": 0.3929,
+        "step2": 0.2857,
+        "step3plus": 0.0
+      }
+    },
+    "medium": {
+      "notes": 297,
+      "gems": 298,
+      "notes_per_s": 1.5531,
+      "max_per_1s": 5,
+      "keep_share": 0.5745,
+      "chord_count": 1,
+      "chord_share": 0.0034,
+      "sustain_share": 0.0337,
+      "lane_step_hist": {
+        "repeat": 0.3007,
+        "step1": 0.3074,
+        "step2": 0.3412,
+        "step3plus": 0.0507
+      }
+    },
+    "hard": {
+      "notes": 517,
+      "gems": 543,
+      "notes_per_s": 2.7002,
+      "max_per_1s": 7,
+      "keep_share": 1.0,
+      "chord_count": 26,
+      "chord_share": 0.0503,
+      "sustain_share": 0.0445,
+      "lane_step_hist": {
+        "repeat": 0.3023,
+        "step1": 0.2926,
+        "step2": 0.405,
+        "step3plus": 0.0
+      }
+    },
+    "expert": {
+      "notes": 517,
+      "gems": 569,
+      "notes_per_s": 2.7002,
+      "max_per_1s": 7,
+      "keep_share": 1.0,
+      "chord_count": 52,
+      "chord_share": 0.1006,
+      "sustain_share": 0.0445,
+      "lane_step_hist": {
+        "repeat": 0.3023,
+        "step1": 0.2926,
+        "step2": 0.405,
+        "step3plus": 0.0
+      }
+    }
+  },
+  "expert_on_grid_share": 0.8685,
+  "direction_match": 0.8118,
+  "bpm": 120.0106,
+  "constant_tempo": false,
+  "b_events": 383,
+  "delay_ms": 164,
+  "analysis_delay_ms": 162,
+  "song_length_ms": 192014,
+  "sections": [
+    {
+      "tick": 0,
+      "ms": 162,
+      "name": "Intro"
+    },
+    {
+      "tick": 3072,
+      "ms": 8159,
+      "name": "Verse 1"
+    },
+    {
+      "tick": 6144,
+      "ms": 16157,
+      "name": "Chorus 1"
+    },
+    {
+      "tick": 24576,
+      "ms": 64153,
+      "name": "Section 4"
+    },
+    {
+      "tick": 30720,
+      "ms": 80440,
+      "name": "Chorus 2"
+    },
+    {
+      "tick": 39552,
+      "ms": 103649,
+      "name": "Verse 2"
+    },
+    {
+      "tick": 42624,
+      "ms": 111651,
+      "name": "Chorus 3"
+    },
+    {
+      "tick": 61248,
+      "ms": 160142,
+      "name": "Section 8"
+    },
+    {
+      "tick": 67392,
+      "ms": 176143,
+      "name": "Chorus 4"
+    },
+    {
+      "tick": 72576,
+      "ms": 189642,
+      "name": "Section 10"
+    }
+  ],
+  "solo_ticks": [
+    51072,
+    55632
+  ],
+  "preview_ms": 189642,
+  "band_tolerance": 0.05,
+  "band_flags": [
+    {
+      "difficulty": "easy",
+      "metric": "keep_share",
+      "value": 0.381,
+      "band": [
+        0.45,
+        0.55
+      ],
+      "tolerance": 0.05
+    },
+    {
+      "difficulty": "medium",
+      "metric": "keep_share",
+      "value": 0.5745,
+      "band": [
+        0.65,
+        0.75
+      ],
+      "tolerance": 0.05
+    },
+    {
+      "difficulty": "medium",
+      "metric": "step1",
+      "value": 0.3074,
+      "band": [
+        0.4,
+        0.6
+      ],
+      "tolerance": 0.05
+    },
+    {
+      "difficulty": "hard",
+      "metric": "step1",
+      "value": 0.2926,
+      "band": [
+        0.4,
+        0.6
+      ],
+      "tolerance": 0.05
+    },
+    {
+      "difficulty": "hard",
+      "metric": "step2",
+      "value": 0.405,
+      "band": [
+        0.15,
+        0.3
+      ],
+      "tolerance": 0.05
+    },
+    {
+      "difficulty": "expert",
+      "metric": "step1",
+      "value": 0.2926,
+      "band": [
+        0.4,
+        0.6
+      ],
+      "tolerance": 0.05
+    },
+    {
+      "difficulty": "expert",
+      "metric": "step2",
+      "value": 0.405,
+      "band": [
+        0.15,
+        0.3
+      ],
+      "tolerance": 0.05
+    }
+  ],
+  "chart_sha256": "5e1479e5f9414ff252a7b7bbf330fc3ecd867eaa1bbd875d2eb22f58390b9e26"
+}

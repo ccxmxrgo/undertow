@@ -206,6 +206,23 @@ The tick-0 chord plays at -4 ms (inside the game's preroll).
 invisible: GATE PASS at 80.5% mix (chance 24.1%), only 0.5 points over the 80% line, at target 2.8
 (the plan's attempt (c) target 2.5 went below the 2 n/s Expert floor). Ear-check the verse density:
 Medium keeps only 40% of Expert and Easy 32% (band flags above).
+synth_wave_april (re-charted in plan 02.1-07, stem "other" picked by tools/autochart/stem_rank.py):
+GATE PASS, mix 89.7% (chance 9.8%), stem 100.0% (chance 33.1%), median +0.3 ms, delay 58; no
+PASS_BASELINE and no fallback. Band flags: none. Sections are generic (Intro, Chorus 1, Section 3,
+Chorus 2, Chorus 3, Outro); the "Outro" starts 6 ms before the end of the audio. Not ear-checked.
+space_synth_wave (re-charted in plan 02.1-07, stem "other" picked by stem_rank.py): GATE PASS, mix
+95.6% (chance 22.0%), stem 100.0% (chance 27.5%), median +0.0 ms, delay 164; no PASS_BASELINE and no
+fallback. beat_this needed 57 beat repairs (tempo gate still 2.0 / 2.0 ms). Band flags:
+  space_synth_wave  easy        keep    0.381  0.45-0.55
+  space_synth_wave  medium      keep    0.575  0.65-0.75
+  space_synth_wave  medium      step1   0.307  0.40-0.60
+  space_synth_wave  hard        step1   0.293  0.40-0.60
+  space_synth_wave  hard        step2   0.405  0.15-0.30
+  space_synth_wave  expert      step1   0.293  0.40-0.60
+  space_synth_wave  expert      step2   0.405  0.15-0.30
+Preview starts at 189642 ms, 2.4 s before the end of the 192.0 s song: the generic sectioner rated
+the last section ("Section 10") loudest. Check the Song Select preview in UAT; structure.pick_preview
+was left unchanged in plan 07 (no CLI / stage changes).
 
 MODEL HASHES (SHA-256)
 ----------------------
