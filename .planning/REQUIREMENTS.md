@@ -118,7 +118,7 @@
 ### Visual Design (Phase 2.2)
 
 - [ ] **VIS-01**: One design system (tokens, type, panels, buttons, motion) is used by every screen
-- [ ] **VIS-02**: Main menu is an animated abyss title screen with styled menu, last-dive card and optional menu music
+- [x] **VIS-02**: Main menu is an animated abyss title screen with styled menu, last-dive card and optional menu music
 - [ ] **VIS-03**: Gameplay highway has filled lanes, beat/bar lines, solid gem notes, hit explosions and streak-driven intensity, and stays readable
 - [ ] **VIS-04**: HUD is a cockpit instrument cluster (multiplier ring, depth gauge, hull gauge, song progress + section names, accuracy %, reserved torpedo socket)
 - [ ] **VIS-05**: Results screen is opaque and shows grade, accuracy, timing histogram, record and counts (fixes the menu bleed-through)
@@ -232,7 +232,7 @@
 | AV-05 | Phase 2.2 | Pending |
 | DIST-01 | Phase 5 | Pending |
 | VIS-01 | Phase 2.2 | Pending |
-| VIS-02 | Phase 2.2 | Pending |
+| VIS-02 | Phase 2.2 | Complete |
 | VIS-03 | Phase 2.2 | Pending |
 | VIS-04 | Phase 2.2 | Pending |
 | VIS-05 | Phase 2.2 | Pending |
