@@ -46,3 +46,14 @@
   table AbyssBackdrop.
 - **Scenario songs "bundled gameplay frame rate >= 60 fps"** reads about 18 fps under xvfb software
   GL (same at 050b19d). Environment only; re-check on the Windows PC.
+
+## Found in 02.2-20
+
+- **Scenario d "song_time continues from paused position (+-20 ms)" fails under xvfb + Dummy
+  audio (22..121 ms).** It fails the same way at the pre-plan-20 commit 1cb3c77 (clean worktree on
+  2026-10-10 under xvfb: 101.9 ms and 93.4 ms in two runs), so it comes from the cloud container
+  (software GL at ~20 fps, Dummy audio driver), not the pause restyle. The timing core is unchanged
+  (TIMING GATE OK). Re-check on the Windows PC with WASAPI.
+- **Scenario immersion "lens mask edge is smooth" samples the 1.0 s frame**, which under xvfb
+  (~20 fps) can land in the BLACK stage (1.10..1.25 s), so the check can pass on a black frame. Not
+  a failure; on the PC the frame lands in the lens stage as intended.

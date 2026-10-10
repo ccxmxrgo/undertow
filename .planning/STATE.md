@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 02.2-19-PLAN.md
-last_updated: "2026-10-10T20:04:09.247Z"
+last_updated: "2026-10-10T20:32:16.637Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 59
+  completed_plans: 60
   percent: 56
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 20 of 25
+Plan: 21 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [█████████░] 91%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -88,6 +88,7 @@ Progress: [█████████░] 91%
 | Phase 02.2 P17 | 75 min | 2 tasks | 9 files |
 | Phase 02.2 P18 | 6 min | 2 tasks | 3 files |
 | Phase 02.2 P19 | 16 min | 2 tasks | 4 files |
+| Phase 02.2 P20 | 27 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -161,6 +162,9 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-19: Song Select sections parsed lazily on a worker (ChartParser + ChartImporter, no audio), selected song only, cached per song id, stale results dropped by request id
 - [Phase 02.2]: 02.2-19: Song Select SOURCE line dropped (not in the UI-SPEC 6 layout); skipped-lines warning moved to the SECTIONS caption line
 - [Phase 02.2]: 02.2-19: songs harness outer-32-px check replaced by list-text contrast (row title vs row background >= 4.5:1)
+- [Phase 02.2]: 02.2-20: Gameplay calls pause_menu.set_run_info before open; the run line drops an empty difficulty and truncates only the title
+- [Phase 02.2]: 02.2-20: danger panels (IMPLOSION, dialogs) override the panel glow to WARNING_RED locally; the dialog panel has an opaque ABYSS_900 backing so the pause panel never shows through
+- [Phase 02.2]: 02.2-20: intro rig-boot readout drawn above the lens mask, faint static scope rings added so the goggles cue reads; room_glow_texture kept as the rig backlight (VP_GLOW)
 
 ### Pending Todos
 
@@ -176,6 +180,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T20:04:03.841Z
+Last session: 2026-10-10T20:32:07.683Z
 Stopped at: Completed 02.2-19-PLAN.md
 Resume file: None
