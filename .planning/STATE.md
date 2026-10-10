@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-18-PLAN.md
-last_updated: "2026-10-10T19:46:28.409Z"
+stopped_at: Completed 02.2-19-PLAN.md
+last_updated: "2026-10-10T20:04:09.247Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 58
+  completed_plans: 59
   percent: 56
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 19 of 25
+Plan: 20 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [█████████░] 89%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
@@ -87,6 +87,7 @@ Progress: [█████████░] 89%
 | Phase 02.2 P16 | 50 min | 2 tasks | 6 files |
 | Phase 02.2 P17 | 75 min | 2 tasks | 9 files |
 | Phase 02.2 P18 | 6 min | 2 tasks | 3 files |
+| Phase 02.2 P19 | 16 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -157,6 +158,9 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-16: The results entrance is one Tween (0.89 s) driving apply_entrance(t); any key/pad/mouse/action press during it jumps to the final state and is consumed, so it never activates a button; histogram EARLY/LATE at baseline 292 (spec 268 collided with the TIMING caption) and window guides symmetric about x 1552 — keeps the entrance testable at any instant and skip-safe (T-02.2-31); VIS-05 complete
 - [Phase 02.2]: 02.2-17: album art is decoded from a buffer chosen by magic bytes, with PNG/JPEG header dimensions checked (<= 4096) before decoding and an 8 MB cap before reading; oversize zip images are skipped, not a zip failure; zip cache marker stores EXTRACT_VERSION 2 so old caches re-extract once; Song Select defers an uncached cover request while the library scans and caches 'no art' results — decompression-bomb guard and D-19 art for existing zips; VIS-06 art half only (tiles/visualizer in plan 18)
 - [Phase 02.2]: 02.2-18: Song Select preview plays on the Preview bus; 30-bar visualizer reads its analyzer (linear attack 30 ms / release 180 ms, magnitude_source seam); tile intensity = notes per second over entry.length_sec (1..5)
+- [Phase 02.2]: 02.2-19: Song Select sections parsed lazily on a worker (ChartParser + ChartImporter, no audio), selected song only, cached per song id, stale results dropped by request id
+- [Phase 02.2]: 02.2-19: Song Select SOURCE line dropped (not in the UI-SPEC 6 layout); skipped-lines warning moved to the SECTIONS caption line
+- [Phase 02.2]: 02.2-19: songs harness outer-32-px check replaced by list-text contrast (row title vs row background >= 4.5:1)
 
 ### Pending Todos
 
@@ -172,6 +176,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T19:46:25.022Z
-Stopped at: Completed 02.2-18-PLAN.md
+Last session: 2026-10-10T20:04:03.841Z
+Stopped at: Completed 02.2-19-PLAN.md
 Resume file: None

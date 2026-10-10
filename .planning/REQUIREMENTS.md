@@ -122,7 +122,7 @@
 - [ ] **VIS-03**: Gameplay highway has filled lanes, beat/bar lines, solid gem notes, hit explosions and streak-driven intensity, and stays readable
 - [x] **VIS-04**: HUD is a cockpit instrument cluster (multiplier ring, depth gauge, hull gauge, song progress + section names, accuracy %, reserved torpedo socket)
 - [x] **VIS-05**: Results screen is opaque and shows grade, accuracy, timing histogram, record and counts (fixes the menu bleed-through)
-- [ ] **VIS-06**: Song select shows album art or a generated cover, difficulty intensity, and a preview visualizer
+- [x] **VIS-06**: Song select shows album art or a generated cover, difficulty intensity, and a preview visualizer
 - [ ] **VIS-07**: Pause, fail, settings and calibration screens use the design system
 - [ ] **VIS-08**: Goggles intro has no placeholder rectangles (drawn scene or trimmed)
 - [ ] **VIS-09**: Screen transitions, micro-animations, miss shake, milestone bursts and UI navigation sounds
@@ -236,7 +236,7 @@
 | VIS-03 | Phase 2.2 | Pending |
 | VIS-04 | Phase 2.2 | Complete |
 | VIS-05 | Phase 2.2 | Complete |
-| VIS-06 | Phase 2.2 | Pending |
+| VIS-06 | Phase 2.2 | Complete |
 | VIS-07 | Phase 2.2 | Pending |
 | VIS-08 | Phase 2.2 | Pending |
 | VIS-09 | Phase 2.2 | Pending |
