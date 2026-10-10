@@ -400,6 +400,8 @@ func show_step(s: int) -> void:
 	set_quiet(false)
 	conductor.offset_override = NAN
 	step = s
+	# W7 / T-02.2-43: no UI blips while the audio or visual offset is being measured.
+	UiSounds.muted = s == Step.AUDIO or s == Step.VISUAL
 	_clear_content()
 	audio_phase = AudioPhase.IDLE
 	match s:
@@ -627,6 +629,10 @@ func save_and_continue() -> void:
 
 func skip() -> void:
 	_leave()
+
+
+func _exit_tree() -> void:
+	UiSounds.muted = false
 
 
 func _leave() -> void:

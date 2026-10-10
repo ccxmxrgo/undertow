@@ -62,6 +62,48 @@ static func make_clunk(rate: int = 0) -> AudioStreamWAV:
 	return _wav16(buf, rate)
 
 
+## UI navigation blips (02.2 UI-SPEC 10.4, VIS-09). 16-bit mono, phase-continuous, with a
+## 2 ms attack and an 8 ms release so neither end clicks. Peaks are exact dBFS levels:
+##   move    1.6 kHz sine, 30 ms, -18 dBFS
+##   confirm 880 Hz then 1320 Hz (two equal steps), 70 ms, -14 dBFS
+##   back    1320 Hz then 660 Hz (two equal steps), 60 ms, -16 dBFS
+##   error   220 Hz square, 90 ms, -18 dBFS
+## Unknown names return null.
+static func make_ui_blip(blip_name: String, rate: int = 0) -> AudioStreamWAV:
+	var spec: Dictionary
+	match blip_name:
+		"move":
+			spec = {"sec": 0.030, "db": -18.0, "f0": 1600.0, "f1": 1600.0, "square": false}
+		"confirm":
+			spec = {"sec": 0.070, "db": -14.0, "f0": 880.0, "f1": 1320.0, "square": false}
+		"back":
+			spec = {"sec": 0.060, "db": -16.0, "f0": 1320.0, "f1": 660.0, "square": false}
+		"error":
+			spec = {"sec": 0.090, "db": -18.0, "f0": 220.0, "f1": 220.0, "square": true}
+		_:
+			return null
+	if rate <= 0:
+		rate = int(AudioServer.get_mix_rate())
+	var n := int(float(spec["sec"]) * rate)
+	var amp := db_to_linear(float(spec["db"]))
+	var attack := maxi(int(0.002 * rate), 1)
+	var release := maxi(int(0.008 * rate), 1)
+	var buf := PackedByteArray()
+	buf.resize(n * 2)
+	var phase := 0.0
+	for i in range(n):
+		var f: float = spec["f0"] if i < n / 2 else spec["f1"]
+		var env := minf(1.0, minf(float(i) / attack, float(n - 1 - i) / release))
+		var s: float
+		if spec["square"]:
+			s = 1.0 if fmod(phase, 1.0) < 0.5 else -1.0
+		else:
+			s = sin(TAU * phase)
+		buf.encode_s16(i * 2, int(round(s * env * amp * 32767.0)))
+		phase += f / rate
+	return _wav16(buf, rate)
+
+
 static func _wav16(buf: PackedByteArray, rate: int) -> AudioStreamWAV:
 	var w := AudioStreamWAV.new()
 	w.format = AudioStreamWAV.FORMAT_16_BITS
