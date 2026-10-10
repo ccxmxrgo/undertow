@@ -1,0 +1,4 @@
+# Audio must stay byte-identical (core.autocrlf=true on the dev PC)
+*.mp3 binary
+*.wav binary
+*.ogg binary
