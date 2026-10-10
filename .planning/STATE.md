@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.1-06-PLAN.md
-last_updated: "2026-10-10T01:49:20.344Z"
+stopped_at: Completed 02.1-07-PLAN.md
+last_updated: "2026-10-10T02:04:11.428Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 40
-  completed_plans: 37
+  completed_plans: 38
   percent: 50
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.1 (Instrument Extraction Tool) — EXECUTING
-Plan: 7 of 9
+Plan: 8 of 9
 Status: Ready to execute
 Last activity: 2026-10-10
 
@@ -66,6 +66,7 @@ Progress: [#########.] 93%
 | Phase 02.1 P04 | 15 min | 3 tasks | 17 files |
 | Phase 02.1 P05 | 16 min | 3 tasks | 13 files |
 | Phase 02.1 P06 | 35 min | 3 tasks | 17 files |
+| Phase 02.1 P07 | 50 min | 2 tasks | 21 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,7 @@ Recent decisions affecting current work:
 - [Phase 02.1]: Section labels use fcluster maxclust round(n/2); fixed 0.35 cosine threshold gave one label for Sea Shanty 2
 - [Phase 02.1]: INVISIBLE ships at target-nps 2.8 (other + bass sections fill): plan attempt (c) at 2.5 passed the gate but fell under the SPEC 2 n/s Expert floor
 - [Phase 02.1]: HRT ships other + drums bars fill at target 3.0 (GATE PASS 91.9%); fill adds nothing since other has onsets in every bar
+- [Phase 02.1]: 02.1-07: April and Space re-charted on stem 'other' chosen by stem_rank.py (GATE PASS 89.7% / 95.6%), delays 58 / 164; author_chart.gd retired to tools/charting/legacy/
 
 ### Pending Todos
 
@@ -117,6 +119,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T01:49:20.338Z
-Stopped at: Completed 02.1-06-PLAN.md
+Last session: 2026-10-10T02:04:11.422Z
+Stopped at: Completed 02.1-07-PLAN.md
 Resume file: None

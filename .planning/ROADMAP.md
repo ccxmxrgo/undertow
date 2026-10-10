@@ -116,7 +116,7 @@ Plans:
   6. The user's three custom songs (HRT, Sea Shanty 2, INVISIBLE) and the two existing bundled songs ship with audio-driven charts that pass the measured sync gate (median note-to-onset within ±5 ms, ≥90% of notes within ±25 ms)
 
 **Depends on:** Phase 2
-**Plans:** 6/9 plans executed
+**Plans:** 7/9 plans executed
 
 Plans:
 
@@ -126,7 +126,7 @@ Plans:
 - [x] 02.1-04-PLAN.md — Analysis CLI: decode, htdemucs stems, beats, audible onsets, Basic Pitch; run on the 3 songs
 - [x] 02.1-05-PLAN.md — First synced song: failing e2e test, `autochart.py chart`, Sea Shanty 2 bundled and gated
 - [x] 02.1-06-PLAN.md — HRT + INVISIBLE bundled and gated (stem fill), D-13 override (PROJECT.md + CLAUDE.md), headless BUNDLED_OK 20
-- [ ] 02.1-07-PLAN.md — STEM-07: re-chart April + Space Synth Wave, retire author_chart.gd to legacy, tests on committed charts
+- [x] 02.1-07-PLAN.md — STEM-07: re-chart April + Space Synth Wave, retire author_chart.gd to legacy, tests on committed charts
 - [ ] 02.1-08-PLAN.md — STEM-02/04/05: extract_song.ps1 player flow, INSTRUMENT LANES mode, same-hash proof (after 07)
 - [ ] 02.1-09-PLAN.md — Final v0.4 rebuild, gate table, UAT sheet, end-of-phase human verification
 
