@@ -2885,8 +2885,9 @@ func sc_songs() -> void:
 	ss = _song_select()
 	await wait(0.6)
 	st = ss.debug_state()
-	check("only bundled songs: onboarding row shown, footer shows the Songs path", bool(st["onboarding"])
-		and int(st["view_size"]) == 4, st)
+	# rows: every bundled song + the Calibration Track + the onboarding row
+	check("only bundled songs: onboarding row shown, footer shows the Songs path (%d rows)" % (2 + BundledSongs.SONGS.size()),
+		bool(st["onboarding"]) and int(st["view_size"]) == 2 + BundledSongs.SONGS.size(), st)
 	await shot("onboarding_bundled_only")
 	_check_outer_band(last_img, "onboarding")
 	var fake: Node = load("res://src/autoload/song_library.gd").new()

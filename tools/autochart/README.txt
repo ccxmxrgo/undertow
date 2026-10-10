@@ -102,6 +102,69 @@ Baseline numbers (2026-10-09, reports/ has the full printouts):
   metric cannot tell "on the beat" from "on the instrument", so new charts are always gated with
   --stem, and the ear check stays the final word.
 
+CHART (one song, end to end)
+----------------------------
+  1. analyze (once per song, writes build/autochart/<id>/):
+       build/autochart/venvA/Scripts/python.exe -I -B tools/autochart/autochart.py analyze --id <id> --src songs/<id>/song.mp3
+  2. chart (deterministic: the same intermediates give a byte-identical notes.chart, D-04):
+       build/autochart/venvA/Scripts/python.exe -I -B tools/autochart/autochart.py chart --id <id> `
+           --out songs/<id> --stem <stem> --target-nps 3.5 --name <s> --artist <s> --genre <s>
+     -> songs/<id>/notes.chart, song.ini, tools/autochart/reports/<id>.chart_stats.json, sections.json
+     Prints [k/7] progress, per-difficulty stats, BAND FLAG lines and CHART_OK <id> <sha256>.
+  3. bundle (BundledSongs.SONGS + songs/CREDITS.txt), then measure with the SYNC GATE above,
+     writing --json tools/autochart/reports/<id>.sync.json. If suggested_delay_ms differs from the ini
+     delay, re-run chart with --delay-ms <suggested> --song-length-ms <decoded_length_ms> and re-gate.
+     --delay-ms changes only the song.ini delay; chart ticks stay the same, so the whole chart moves
+     in song time by the change (the decoded audio does not change). Always pass the decoded length.
+  tests/test_autochart_songs.gd re-checks the committed chart, the report (verdict, numbers,
+  chart_sha256, ini delay) and the chart stats for every id in AUTOCHART_IDS.
+
+PER-SONG GATE (Expert, game's decoded stream, D3 delta 0.1; chance levels in brackets)
+-------------------------------------------------------------------------------------
+  song          stem   target  Expert n/s  median mix  mix % (chance)  stem % (chance)  tempo med/p90  live lag  delay  verdict
+  sea_shanty_2  other  3.5     3.45        +0.1 ms     99.1 (17.4)     100.0 (14.2)     0.2 / 0.3 ms   +1.33 ms  72     PASS
+  (2026-10-10, plan 02.1-05. 428 unique Expert times / 471 gems, IQR mix [-6.0, +7.7] ms, Godot decode
+   lag +0.16 ms, decoded length 127850 ms, single B 199998 at 200 BPM, direction match 0.785.
+   Full numbers: reports/sea_shanty_2.sync.json, reports/sea_shanty_2.chart_stats.json.)
+
+LANE RULE
+---------
+From tools/autochart/stages/lanes.py (module docstring):
+Contour rule (Clone Hero convention, "going right feels like going up"):
+  * pitch per note = the note's "pitch" (Basic Pitch skyline, MIDI), else the spectral centroid as
+    round(12 * log2(centroid / 440) + 69), else unpitched;
+  * same pitch -> same lane; a step of 1..4 semitones -> +-1 lane; a leap of >= 5 semitones -> +-2 lanes;
+  * unpitched notes repeat the previous lane and do not become the new reference pitch.
+Octave compromise (SPEC req 5 / RESEARCH Pitfall 6): Basic Pitch makes many exact-octave errors, while
+SPEC req 4 says "octave leap -> +-2 lanes". So:
+  * an interval larger than an octave is reduced: d = sign(d) * (|d| mod 12), and a remainder of 0
+    (two or more octaves) counts as an exact octave;
+  * an exact octave FOLDS to 0 (same lane) when it alternates (the next pitch returns to the previous
+    one), when the previous interval was also an exact octave, or when either note's amplitude is
+    below 0.3 (low Basic Pitch confidence);
+  * otherwise an isolated octave is a real leap and stays +-12, i.e. +-2 lanes (literal SPEC rule);
+  * there is no full pitch-class fold: folding a fifth (7) to -5 would flip its direction.
+VISIBLE SLIDE: a step whose target lane would leave 0..3 is a clamped step; the lane stays on the edge
+and a counter for that direction increments. After 2 clamped steps in the same direction, the next
+step that way re-centres: lane 1 (rising) or lane 2 (falling), and the counter resets. A step in the
+opposite direction resets the counter; repeats and unpitched notes leave it alone.
+Example: rising scale C4 D4 E4 F4 G4 A4 B4 C5 from lane 0 -> 0,1,2,3,3,3,1,2 (falling mirror from
+lane 3 -> 3,2,1,0,0,0,2,1).
+Accent chords: Expert / Hard notes with strength >= the 90th percentile get an adjacent second lane.
+Sustains: a ring longer than 1 beat becomes a sustain ending 1/16 before the next note.
+
+UAT FLAGS
+---------
+Band flags from reports/<id>.chart_stats.json: a keep_share or lane-step share outside its Neversoft
+band +- 0.05 (bands: keep hard 0.90-1.00, medium 0.65-0.75, easy 0.45-0.55; steps repeat 0.20-0.30,
++-1 0.40-0.60, +-2 0.15-0.30, +-3+ 0.00-0.05). Reported for the ear check, never fixed by padding notes.
+  song          difficulty  metric  value  band
+  sea_shanty_2  easy        repeat  0.389  0.20-0.30   (Easy re-contours on 3 lanes; the tune repeats notes)
+Other UAT notes for sea_shanty_2: kept at 200 BPM (RESEARCH open question 2: do the beat lines look too
+dense?); section names are generic (Intro, Section 2, Chorus 1, Chorus 2, Section 5, Outro) and the
+boundaries are not ear-checked; the vocals stem is near-silent, so its relative gate marks every bar
+vocal-active and the solo falls back to the densest 4-8 bar window (bars 94-99).
+
 MODEL HASHES (SHA-256)
 ----------------------
 htdemucs  build/autochart/cache/hub/models--adefossez--HTDemucs/snapshots/cbc8a9b1a87023b7fd74e7b3412e6321c0eab003/955717e8.safetensors

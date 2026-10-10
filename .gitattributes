@@ -2,3 +2,6 @@
 *.mp3 binary
 *.wav binary
 *.ogg binary
+# Charts / song.ini are hashed (SONG-05): keep them byte-identical across clones
+*.chart -text
+*.ini -text

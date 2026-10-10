@@ -1,0 +1,131 @@
+{
+  "id": "sea_shanty_2",
+  "stem": "other",
+  "fill_stem": null,
+  "target_nps": 3.5,
+  "difficulties": {
+    "easy": {
+      "notes": 235,
+      "gems": 235,
+      "notes_per_s": 1.8921,
+      "max_per_1s": 4,
+      "keep_share": 0.5491,
+      "chord_count": 0,
+      "chord_share": 0.0,
+      "sustain_share": 0.1702,
+      "lane_step_hist": {
+        "repeat": 0.3889,
+        "step1": 0.4402,
+        "step2": 0.1709,
+        "step3plus": 0.0
+      }
+    },
+    "medium": {
+      "notes": 318,
+      "gems": 327,
+      "notes_per_s": 2.5604,
+      "max_per_1s": 5,
+      "keep_share": 0.743,
+      "chord_count": 9,
+      "chord_share": 0.0283,
+      "sustain_share": 0.1447,
+      "lane_step_hist": {
+        "repeat": 0.2965,
+        "step1": 0.429,
+        "step2": 0.2587,
+        "step3plus": 0.0158
+      }
+    },
+    "hard": {
+      "notes": 428,
+      "gems": 450,
+      "notes_per_s": 3.446,
+      "max_per_1s": 7,
+      "keep_share": 1.0,
+      "chord_count": 22,
+      "chord_share": 0.0514,
+      "sustain_share": 0.1238,
+      "lane_step_hist": {
+        "repeat": 0.2904,
+        "step1": 0.4614,
+        "step2": 0.2482,
+        "step3plus": 0.0
+      }
+    },
+    "expert": {
+      "notes": 428,
+      "gems": 471,
+      "notes_per_s": 3.446,
+      "max_per_1s": 7,
+      "keep_share": 1.0,
+      "chord_count": 43,
+      "chord_share": 0.1005,
+      "sustain_share": 0.1238,
+      "lane_step_hist": {
+        "repeat": 0.2904,
+        "step1": 0.4614,
+        "step2": 0.2482,
+        "step3plus": 0.0
+      }
+    }
+  },
+  "expert_on_grid_share": 0.7897,
+  "direction_match": 0.7851,
+  "bpm": 199.9983,
+  "constant_tempo": true,
+  "b_events": 1,
+  "delay_ms": 72,
+  "analysis_delay_ms": 72,
+  "song_length_ms": 127850,
+  "sections": [
+    {
+      "tick": 0,
+      "ms": 72,
+      "name": "Intro"
+    },
+    {
+      "tick": 4608,
+      "ms": 7272,
+      "name": "Section 2"
+    },
+    {
+      "tick": 6144,
+      "ms": 9672,
+      "name": "Chorus 1"
+    },
+    {
+      "tick": 48384,
+      "ms": 75673,
+      "name": "Chorus 2"
+    },
+    {
+      "tick": 73728,
+      "ms": 115273,
+      "name": "Section 5"
+    },
+    {
+      "tick": 78336,
+      "ms": 122473,
+      "name": "Outro"
+    }
+  ],
+  "solo_ticks": [
+    72192,
+    76752
+  ],
+  "preview_ms": 75673,
+  "band_tolerance": 0.05,
+  "band_flags": [
+    {
+      "difficulty": "easy",
+      "metric": "repeat",
+      "value": 0.3889,
+      "band": [
+        0.2,
+        0.3
+      ],
+      "tolerance": 0.05
+    }
+  ],
+  "chart_sha256": "cdd1c2840bc218e80779b00561202f4279080b6916edcc51ff373a82bff40721"
+}

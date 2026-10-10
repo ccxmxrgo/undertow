@@ -1,0 +1,83 @@
+{
+  "verdict": "PASS",
+  "difficulty": "expert",
+  "source": "godot ChartImporter dump",
+  "chart": "C:\\Users\\user\\Documents\\undertow\\songs\\sea_shanty_2\\notes.chart",
+  "chart_sha256": "cdd1c2840bc218e80779b00561202f4279080b6916edcc51ff373a82bff40721",
+  "notes_json": null,
+  "notes_json_sha256": null,
+  "ini_delay_ms": 72,
+  "decoded_wav": "C:\\Users\\user\\Documents\\undertow\\build\\playtest\\align_sea_shanty_2_decoded.wav",
+  "extra_mix": [],
+  "decoded_length_ms": 127850,
+  "note_count": 471,
+  "unique_note_times": 428,
+  "mix_onsets": 601,
+  "median_mix_ms": 0.11099999999686361,
+  "iqr_mix_ms": [
+    -6.0400000000058185,
+    7.702749999996428
+  ],
+  "mix_pct": 99.06542056074767,
+  "mix_chance_pct": 17.44158878504673,
+  "stems": [
+    "C:\\Users\\user\\Documents\\undertow\\build\\autochart\\sea_shanty_2\\stems\\other.wav"
+  ],
+  "median_stem_ms": -0.14249999999993435,
+  "iqr_stem_ms": [
+    -4.4944999999980695,
+    4.149249999999327
+  ],
+  "stem_pct": 100.0,
+  "stem_chance_pct": 14.205607476635512,
+  "tempo": {
+    "refined": {
+      "n": 415,
+      "median_abs_ms": 0.24399378993678056,
+      "p90_abs_ms": 0.32559875798767735
+    },
+    "raw": {
+      "n": 415,
+      "median_abs_ms": 7.450994509937914,
+      "p90_abs_ms": 12.019800198002256
+    }
+  },
+  "live_lag_ms": 1.333439588546753,
+  "suggested_delay_ms": 72,
+  "fixed_misses": [],
+  "baseline_misses": [],
+  "thresholds": {
+    "fixed": {
+      "median_mix_abs_ms": 5.0,
+      "stem_pct": 90.0,
+      "mix_pct": 80.0,
+      "tempo_median_ms": 10.0,
+      "tempo_p90_ms": 20.0,
+      "live_lag_abs_ms": 3.0
+    },
+    "baseline": {
+      "median_mix_abs_ms": 5.9,
+      "stem_pct": 54.5,
+      "mix_pct": 73.5,
+      "mix_chance_max_pct": 45.0,
+      "tempo_median_ms": 10.0,
+      "tempo_p90_ms": 20.0,
+      "live_lag_abs_ms": 3.0
+    }
+  },
+  "detector": {
+    "name": "D3",
+    "delta": 0.1,
+    "hop": 64,
+    "back_ms": 30
+  },
+  "error_sign": "note - onset (negative = note before the sound)",
+  "versions": {
+    "python": "3.12.15",
+    "numpy": "2.5.3",
+    "librosa": "1.0.0",
+    "soundfile": "0.14.0",
+    "scipy": "1.18.1",
+    "soxr": "1.1.0"
+  }
+}
