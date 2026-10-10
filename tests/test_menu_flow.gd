@@ -67,7 +67,7 @@ func test_rebind_lane1_to_free_key() -> void:
 	var s := _screen()
 	var cell: RebindCell = s.cells["lane_1:keyboard"]
 	cell.begin_listen()
-	assert_str(cell.text).is_equal("PRESS A KEY...")
+	assert_str(cell.text).is_equal("PRESS A KEY")
 	assert_bool(cell.handle_event(_key(KEY_G))).is_true()
 	assert_bool(cell.listening).is_false()
 	assert_str(cell.text).is_equal("G")
@@ -168,7 +168,7 @@ func test_slider_changes_persist_to_settings() -> void:
 	assert_float(Settings.volume_sfx).is_equal_approx(0.75, 0.0001)
 	s.no_fail_button.pressed.emit()
 	assert_bool(Settings.no_fail).is_true()
-	assert_str(s.no_fail_button.text).is_equal("[ ON ]")
+	assert_str(s.no_fail_button.text).is_equal("ON")
 	var cfg := ConfigFile.new()
 	assert_int(cfg.load(TEST_PATH)).is_equal(OK)
 	assert_float(float(cfg.get_value("gameplay", "scroll_speed"))).is_equal_approx(2.5, 0.0001)
@@ -483,3 +483,131 @@ func test_last_dive_card_difficulty_lanes() -> void:
 	assert_int(MainMenu.difficulty_lane("medium")).is_equal(1)
 	assert_int(MainMenu.difficulty_lane("hard")).is_equal(2)
 	assert_int(MainMenu.difficulty_lane("expert")).is_equal(3)
+
+
+# ---- 02.2-21: Settings restyle (UI-SPEC 9.3, 14) ---------------------------------------------
+
+
+func test_toggle_is_pill_with_on_off_text_and_styles() -> void:
+	var s := _screen()
+	assert_bool(s.no_fail_button is SettingsScreen.PillToggle).is_true()
+	assert_str(s.no_fail_button.text).is_equal("OFF")
+	assert_that(s.no_fail_button.custom_minimum_size).is_equal(Vector2(160.0, 40.0))
+	var on := SettingsScreen.PillToggle.style_for(true)
+	assert_that(on["fill"]).is_equal(Color(Palette.SONAR, 0.22))
+	assert_that(on["edge"]).is_equal(Palette.SONAR)
+	assert_that(on["text"]).is_equal(Palette.TEXT_HI)
+	var off := SettingsScreen.PillToggle.style_for(false)
+	assert_that(off["fill"]).is_equal(Palette.ABYSS_800)
+	assert_that(off["edge"]).is_equal(Color(Palette.TEXT_LO, 0.35))
+	assert_that(off["text"]).is_equal(Palette.TEXT_MID)
+	# Knob 16 x 24: left when OFF, right when ON.
+	assert_that(SettingsScreen.PillToggle.knob_rect(0.0).size).is_equal(Vector2(16.0, 24.0))
+	assert_float(SettingsScreen.PillToggle.knob_rect(1.0).position.x).is_greater(
+		SettingsScreen.PillToggle.knob_rect(0.0).position.x + 80.0)
+
+
+func test_toggle_knob_slides_then_jumps_under_reduce_motion() -> void:
+	Settings.reduce_motion = false
+	var s := _screen()
+	var t: SettingsScreen.PillToggle = s.no_fail_button
+	assert_float(t.knob_t).is_equal(0.0)
+	t.pressed.emit()
+	assert_str(t.text).is_equal("ON")
+	assert_float(t.knob_t).is_less(1.0)  # slides over DUR_FAST
+	await get_tree().create_timer(Palette.DUR_FAST + 0.1).timeout
+	assert_float(t.knob_t).is_equal_approx(1.0, 0.001)
+	Settings.reduce_motion = true
+	t.pressed.emit()
+	assert_str(t.text).is_equal("OFF")
+	assert_float(t.knob_t).is_equal(0.0)  # jumps
+
+
+func test_reduce_motion_row_renamed_with_spec_hints() -> void:
+	var s := _screen()
+	var titles := s.row_titles()
+	assert_bool(titles.has("Reduce motion")).is_true()
+	assert_bool(titles.has("Reduce screen shake")).is_false()
+	assert_str(s.hint_for("Reduce motion")).is_equal(
+		"Turns off screen shake, parallax and big movement. Effects fade instead of moving.")
+	assert_str(s.hint_for("Low effects")).is_equal(
+		"Fewer particles, no glow or CRT effect, simpler backgrounds. Notes and lanes stay fully bright.")
+	assert_str(s.hint_for("Menu music")).is_equal("Plays a quiet song preview on the main menu.")
+	var src := FileAccess.get_file_as_string("res://src/ui/settings_screen.gd")
+	assert_bool(src.contains("Reduce screen shake")).is_false()
+	assert_bool(src.contains("[ ON ]")).is_false()
+
+
+func test_step_slider_style_and_value_column() -> void:
+	assert_float(StepSlider.TRACK_H).is_equal(8.0)
+	assert_float(StepSlider.HANDLE_W).is_equal(16.0)
+	assert_float(StepSlider.HANDLE_H).is_equal(32.0)
+	var idle := StepSlider.colors(false)
+	assert_that(idle["track"]).is_equal(Palette.ABYSS_600)
+	assert_that(idle["fill"]).is_equal(Palette.SONAR)
+	assert_that(idle["thumb"]).is_equal(Palette.TEXT_HI)
+	assert_bool(idle["glow"]).is_false()
+	var focused := StepSlider.colors(true)
+	assert_that(focused["thumb_edge"]).is_equal(Palette.SONAR_PALE)
+	assert_bool(focused["glow"]).is_true()
+	var s := _screen()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var vl: Label = s.scroll_value_label
+	assert_float(vl.get_global_rect().end.x).is_equal_approx(SettingsScreen.VALUE_RIGHT, 1.0)
+	assert_int(vl.horizontal_alignment).is_equal(HORIZONTAL_ALIGNMENT_RIGHT)
+	assert_that(vl.get_theme_color("font_color")).is_equal(Palette.TEXT_HI)
+	assert_float(SettingsScreen.VALUE_RIGHT).is_equal(1840.0)
+
+
+func test_rebind_listening_and_rejected_styles() -> void:
+	Settings.reduce_motion = false
+	var s := _screen()
+	var cell: RebindCell = s.cells["lane_1:keyboard"]
+	cell.begin_listen()
+	assert_str(cell.text).is_equal("PRESS A KEY")
+	assert_that(cell.get_theme_color("font_color")).is_equal(Palette.SONAR_PALE)
+	assert_that(cell.edge_color()).is_equal(Color(Palette.SONAR, cell.edge_color().a))
+	# Edge pulses at 1.2 Hz; static under Reduce motion.
+	var period := 1.0 / RebindCell.PULSE_HZ
+	assert_float(RebindCell.PULSE_HZ).is_equal(1.2)
+	assert_float(RebindCell.listen_edge_alpha(0.1, false)).is_not_equal_approx(
+		RebindCell.listen_edge_alpha(0.1 + period * 0.5, false), 0.05)
+	assert_float(RebindCell.listen_edge_alpha(0.1, false)).is_equal_approx(
+		RebindCell.listen_edge_alpha(0.1 + period, false), 0.0001)
+	assert_float(RebindCell.listen_edge_alpha(0.1, true)).is_equal(RebindCell.listen_edge_alpha(0.4, true))
+	# Rejected: existing copy, WARNING_RED edge.
+	cell.handle_event(_key(KEY_2))
+	assert_str(s.message_text(&"lane_1")).is_equal("! 2 is already used for Lane 2. Pick a different key.")
+	assert_bool(cell.rejected).is_true()
+	assert_that(cell.edge_color()).is_equal(Palette.WARNING_RED)
+	s.clear_message(&"lane_1")
+	assert_bool(cell.rejected).is_false()
+
+
+func test_standalone_has_table_backdrop_title_and_glass_sections() -> void:
+	var s := _screen(false)
+	assert_object(s.backdrop).is_not_null()
+	assert_str(s.backdrop.variant).is_equal("table")
+	assert_object(s.shade).is_null()
+	assert_str(s.title_label.text).is_equal("SETTINGS")
+	assert_str(String(s.title_label.theme_type_variation)).is_equal("HeadingLabel")
+	assert_that(SettingsScreen.TITLE_POS).is_equal(Vector2(64.0, 104.0))
+	assert_float(s.title_label.position.x).is_equal(64.0)
+	assert_bool(s.focus_marker is FocusMarker).is_true()
+	assert_bool(s.is_in_group(UiKit.FX_GROUP)).is_true()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert_int(s.section_panels.size()).is_equal(6)
+	for p: Control in s.section_panels:
+		var r := p.get_global_rect()
+		assert_float(r.position.x).is_equal_approx(64.0, 0.5)
+		assert_float(r.end.x).is_equal_approx(1856.0, 0.5)
+
+
+func test_overlay_mode_has_opaque_shade_and_no_backdrop() -> void:
+	var s := _screen(true)
+	assert_object(s.backdrop).is_null()
+	assert_object(s.shade).is_not_null()
+	assert_that(s.shade.color).is_equal(Color(Palette.ABYSS_900, 0.85))
+	assert_int(s.find_children("*", "AbyssBackdrop", true, false).size()).is_equal(0)

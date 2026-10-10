@@ -16,9 +16,7 @@ const ALLOW: Array[String] = [
 
 ## Files that still hold literals and are waiting for their migration plan.
 ## Each migration plan removes its file; plan 24 empties this list.
-const PENDING_MIGRATION: Array[String] = [
-	"res://src/ui/settings_screen.gd",
-]
+const PENDING_MIGRATION: Array[String] = []
 
 const SCRIPT_PATTERN := "Color\\(\\s*\"|Color\\(\\s*[0-9.]|Color8\\(|Color\\.(?!TRANSPARENT\\b)[A-Z][A-Z_0-9]*\\b"
 const SCENE_PATTERN := "Color\\(([^)]*)\\)"
@@ -146,6 +144,9 @@ const LEGACY_FREE: Array[String] = [
 	"res://src/ui/fail_screen.gd",
 	"res://src/ui/confirm_dialog.gd",
 	"res://src/ui/goggles_intro.gd",
+	"res://src/ui/settings_screen.gd",
+	"res://src/ui/step_slider.gd",
+	"res://src/ui/rebind_cell.gd",
 ]
 const LEGACY_PATTERN := "Palette\\.(BG|PANEL|DIM|TEXT|ACCENT|DESTRUCTIVE|REC_TEXT)\\b"
 
