@@ -3,23 +3,12 @@ extends RefCounted
 ## Single source of UI colors, spacing tokens and fonts (UI-SPEC). No other hues exist.
 ## Only file allowed to contain colour literals (VIS-01).
 
-const BG := Color("000000")  # dominant 60%
-const PANEL := Color("0A1F0A")  # panels, hull track
-const DIM := Color("1F8F0C")  # dividers, borders
-const TEXT := Color("8FD98A")  # secondary text, GOOD
-const ACCENT := Color("39FF14")  # hull line, notes, focus, PERFECT
-const DESTRUCTIVE := Color("FF4A3D")  # MISS, critical hull
-
-## HUD off-white text (#E8E6F0): multiplier values and badge text.
-const REC_TEXT := Color("E8E6F0")
-
 ## Per-lane identity colors (D-02), lane order. ACCENT stays for hull line, edges, HUD.
 const LANE_COLORS: Array[Color] = [Color("22D3EE"), Color("FBBF24"), Color("F472B6"), Color("A3E635")]
 ## RGB multiplier for notes outside the Good window (alpha is never reduced).
 const NOTE_DIM := 0.60
 
-## ---- Abyssal Cockpit tokens (02.2 UI-SPEC section 3.1). Legacy names above keep their
-## values until plan 04 flips them; plan 24 deletes them.
+## ---- Abyssal Cockpit tokens (02.2 UI-SPEC section 3.1).
 const ABYSS_900 := Color("03060D")  # dominant base (60%)
 const ABYSS_850 := Color("06101E")  # menu backdrop gradient mid-stop
 const ABYSS_800 := Color("060D1A")  # deep fills, gauge tubes, console base
@@ -55,6 +44,15 @@ const COVER_GRADIENTS: Array = [
 	[Color("0E3046"), Color("060D1A")],
 	[Color("1B1236"), Color("03060D")],
 ]
+## ---- Legacy aliases (pre-02.2 names), flipped to the Abyssal Cockpit tokens in plan 04.
+const BG := ABYSS_900  # legacy alias, removed in plan 24
+const PANEL := ABYSS_700  # legacy alias, removed in plan 24
+const DIM := ABYSS_500  # legacy alias, removed in plan 24
+const TEXT := TEXT_MID  # legacy alias, removed in plan 24
+const ACCENT := SONAR  # legacy alias, removed in plan 24
+const DESTRUCTIVE := WARNING_RED  # legacy alias, removed in plan 24
+const REC_TEXT := TEXT_HI  # legacy alias, removed in plan 24
+
 const PANEL_ALPHA := 0.82
 const HIGHWAY_ALPHA := 0.90
 
@@ -206,14 +204,13 @@ static func display_font() -> Font:
 	return _display
 
 
-## The shared Theme; a minimal palette-only Theme if the .tres cannot be loaded.
+## The shared Theme: ui/undertow_theme.tres (generated from tokens by tools/make_theme.gd),
+## or UiKit.build_theme() when the file is missing. Low effects uses the glow-free build.
 static func load_theme() -> Theme:
+	if UiKit.low_effects():
+		return UiKit.build_theme(true)
 	if ResourceLoader.exists(THEME_PATH):
 		var t := load(THEME_PATH) as Theme
 		if t != null:
 			return t
-	var fb := Theme.new()
-	fb.default_font = font()
-	fb.default_font_size = SIZE_BODY
-	fb.set_color("font_color", "Label", TEXT)
-	return fb
+	return UiKit.build_theme(false)
