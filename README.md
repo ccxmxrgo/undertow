@@ -31,6 +31,16 @@ and propagates the exit code (0 = pass, 100 = test failures). gdUnit4 6.2.1 need
 Note: real-audio timing cannot be proven headless (the Dummy audio driver has no real device clock).
 Use the non-headless Drift Harness and the F3 overlay for that.
 
+## Windowed test launches open on the second monitor
+
+`tools/playtest/run_all.ps1` starts every harness window on the first non-primary monitor
+(Godot `--position`, found with `System.Windows.Forms.Screen`), so test runs do not cover the main
+screen. Windowed tool scripts (`tools/make_wordmark.gd`, `tools/audio_device_probe.gd`) move their
+window there through `tools/test_screen.gd`. The perf scenario's 1920x1080 / fullscreen capture uses
+the screen the window is on and restores the window to it. Set `UNDERTOW_TEST_SCREEN=primary` to
+use the main monitor instead (default `secondary`; with one monitor the primary is used). Each
+scenario JSON logs `window_screen`, `window_screen_position` and `window_position`.
+
 ## Layout
 
 ```

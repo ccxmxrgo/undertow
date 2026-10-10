@@ -41,6 +41,7 @@ func _run() -> void:
 		push_error("make_wordmark: run windowed (the headless renderer draws nothing).")
 		quit(1)
 		return
+	preload("res://tools/test_screen.gd").move_window()  # windowed tools open on the test (secondary) screen
 	var vp := SubViewport.new()
 	vp.size = CANVAS
 	vp.transparent_bg = true

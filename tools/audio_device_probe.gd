@@ -7,6 +7,7 @@ extends SceneTree
 
 
 func _init() -> void:
+	preload("res://tools/test_screen.gd").move_window()  # windowed tools open on the test (secondary) screen
 	print("Godot: ", Engine.get_version_info().get("string", "?"))
 	print("Audio driver: ", AudioServer.get_driver_name() if AudioServer.has_method("get_driver_name") else "n/a")
 	print("output_device: '", AudioServer.output_device, "'")

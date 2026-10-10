@@ -6,6 +6,7 @@ extends Node
 
 
 func _ready() -> void:
+	preload("res://tools/test_screen.gd").move_window()  # secondary monitor unless UNDERTOW_TEST_SCREEN=primary
 	var script := load("res://tools/playtest/playtest_driver.gd") as GDScript
 	if script == null or not script.can_instantiate():
 		push_error("playtest driver failed to compile")

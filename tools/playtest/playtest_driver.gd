@@ -189,6 +189,12 @@ func env_info() -> Dictionary:
 		"refresh_hz": DisplayServer.screen_get_refresh_rate(),
 		"vsync_mode": DisplayServer.window_get_vsync_mode(),
 		"window_size": str(DisplayServer.window_get_size()),
+		# Test windows open on the secondary monitor (run_all.ps1 --position, UNDERTOW_TEST_SCREEN).
+		"window_screen": DisplayServer.window_get_current_screen(),
+		"window_screen_position": str(DisplayServer.screen_get_position(DisplayServer.window_get_current_screen())),
+		"window_position": str(DisplayServer.window_get_position()),
+		"primary_screen": DisplayServer.get_primary_screen(),
+		"screen_count": DisplayServer.get_screen_count(),
 		"joypads": Input.get_connected_joypads(),
 	}
 	if AudioServer.has_method("get_driver_name"):
@@ -3504,15 +3510,20 @@ func _force_capture_window() -> Dictionary:
 		"pos": DisplayServer.window_get_position(),
 		"borderless": DisplayServer.window_get_flag(DisplayServer.WINDOW_FLAG_BORDERLESS),
 	}
+	# Always the screen the window is on (the secondary monitor under run_all.ps1), never screen 0
+	# or the primary, so the capture never takes over the user's main monitor.
 	var scr := DisplayServer.window_get_current_screen()
 	var screen := DisplayServer.screen_get_size(scr)
 	saved["screen"] = screen
+	saved["screen_index"] = scr
 	if screen == PERF_RES:
+		DisplayServer.window_set_current_screen(scr)
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	else:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		await frame()
 		DisplayServer.window_set_size(PERF_RES)
+		DisplayServer.window_set_position(DisplayServer.screen_get_position(scr))
 	for k in range(3):
 		await frame()
 	saved["capture_mode"] = DisplayServer.window_get_mode()
@@ -3520,6 +3531,9 @@ func _force_capture_window() -> Dictionary:
 
 
 func _restore_window(saved: Dictionary) -> void:
+	var scr := int(saved.get("screen_index", DisplayServer.window_get_current_screen()))
+	if DisplayServer.window_get_current_screen() != scr:
+		DisplayServer.window_set_current_screen(scr)
 	if saved["mode"] == DisplayServer.WINDOW_MODE_WINDOWED or saved["mode"] == DisplayServer.WINDOW_MODE_MAXIMIZED:
 		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 		await frame()

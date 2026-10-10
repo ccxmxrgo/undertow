@@ -28,6 +28,23 @@ function Get-UserDataProof {
     } else { $lines += "songs/ absent" }
     return $lines
 }
+# Windowed launches open on the SECOND monitor (user request 2026-10-10) so they do not disturb the main one.
+# Override with UNDERTOW_TEST_SCREEN=primary|secondary (default secondary); one monitor = the primary.
+function Get-TestScreenPosition {
+    Add-Type -AssemblyName System.Windows.Forms
+    $screens = [System.Windows.Forms.Screen]::AllScreens
+    $want = "$env:UNDERTOW_TEST_SCREEN".Trim().ToLower()
+    $target = [System.Windows.Forms.Screen]::PrimaryScreen
+    if ($want -ne "primary") {
+        $other = $screens | Where-Object { -not $_.Primary } | Select-Object -First 1
+        if ($other) { $target = $other }
+    }
+    $b = $target.Bounds
+    # The project window is 1600x900: inset (160, 90) centres it on a 1920x1080 screen.
+    return "{0},{1}" -f ($b.X + 160), ($b.Y + 90)
+}
+$testPos = Get-TestScreenPosition
+Write-Host "[note] harness window position $testPos (UNDERTOW_TEST_SCREEN='$env:UNDERTOW_TEST_SCREEN')"
 $proofBefore = Get-UserDataProof
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 foreach ($f in $protected) {
@@ -45,7 +62,7 @@ try {
         $limit = if ($s -eq "drift") { 600 } elseif ($s -eq "perf") { 480 } elseif ($s -eq "visual") { 450 } elseif ($s -eq "songs") { 420 } elseif ($s -eq "autoplay5") { 630 } else { 300 }
         $log = Join-Path $root "build\playtest\${s}_stdout.txt"
         $err = Join-Path $root "build\playtest\${s}_stderr.txt"
-        $p = Start-Process -FilePath $godot -ArgumentList @("--path", ".", "res://tools/playtest/playtest.tscn", "--", $s, "--no-boot-scan") `
+        $p = Start-Process -FilePath $godot -ArgumentList @("--path", ".", "--position", $testPos, "res://tools/playtest/playtest.tscn", "--", $s, "--no-boot-scan") `
             -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError $err
         $null = $p.Handle
         if (-not $p.WaitForExit($limit * 1000)) {
