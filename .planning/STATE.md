@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-23-PLAN.md
-last_updated: "2026-10-10T21:50:17.825Z"
+stopped_at: Completed 02.2-24-PLAN.md
+last_updated: "2026-10-10T22:30:13.262Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 63
+  completed_plans: 64
   percent: 56
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 24 of 25
+Plan: 25 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [██████████] 97%
+Progress: [██████████] 98%
 
 ## Performance Metrics
 
@@ -92,6 +92,7 @@ Progress: [██████████] 97%
 | Phase 02.2 P21 | ~35min | 2 tasks | 8 files |
 | Phase 02.2 P22 | ~32min | 2 tasks | 10 files |
 | Phase 02.2 P23 | 25 min | 2 tasks | 9 files |
+| Phase 02.2 P24 | 38min | 2 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -172,6 +173,9 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-21: Settings toggles are PillToggle buttons whose text stays ON/OFF; Reduce screen shake renamed Reduce motion — UI-SPEC 9.3/14; tests and harness keep using .text and pressed
 - [Phase 02.2]: 02.2-22: ScreenTransition autoload is the single scene-change choke point (sonar wipe 150+150 ms, 400 ms failsafe); only the cover consumes input and a press there jumps to the end; the reveal passes input; scene load time comes out of the reveal (floor half)
 - [Phase 02.2]: 02.2-23: UiSounds plays move only after a navigation press (programmatic focus silent); blips suppressed while a Gameplay is RUNNING and muted for the whole calibration AUDIO/VISUAL steps; drawn HUD chips (MAX, NO-FAIL, AUTOPLAY) became child Controls so UiKit.pop_in animates them
+- [Phase 02.2]: 02.2-24: Song Select's focus-marker owner is SongSelect (it draws its own list bar/caret); results gained a FocusMarker (UI-SPEC 4.3)
+- [Phase 02.2]: 02.2-24: HighwayNotes is a registered effect node (Low hides the additive halo layer); effect counts expose capability flags (glint_enabled, frozen)
+- [Phase 02.2]: 02.2-24: cloud perf capture (xvfb llvmpipe) logged as NOT representative; no cut steps; plan 24 (final) perf row pending the user's PC
 
 ### Pending Todos
 
@@ -187,6 +191,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T21:50:09.276Z
-Stopped at: Completed 02.2-23-PLAN.md
+Last session: 2026-10-10T22:30:13.232Z
+Stopped at: Completed 02.2-24-PLAN.md
 Resume file: None

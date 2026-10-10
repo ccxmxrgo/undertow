@@ -100,3 +100,16 @@
   none are heard during a dive or the calibration pings.
 - **Scenario a gave one 68.87 ms run** among 58.46 / 59.97 ms runs (the known 58-60 ms cloud value).
   This is xvfb frame-cost noise; the run 1 path did not change in this plan.
+
+## Found in 02.2-24
+
+- **Scenario perf under xvfb cannot produce a gate result.** Under Mesa llvmpipe (software GL) the frame
+  times are about 50 ms. Also, the capture window stays at 1600x900 because xvfb has no window manager,
+  so the FULLSCREEN request does not resize it. Full p95 was 57.9 ms and Low p95 42.5 ms, logged in
+  02.2-PERF.md as not representative. No cut step was applied. The "plan 24 (final)" row needs the
+  Windows PC.
+- **Scenario visual "judgment popup readable" depends on the song moment of the burst shot.** At
+  0.35 s it samples a popup that is crowd-skipped to its fade when a newer judgment lands in a dense
+  passage. Running the plan 24 readability steps inside the same dive moved the shot and made the
+  check fail. Those steps now run on their own dive. Possible hardening: pick the popup by birth
+  time and skip the sample when a newer popup was born within 0.35 s.

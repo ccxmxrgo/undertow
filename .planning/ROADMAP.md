@@ -116,7 +116,7 @@ Plans:
 
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 23/25 plans executed
+**Plans:** 24/25 plans executed
 
 Plans:
 
@@ -143,7 +143,7 @@ Plans:
 - [x] 02.2-21-PLAN.md — Settings and calibration restyle + visual review
 - [x] 02.2-22-PLAN.md — Sonar-wipe ScreenTransition at the 5 call sites
 - [x] 02.2-23-PLAN.md — UI navigation blips (muted in gameplay and calibration), chip pop
-- [ ] 02.2-24-PLAN.md — Low/Reduce enumeration test, final 1080p perf gate (FAILED-gate path), 5-song autoplay, cleanup, final visual review
+- [x] 02.2-24-PLAN.md — Low/Reduce enumeration test, final 1080p perf gate (FAILED-gate path), 5-song autoplay, cleanup, final visual review
 - [ ] 02.2-25-PLAN.md — Final verification, v0.5 build, UAT sheet with screenshots (+ perf decision row if needed), human checkpoint
 
 ### Phase 02.1: Instrument Extraction Tool (INSERTED)
