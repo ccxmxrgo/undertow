@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-03-PLAN.md
-last_updated: "2026-10-10T10:44:12.827Z"
+stopped_at: Completed 02.2-04-PLAN.md
+last_updated: "2026-10-10T10:55:46.865Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 43
+  completed_plans: 44
   percent: 56
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 4 of 25
+Plan: 5 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
@@ -72,6 +72,7 @@ Progress: [#########.] 93%
 | Phase 02.2 P01 | 95min | 2 tasks | 8 files |
 | Phase 02.2 P02 | 25 min | 2 tasks | 4 files |
 | Phase 02.2 P03 | 35min | 2 tasks | 8 files |
+| Phase 02.2 P04 | 12 min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -117,6 +118,8 @@ Recent decisions affecting current work:
 - [Phase 02.2]: PENDING_MIGRATION starts with 7 src/ui files; each migration plan removes its file, plan 24 empties it
 - [Phase 02.2]: beats_between counts quarter beats from the first tempo segment; each TS anchors a new bar; off-beat bar starts (7/8) are own entries
 - [Phase 02.2]: Chart time signatures are clamped (num 1..32, exp 0..5), default 4/4 at chart start; sections/time_sigs never enter the fingerprint
+- [Phase 02.2]: 02.2-04: Theme is generated from Palette tokens by UiKit.build_theme() and saved by tools/make_theme.gd; a sync test fails if ui/undertow_theme.tres drifts. Low effects uses build_theme(true) (no glow shadows)
+- [Phase 02.2]: 02.2-04: Oxanium[wght].ttf kept with brackets (imports fine); weight 700 via integer name_to_tag("wght"); legacy Palette aliases now point at abyss/sonar tokens until plan 24
 
 ### Pending Todos
 
@@ -132,6 +135,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T10:44:12.822Z
-Stopped at: Completed 02.2-03-PLAN.md
+Last session: 2026-10-10T10:55:46.859Z
+Stopped at: Completed 02.2-04-PLAN.md
 Resume file: None
