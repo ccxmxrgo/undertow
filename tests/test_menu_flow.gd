@@ -318,3 +318,115 @@ func test_records_load_error_shown_once() -> void:
 	assert_bool(FileAccess.file_exists(SCORES_TMP + ".bak")).is_true()
 	var m2 := _main_menu()
 	assert_object(m2.records_error_label).is_null()
+
+
+# ---- 02.2 plan 06: living title screen ----------------------------------------------------
+
+const MENU_TEXTS: Array[String] = ["Start Dive", "Practice Dive (No-Fail)", "Calibrate Sonar", "Settings",
+	"Autoplay Dive (test)", "Open Songs Folder", "Quit Game"]
+const MENU_ICONS: Array[String] = ["dive", "lifebuoy", "sonar", "sliders", "auto", "folder", "power"]
+const MENU_TOPS: Array[float] = [416.0, 488.0, 560.0, 632.0, 704.0, 776.0, 848.0]
+const MENU_DESCRIPTIONS: Array[String] = [
+	"Pick a song and dive. Your hull is on the line.",
+	"Dive without imploding. Records are not saved.",
+	"Line up audio and visuals for tight timing.",
+	"Controls, scroll speed, effects and volume.",
+	"Watch the sub play a song by itself.",
+	"Add Clone Hero song folders or .zip files.",
+	"Surface and close UNDERTOW.",
+]
+
+
+func _menu_buttons(m: MainMenu) -> Array:
+	return [m.start_button, m.practice_button, m.calibrate_button, m.settings_button,
+		m.autoplay_button, m.open_folder_button, m.quit_button]
+
+
+func test_menu_buttons_have_fixed_rects_icons_and_order() -> void:
+	var m := _main_menu()
+	m.finish_entrance()
+	var order := _menu_buttons(m)
+	for i in order.size():
+		var b: Button = order[i]
+		assert_str(b.text).is_equal(MENU_TEXTS[i])
+		assert_vector(b.position).override_failure_message("%s at %s" % [b.text, b.position]) \
+			.is_equal(Vector2(128.0, MENU_TOPS[i]))
+		assert_vector(b.size).override_failure_message("%s size %s" % [b.text, b.size]).is_equal(Vector2(512.0, 64.0))
+		assert_str(String(b.get_meta(&"ui_icon", ""))).is_equal(MENU_ICONS[i])
+		assert_float(b.modulate.a).is_equal(1.0)
+	assert_str(String(m.start_button.get_meta(&"ui_variant", ""))).is_equal("primary")
+	assert_str(String(m.quit_button.get_meta(&"ui_variant", ""))).is_equal("default")
+
+
+func test_focus_sets_description_for_every_item() -> void:
+	var m := _main_menu()
+	await get_tree().process_frame
+	var order := _menu_buttons(m)
+	for i in order.size():
+		(order[i] as Button).grab_focus()
+		assert_str(m.description_label.text).is_equal(MENU_DESCRIPTIONS[i])
+	m.start_button.grab_focus()
+	assert_str(m.description_label.text).is_equal(MENU_DESCRIPTIONS[0])
+
+
+func test_wordmark_assets_are_1920x304_with_wide_coverage() -> void:
+	for path in [LogoWordmark.WORDMARK_PATH, LogoWordmark.GLOW_PATH]:
+		var tex := load(path) as Texture2D
+		assert_object(tex).override_failure_message("missing " + path).is_not_null()
+		var img := tex.get_image()
+		if img.is_compressed():
+			img.decompress()
+		img.clear_mipmaps()
+		assert_int(img.get_width()).is_equal(1920)
+		assert_int(img.get_height()).is_equal(304)
+	var mark := (load(LogoWordmark.WORDMARK_PATH) as Texture2D).get_image()
+	mark.clear_mipmaps()
+	var cols := 0
+	for x in mark.get_width():
+		for y in range(0, mark.get_height(), 4):
+			if mark.get_pixel(x, y).a > 0.5:
+				cols += 1
+				break
+	assert_float(float(cols) / mark.get_width()).override_failure_message("ink columns %d" % cols) \
+		.is_greater_equal(0.3)
+
+
+func test_backdrop_first_and_logo_layout() -> void:
+	var m := _main_menu()
+	var bd := m.get_child(0) as AbyssBackdrop
+	assert_object(bd).is_not_null()
+	assert_str(bd.variant).is_equal("title")
+	assert_object(m.logo).is_not_null()
+	assert_bool(m.logo is TextureRect).is_true()
+	assert_vector(m.logo.position).is_equal(Vector2(120.0, 168.0))
+	assert_vector(m.logo.size).is_equal(Vector2(960.0, 152.0))
+	assert_str(m.logo.texture.resource_path).is_equal(LogoWordmark.WORDMARK_PATH)
+	assert_object(m.logo.material as ShaderMaterial).is_not_null()
+	assert_object(m.description_label).is_not_null()
+
+
+func test_logo_shimmer_and_glow_follow_effect_settings() -> void:
+	var m := _main_menu()
+	var logo: LogoWordmark = m.logo
+	assert_bool(logo.is_in_group(UiKit.FX_GROUP)).is_true()
+	assert_dict(logo.effect_counts()).is_equal({"shimmer": true, "glow": true})
+	assert_bool(logo.glow.visible).is_true()
+	Settings.low_effects = true
+	Settings.settings_changed.emit()
+	assert_dict(logo.effect_counts()).is_equal({"shimmer": false, "glow": false})
+	assert_bool(logo.glow.visible).is_false()
+	assert_bool(bool((logo.material as ShaderMaterial).get_shader_parameter("enabled"))).is_false()
+	Settings.low_effects = false
+	Settings.reduce_motion = true
+	Settings.settings_changed.emit()
+	assert_dict(logo.effect_counts()).is_equal({"shimmer": false, "glow": true})
+	Settings.reduce_motion = false
+	Settings.settings_changed.emit()
+	assert_bool(bool((logo.material as ShaderMaterial).get_shader_parameter("enabled"))).is_true()
+
+
+func test_glow_hidden_when_built_in_low_effects() -> void:
+	Settings.low_effects = true
+	var m := _main_menu()
+	assert_bool(m.logo.glow.visible).is_false()
+	assert_int(int((m.get_child(0) as AbyssBackdrop).effect_counts()["snow"])).is_equal(30)
