@@ -132,7 +132,7 @@ func test_fail_screen_fills_viewport_dims_and_blocks() -> void:
 	await _frames(3)
 	var fs: FailScreen = gp.fail_screen
 	_assert_full(fs)
-	_assert_dim(fs, 0.7)
+	_assert_dim(fs, 0.9)
 	assert_int(fs.mouse_filter).is_equal(Control.MOUSE_FILTER_STOP)
 	_assert_centered(fs.retry_button.get_parent())
 	await _click_blocked(gp)
@@ -161,7 +161,7 @@ func test_results_screen_fills_viewport_dims_and_blocks() -> void:
 	await _frames(3)
 	var rs: ResultsScreen = gp.results
 	_assert_full(rs)
-	_assert_dim(rs, 0.85)
+	_assert_dim(rs, 1.0)
 	assert_int(rs.mouse_filter).is_equal(Control.MOUSE_FILTER_STOP)
 	_assert_centered(rs.retry_button.get_parent())
 	await _click_blocked(gp)
@@ -268,3 +268,93 @@ func test_results_ineligible_and_non_record_copy() -> void:
 	var a := _results({"eligible": false}, false, true)
 	assert_bool(a.flags.has("AUTOPLAY USED")).is_true()
 	assert_bool(a.flags.has("PRACTICE DIVE")).is_false()
+
+
+# --- VIS-05 / D-20: results never show the main menu behind them ---------------------------------
+
+
+## Mirrors SceneTree.change_scene_to_file for a scene hosted under the test: the old scene leaves the
+## tree and is freed, the new one takes its place (MainMenu/SongSelect navigate hooks call this).
+func _change_scene(old: Node, path: String) -> Node:
+	var host := old.get_parent()
+	host.remove_child(old)
+	old.queue_free()
+	var nxt: Node = (load(path) as PackedScene).instantiate()
+	host.add_child(nxt)
+	auto_free(nxt)
+	return nxt
+
+
+func _visible_menus() -> Array:
+	var out: Array = []
+	for n in get_tree().root.find_children("*", "MainMenu", true, false):
+		if n.is_inside_tree() and not n.is_queued_for_deletion() and (n as CanvasItem).is_visible_in_tree():
+			out.append(n)
+	return out
+
+
+func test_results_after_menu_show_no_main_menu() -> void:
+	MainMenu.boot_handled = true
+	var menu: MainMenu = (load("res://scenes/main_menu.tscn") as PackedScene).instantiate()
+	add_child(menu)
+	await _frames(3)
+	# A real MainMenu exists in the tree before the dive.
+	assert_int(get_tree().root.find_children("*", "MainMenu", true, false).size()).is_greater_equal(1)
+	var target := [null]
+	menu.navigate = func(path: String) -> void: target[0] = _change_scene(menu, path)
+	Gameplay.pending_chart = TestCharts.short_chart()
+	Gameplay.pending_autoplay = false
+	menu.navigate.call(SCENE)
+	await _frames(3)
+	var gp := target[0] as Gameplay
+	assert_object(gp).is_not_null()
+	gp._finish()
+	await _frames(3)
+	assert_object(gp.results).is_not_null()
+	assert_int(gp.state).is_equal(Gameplay.State.DONE)
+	var vis := _visible_menus()
+	assert_array(vis).override_failure_message("MainMenu visible behind results: %s" % [vis]).is_empty()
+	# Nothing outside the results screen is in the focus graph.
+	var fo := gp.get_viewport().gui_get_focus_owner()
+	if fo != null:
+		assert_bool(gp.results.is_ancestor_of(fo)).override_failure_message(
+			"focus outside results: %s" % fo).is_true()
+	# Results backdrop is fully opaque.
+	_assert_dim(gp.results, 1.0)
+
+
+func test_results_buttons_form_closed_focus_loop() -> void:
+	var gp := _launch()
+	await _frames(3)
+	gp._finish()
+	await _frames(3)
+	var rs: ResultsScreen = gp.results
+	var pairs := [[rs.retry_button, rs.menu_button], [rs.menu_button, rs.retry_button]]
+	for pair in pairs:
+		var a: Button = pair[0]
+		var b: Button = pair[1]
+		for side in [SIDE_LEFT, SIDE_TOP, SIDE_RIGHT, SIDE_BOTTOM]:
+			var np: NodePath = a.get_focus_neighbor(side)
+			assert_bool(not np.is_empty() and a.get_node_or_null(np) == b).override_failure_message(
+				"%s side %d -> %s, expected %s" % [a.text, side, np, b.text]).is_true()
+			assert_object(a.find_valid_focus_neighbor(side)).is_same(b)
+		assert_object(a.get_node_or_null(a.focus_next)).is_same(b)
+		assert_object(a.get_node_or_null(a.focus_previous)).is_same(b)
+	# Real ui_* navigation stays inside the two buttons.
+	rs.retry_button.grab_focus()
+	await _frames(1)
+	for action in ["ui_left", "ui_right", "ui_up", "ui_down"]:
+		var before := gp.get_viewport().gui_get_focus_owner()
+		var ev := InputEventAction.new()
+		ev.action = action
+		ev.pressed = true
+		gp.get_viewport().push_input(ev)
+		var up := InputEventAction.new()
+		up.action = action
+		up.pressed = false
+		gp.get_viewport().push_input(up)
+		await _frames(1)
+		var after := gp.get_viewport().gui_get_focus_owner()
+		assert_bool(after == rs.retry_button or after == rs.menu_button).override_failure_message(
+			"%s left the results buttons: %s" % [action, after]).is_true()
+		assert_bool(after != before).override_failure_message("%s did not move focus" % action).is_true()
