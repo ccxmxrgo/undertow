@@ -29,6 +29,13 @@ const SORT_RECT := Rect2(760.0, 64.0, 248.0, 48.0)
 const PATH_RECT := Rect2(1056.0, 984.0, 800.0, 32.0)
 const TILE_X: Array[float] = [1080.0, 1272.0, 1464.0, 1656.0]
 const TILE_Y := 488.0
+## Detail panel top half (UI-SPEC 6): cover, title block, stats, best values.
+const COVER_RECT := Rect2(1080.0, 144.0, 256.0, 256.0)
+const INFO_X := 1360.0
+const INFO_W := 472.0
+const STAT_X: Array[float] = [1360.0, 1520.0, 1680.0]
+const STAT_W := 152.0
+const BEST_X: Array[float] = [1080.0, 1336.0, 1592.0]
 
 const C_PANEL := Color("0D1424")
 const C_SEL := Color("123A52")
@@ -96,6 +103,8 @@ var _scan_unplayable: int = 0
 var _show_debug: bool = false
 var _font: Font
 var _bold: Font
+## Heading 40 (Oxanium Bold, STM then system fallback for song strings).
+var _heading: Font
 var _fit_cache: Dictionary = {}
 var _last_click_msec: int = 0
 var _last_click_row: int = -1
@@ -118,6 +127,14 @@ var _stream_cache: Array = []
 ## until engine shutdown, which crashed the game on quit (0xC0000005, 02-06 harness finding).
 var _preview_tasks: Array[int] = []
 
+# album cover (D-11): selected song only, worker-loaded, never while the library scans
+var _cover: AlbumCover
+var _cover_id: String = ""
+var _cover_art: Texture2D
+var _cover_fade: float = 0.0
+var _cover_tween: Tween
+var _cover_wait: bool = false
+
 var _arena: Arena
 var _panes: Array[Pane] = []
 var _p_header: Pane
@@ -138,6 +155,7 @@ func _ready() -> void:
 	if library == null:
 		library = get_node_or_null("/root/SongLibrary")
 	_make_fonts()
+	_cover = AlbumCover.new()
 	_arena = Arena.new()
 	_arena.menu_mode = true
 	_arena.name = "Arena"
@@ -180,6 +198,8 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	_stop_preview(false)
 	_reap_preview_tasks(true)
+	if _cover != null:
+		_cover.shutdown()
 	if library != null:
 		for pair in [[library.scan_started, _on_scan_started], [library.entries_added, _on_entries_added],
 				[library.progress, _on_progress], [library.scan_finished, _on_scan_finished]]:
@@ -215,6 +235,10 @@ func _make_fonts() -> void:
 	b.variation_embolden = 0.5
 	b.fallbacks = fb
 	_bold = b
+	var h := Palette.display_font().duplicate() as FontVariation
+	var hfb: Array[Font] = [Palette.font(), sys]
+	h.fallbacks = hfb
+	_heading = h
 
 
 # ---- data ----
@@ -418,6 +442,41 @@ func _selection_changed() -> void:
 	var e := _selected()
 	var can_preview := e != null and e.status != "broken" 			and (not e.audio_files.is_empty() or preview_loader.is_valid())
 	_preview_state = "pending" if can_preview else "none"
+	_request_cover()
+
+
+## Shows the generated cover at once and asks AlbumCover for the selected song's art. While
+## the library scans, an uncached request waits until the scan ends (T-02.2-32).
+func _request_cover() -> void:
+	var e := _selected()
+	var id := e.id if e != null else ""
+	if id == _cover_id:
+		return
+	_cover_id = id
+	_cover_art = null
+	_cover_fade = 0.0
+	_cover_wait = false
+	if _cover_tween != null:
+		_cover_tween.kill()
+		_cover_tween = null
+	if _cover == null or e == null or AlbumCover.art_dir(e) == "":
+		return
+	if library != null and library.scanning and not _cover.is_cached(id):
+		_cover_wait = true
+		return
+	_cover.request(e, _on_cover)
+
+
+func _on_cover(id: String, tex: Texture2D, cached: bool) -> void:
+	if id != _cover_id or tex == null:
+		return
+	_cover_art = tex
+	if cached or not is_inside_tree():
+		_cover_fade = 1.0
+		return
+	_cover_fade = 0.0
+	_cover_tween = create_tween()
+	_cover_tween.tween_property(self, "_cover_fade", 1.0, Palette.DUR_BASE)
 
 
 func _move(delta: int) -> void:
@@ -788,6 +847,11 @@ func _process(delta: float) -> void:
 		_message_kind = ""
 	tick_preview(Time.get_ticks_msec())
 	_reap_preview_tasks(false)
+	if _cover != null:
+		_cover.reap(false)
+		if _cover_wait and (library == null or not library.scanning):
+			_cover_id = ""
+			_request_cover()
 	for p in _panes:
 		p.queue_redraw()
 
@@ -906,6 +970,7 @@ func debug_state() -> Dictionary:
 		"start_enabled": _start_enabled(), "message": _message, "empty_state": empty,
 		"offset": _offset, "diving": _diving, "scan_text": _scan_text(),
 		"onboarding": _view.has(null),
+		"cover": "art" if _cover_art != null else "generated",
 	}
 
 
@@ -965,16 +1030,31 @@ func _w(s: String, size: int, bold: bool = false) -> float:
 
 ## Truncate by measured width with three ASCII dots (T-02-13).
 func _fit(s: String, size: int, max_w: float, bold: bool = false) -> String:
-	var key := "%s|%d|%d|%s" % [s, size, int(max_w), bold]
+	return _fit_font(_bold if bold else _font, "b" if bold else "r", s, size, max_w)
+
+
+## Heading-font (Oxanium) truncation for the detail panel title and stat values.
+func _fit_heading(s: String, max_w: float) -> String:
+	return _fit_font(_heading, "h", s, Palette.SIZE_HEADING, max_w)
+
+
+func _w_heading(s: String) -> float:
+	return _heading.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1.0, Palette.SIZE_HEADING).x
+
+
+func _fit_font(f: Font, tag: String, s: String, size: int, max_w: float) -> String:
+	var key := "%s|%d|%d|%s" % [s, size, int(max_w), tag]
 	if _fit_cache.has(key):
 		return _fit_cache[key]
 	var out := s
-	if _w(s, size, bold) > max_w:
+	var fw := func(t: String) -> float:
+		return f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1.0, size).x
+	if fw.call(s) > max_w:
 		var lo := 0
 		var hi := s.length()
 		while lo < hi:
 			var mid := (lo + hi + 1) / 2
-			if _w(s.substr(0, mid) + "...", size, bold) <= max_w:
+			if fw.call(s.substr(0, mid) + "...") <= max_w:
 				lo = mid
 			else:
 				hi = mid - 1
@@ -1236,23 +1316,20 @@ func _paint_detail(c: CanvasItem) -> void:
 		_paint_start(c, null)
 		return
 	var ok := e.status == "ok"
-	var tcol := C_TEXT if ok or e.status == "needs_chart" else C_CAP
+	_paint_cover(c, e)
+	var tcol := Palette.TEXT_HI if ok or e.status == "needs_chart" else Palette.TEXT_LO
 	var title := (e.title if e.title != "" else "Untitled").to_upper()
-	var tl := _wrap(title, Palette.SIZE_HEADING, 752.0)
-	if tl.size() > 2:
-		tl = tl.slice(0, 2)
-		tl[1] = _fit(String(tl[1]) + "...", Palette.SIZE_HEADING, 752.0, true)
-	elif tl.size() == 1 and _w(tl[0], Palette.SIZE_HEADING, true) > 752.0:
-		tl[0] = _fit(tl[0], Palette.SIZE_HEADING, 752.0, true)
+	var tl := title_lines(title)
 	for i in tl.size():
-		_txt(c, Vector2(x0, 184 + 48 * i), _fit(tl[i], Palette.SIZE_HEADING, 752.0, true), Palette.SIZE_HEADING, tcol, true)
+		c.draw_string(_heading, Vector2(INFO_X, 184 + 48 * i), tl[i], HORIZONTAL_ALIGNMENT_LEFT,
+				-1.0, Palette.SIZE_HEADING, tcol)
 	var artist := e.artist if e.artist != "" else "Unknown artist"
-	_txt(c, Vector2(x0, 272), _fit(artist, Palette.SIZE_BODY, 752.0), Palette.SIZE_BODY, C_TEXT)
+	_txt(c, Vector2(INFO_X, 272), _fit(artist, Palette.SIZE_BODY, INFO_W), Palette.SIZE_BODY, Palette.TEXT_HI)
 	var charter := ("CHARTED BY " + e.charter.to_upper()) if e.charter != "" else "CHARTED BY UNKNOWN"
-	_txt(c, Vector2(x0, 304), _fit(charter, Palette.SIZE_LABEL, 752.0), Palette.SIZE_LABEL, C_CAP)
+	_txt(c, Vector2(INFO_X, 304), _fit(charter, Palette.SIZE_LABEL, INFO_W), Palette.SIZE_LABEL, Palette.TEXT_LO)
 	_paint_stats(c, e)
-	c.draw_rect(Rect2(x0, 439, 752, 2), Color(C_BORDER, 0.35))
-	_txt(c, Vector2(x0, 476), "DIFFICULTY", Palette.SIZE_LABEL, C_CAP)
+	c.draw_rect(Rect2(x0, 423, 752, 2), Palette.alpha(Palette.SONAR, 0.35))
+	_txt(c, Vector2(x0, 456), "DIFFICULTY", Palette.SIZE_LABEL, Palette.TEXT_LO)
 	_paint_tiles(c, e)
 	if ok:
 		_paint_best(c, e)
@@ -1268,6 +1345,72 @@ func _paint_detail(c: CanvasItem) -> void:
 	_paint_start(c, e)
 	if _show_debug and _diff != "":
 		_txt_r(c, 1832, 696, str(e.difficulty(_diff).get("fingerprint", "")), Palette.SIZE_LABEL, C_CAP)
+
+
+## The detail title as at most 2 Heading lines of INFO_W, the second ending in "..." when cut.
+func title_lines(title_up: String) -> Array:
+	var key := "lines|" + title_up
+	if _fit_cache.has(key):
+		return _fit_cache[key]
+	var lines: Array = []
+	var cur := ""
+	var words := title_up.split(" ", false)
+	var wi := 0
+	while wi < words.size() and lines.size() < 2:
+		var trial: String = words[wi] if cur == "" else cur + " " + words[wi]
+		if _w_heading(trial) <= INFO_W:
+			cur = trial
+			wi += 1
+			continue
+		if cur == "":
+			# One word wider than the line: cut it by width.
+			lines.append(_fit_heading(words[wi], INFO_W))
+			wi += 1
+		else:
+			lines.append(cur)
+			cur = ""
+	if cur != "" and lines.size() < 2:
+		lines.append(cur)
+		cur = ""
+	if wi < words.size() or cur != "":
+		var last: String = lines[lines.size() - 1]
+		var rest := last
+		for k in range(wi, words.size()):
+			rest += " " + words[k]
+		var cut := _fit_heading(rest, INFO_W)
+		if not cut.ends_with("..."):
+			cut = _fit_heading(last + "...", INFO_W)
+			if not cut.ends_with("..."):
+				cut = last + "..."
+		lines[lines.size() - 1] = cut
+	_fit_cache[key] = lines
+	return lines
+
+
+## Album cover (UI-SPEC 4.10): the generated cover (with initials) shows at once; loaded art
+## fades in over it. Chamfered CUT_MD frame, 2 px SONAR 45% edge, corner brackets.
+func _paint_cover(c: CanvasItem, e: SongEntry) -> void:
+	var r := COVER_RECT
+	var pts := UiKit.chamfer_points(r, float(Palette.CUT_MD))
+	var uvs := PackedVector2Array()
+	for p in pts:
+		uvs.append((p - r.position) / r.size)
+	var title := e.title if e.title != "" else "Untitled"
+	var white := PackedColorArray([Palette.WHITE])
+	c.draw_polygon(pts, white, uvs, _cover.generated_texture(title))
+	var art_a := _cover_fade if _cover_art != null else 0.0
+	if art_a < 1.0:
+		var ini := AlbumCover.initials(title)
+		var df := Palette.display_font()
+		var iw := df.get_string_size(ini, HORIZONTAL_ALIGNMENT_LEFT, -1.0, Palette.SIZE_DISPLAY).x
+		c.draw_string(df, Vector2(r.get_center().x - iw * 0.5, r.position.y + r.size.y * AlbumCover.INITIALS_BASELINE),
+				ini, HORIZONTAL_ALIGNMENT_LEFT, -1.0, Palette.SIZE_DISPLAY, Palette.alpha(Palette.TEXT_HI, 1.0 - art_a))
+	if art_a > 0.0:
+		c.draw_polygon(pts, PackedColorArray([Palette.alpha(Palette.WHITE, art_a)]), uvs, _cover_art)
+	var edge := UiKit.chamfer_points(r.grow(-Palette.EDGE * 0.5), float(Palette.CUT_MD))
+	edge.append(edge[0])
+	c.draw_polyline(edge, Palette.alpha(Palette.SONAR, 0.45), Palette.EDGE, true)
+	UiKit.draw_brackets(c, r, Palette.alpha(Palette.SONAR, 0.8))
 
 
 func _source_text(e: SongEntry) -> String:
@@ -1302,7 +1445,6 @@ func _paint_sonar(c: CanvasItem) -> void:
 
 
 func _paint_stats(c: CanvasItem, e: SongEntry) -> void:
-	var xs: Array[float] = [1080.0, 1336.0, 1592.0]
 	var caps := ["LENGTH", "BPM", "NOTES"]
 	var vals := ["-", "-", "-"]
 	var ok := e != null and e.status == "ok"
@@ -1318,9 +1460,10 @@ func _paint_stats(c: CanvasItem, e: SongEntry) -> void:
 			if not d.is_empty():
 				vals[2] = SongListModel.fmt_count(int(d["note_count"]))
 	for i in 3:
-		_txt(c, Vector2(xs[i], 364), caps[i], Palette.SIZE_LABEL, C_CAP)
+		_txt(c, Vector2(STAT_X[i], 348), caps[i], Palette.SIZE_LABEL, Palette.TEXT_LO)
 		var has: bool = vals[i] != "-"
-		_txt(c, Vector2(xs[i], 412), vals[i], Palette.SIZE_HEADING, C_TEAL if has else C_CAP, true)
+		c.draw_string(_heading, Vector2(STAT_X[i], 392), _fit_heading(vals[i], STAT_W), HORIZONTAL_ALIGNMENT_LEFT,
+				-1.0, Palette.SIZE_HEADING, Palette.SONAR if has else Palette.TEXT_LO)
 
 
 func _paint_tiles(c: CanvasItem, e: SongEntry) -> void:
@@ -1346,17 +1489,36 @@ func _paint_tiles(c: CanvasItem, e: SongEntry) -> void:
 		_txt(c, Vector2(r.position.x + 52.0, r.position.y + 46.0), name_up, Palette.SIZE_BODY, C_TEXT, chosen)
 
 
-func _paint_best(c: CanvasItem, e: SongEntry) -> void:
-	var d := e.difficulty(_diff)
-	var cap := "BEST DEPTH - " + _diff.to_upper() if _diff != "" else "BEST DEPTH"
-	_txt(c, Vector2(1080, 604), cap, Palette.SIZE_LABEL, C_CAP)
+## Best values for the selected difficulty (UI-SPEC 6): depth REWARD_GOLD, accuracy TEXT_HI,
+## grade letter in its grade colour ("-" for records saved before grades existed).
+func best_values(e: SongEntry) -> Dictionary:
+	var d := e.difficulty(_diff) if e != null else {}
 	var b: Dictionary = _best_by_fp.get(str(d.get("fingerprint", "")), {})
 	if b.is_empty():
-		_txt(c, Vector2(1080, 652), NO_RECORD, Palette.SIZE_LABEL, C_CAP)
+		return {}
+	var acc := float(b.get("accuracy", -1.0))
+	var grade := str(b.get("grade", ""))
+	return {
+		"depth": "%s M" % Palette.fmt_depth(int(float(b.get("depth", 0.0)))),
+		"accuracy": "%.1f%%" % acc if acc >= 0.0 else "-",
+		"grade": grade if grade != "" else "-",
+	}
+
+
+func _paint_best(c: CanvasItem, e: SongEntry) -> void:
+	var cap := "BEST DEPTH - " + _diff.to_upper() if _diff != "" else "BEST DEPTH"
+	_txt(c, Vector2(BEST_X[0], 600), cap, Palette.SIZE_LABEL, Palette.TEXT_LO)
+	var v := best_values(e)
+	if v.is_empty():
+		_txt(c, Vector2(BEST_X[0], 644), NO_RECORD, Palette.SIZE_LABEL, Palette.TEXT_LO)
 		return
-	_txt(c, Vector2(1336, 604), "ACCURACY", Palette.SIZE_LABEL, C_CAP)
-	_txt(c, Vector2(1080, 652), "%s M" % Palette.fmt_depth(int(float(b["depth"]))), Palette.SIZE_HEADING, C_TEAL, true)
-	_txt(c, Vector2(1336, 652), "%d%%" % int(round(float(b["accuracy"]))), Palette.SIZE_HEADING, C_TEAL, true)
+	_txt(c, Vector2(BEST_X[1], 600), "ACCURACY", Palette.SIZE_LABEL, Palette.TEXT_LO)
+	_txt(c, Vector2(BEST_X[2], 600), "GRADE", Palette.SIZE_LABEL, Palette.TEXT_LO)
+	var cols: Array[Color] = [Palette.REWARD_GOLD, Palette.TEXT_HI, Palette.grade_color(v["grade"])]
+	var keys := ["depth", "accuracy", "grade"]
+	for i in 3:
+		c.draw_string(_heading, Vector2(BEST_X[i], 644), _fit_heading(v[keys[i]], 240.0), HORIZONTAL_ALIGNMENT_LEFT,
+				-1.0, Palette.SIZE_HEADING, cols[i])
 
 
 func _paint_reason(c: CanvasItem, e: SongEntry) -> void:

@@ -2849,6 +2849,16 @@ func _fixture_song(dir: String, title: String, artist: String, seconds: float = 
 	SongFixture.make_wav(dir.path_join("song.wav"), seconds)
 
 
+## A generated first-party art image: four lane-colour bands on the abyss with a sonar ring.
+func _fixture_art(w: int, h: int) -> Image:
+	var img := Image.create(w, h, false, Image.FORMAT_RGB8)
+	img.fill(Palette.ABYSS_700)
+	for i in 4:
+		img.fill_rect(Rect2i(i * w / 4 + 6, h / 3, w / 4 - 12, h / 3), Palette.lane_color(i))
+	img.fill_rect(Rect2i(0, h - 12, w, 6), Palette.SONAR)
+	return img
+
+
 ## 30 user songs: 23 plain, Opus (broken), bare WAV (Needs a chart), long title, CJK/Cyrillic title,
 ## community stems folder, zip, and a 6 s "Dive Test Song" for the full autoplay dive.
 func _make_fixture_library() -> void:
@@ -2866,6 +2876,9 @@ func _make_fixture_library() -> void:
 	SongFixture.make_community(FIXTURE_SONGS.path_join("Community Pack"))
 	var zsrc := LIB_ROOT.path_join("zip_src")
 	_fixture_song(zsrc, "Zipped Song", "Zip Band")
+	# First-party album art (plan 02.2-17): png inside the zip, jpg in a plain folder.
+	_fixture_art(300, 200).save_png(zsrc.path_join("album.png"))
+	_fixture_art(256, 256).save_jpg(FIXTURE_SONGS.path_join("Ebb Tide").path_join("album.jpg"), 0.9)
 	SongFixture.zip_folder(zsrc, FIXTURE_SONGS.path_join("Zipped Song.zip"), "Zipped Song")
 	SongFixture.rm_tree(zsrc)
 	_fixture_song(FIXTURE_SONGS.path_join("Dive Test Song"), "Dive Test Song", "Harness Band", 6.0)
@@ -3174,6 +3187,29 @@ func sc_songs() -> void:
 	var d_back: String = ss.debug_state()["difficulty"]
 	check("difficulty snap: Medium wanted -> Easy on an Easy/Expert song, Medium again on April",
 		d_april == "medium" and d_fixture == "easy" and d_back == "medium", [d_april, d_fixture, d_back])
+
+	# --- album cover (02.2-17, D-11 / D-19) -------------------------------------------------------------------
+	await wait(0.6)
+	check("bundled song shows the generated cover", ss.debug_state()["cover"] == "generated", ss.debug_state()["cover"])
+	await shot("cover_generated")
+	ss.select_for_test(zipped.id)
+	check("zipped song keeps its album.png and shows it as art",
+		await wait_until(func() -> bool: return ss.debug_state()["cover"] == "art", 3.0), ss.debug_state()["cover"])
+	# A fake best record so the shot shows the best-values row (harness state only, nothing saved).
+	var zfp: String = str(zipped.difficulty(ss._diff).get("fingerprint", ""))
+	ss._best_by_fp[zfp] = {"depth": 1240.0, "accuracy": 96.24, "max_combo": 80, "grade": "A", "misses": 1}
+	await wait(0.4)
+	check("best values: depth, accuracy and grade", ss.best_values(zipped) == {"depth": "1,240 M", "accuracy": "96.2%",
+		"grade": "A"}, ss.best_values(zipped))
+	await shot("cover_art_zip_best")
+	ss._best_by_fp.erase(zfp)
+	ss.select_for_test(ebb.id)
+	check("folder album.jpg shows as art",
+		await wait_until(func() -> bool: return ss.debug_state()["cover"] == "art", 3.0), ss.debug_state()["cover"])
+	ss.select_for_test(comm.id)
+	await wait(0.6)
+	check("corrupt album.png falls back to the generated cover", ss.debug_state()["cover"] == "generated",
+		ss.debug_state()["cover"])
 
 	# --- sort orders, broken last ---------------------------------------------------------------------------
 	var sorts := {}
