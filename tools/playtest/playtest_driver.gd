@@ -3101,9 +3101,17 @@ func sc_songs() -> void:
 	metrics["preview_gate_ms"] = gate_ms
 	check("preview starts no sooner than 0.4 s after the highlight change", gate_ms >= 400 and gate_ms < 1500,
 		"%d ms (%s)" % [gate_ms, sel_e.title if sel_e else "?"])
-	check("preview plays the highlighted song on the Music bus", ss.debug_state()["preview_state"] == "playing"
-		and ss._preview_player.playing and ss._preview_player.bus == "Music", ss.debug_state()["preview_state"])
+	check("preview plays the highlighted song on the Preview bus", ss.debug_state()["preview_state"] == "playing"
+		and ss._preview_player.playing and ss._preview_player.bus == &"Preview", ss.debug_state()["preview_state"])
 	await wait(0.5)
+	var viz_max := 0.0
+	for v in ss.visualizer_levels():
+		viz_max = maxf(viz_max, v)
+	metrics["preview_visualizer_max"] = viz_max
+	note("preview visualizer max level %.2f (audio driver %s)" % [viz_max, AudioServer.get_driver_name()])
+	var tiles: Array = ss.debug_state()["tiles"]
+	check("difficulty tiles show note counts and intensity", tiles.size() == 4 and tiles.any(func(t: Dictionary) -> bool:
+		return bool(t["available"]) and String(t["text"]).ends_with(" NOTES") and int(t["intensity"]) >= 1), tiles)
 	await shot("preview_playing")
 
 	# --- (3) throttled rescan with rows inserted above the selection ---------------------------------

@@ -37,6 +37,22 @@ const INTENSITY_NPS: Array[float] = [2.0, 3.5, 5.0, 7.0]
 const PIP_W := 24.0
 const PIP_H := 8.0
 const PIP_GAP := 4.0
+## Preview visualizer (UI-SPEC 6 "Visualizer"): 30 bars from the spectrum analyzer at effect 0 of
+## the Preview bus, log-spaced bands 60 Hz..12 kHz, (dB + 60) / 60, linear attack / release.
+const PREVIEW_BUS := &"Preview"
+const VIZ_BARS := 30
+const VIZ_X0 := 1080.0
+const VIZ_PITCH := 24.0
+const VIZ_W := 20.0
+const VIZ_BOTTOM := 816.0
+const VIZ_MAX_H := 56.0
+const VIZ_TIP := 2.0
+const VIZ_LO_HZ := 60.0
+const VIZ_HI_HZ := 12000.0
+const VIZ_FLOOR_DB := -60.0
+const VIZ_ATTACK_SEC := 0.03
+const VIZ_RELEASE_SEC := 0.18
+const VIZ_STATIC := 0.5
 ## Detail panel top half (UI-SPEC 6): cover, title block, stats, best values.
 const COVER_RECT := Rect2(1080.0, 144.0, 256.0, 256.0)
 const INFO_X := 1360.0
@@ -72,6 +88,8 @@ var navigate: Callable = Callable()
 var library: Node
 ## Callable(entry) -> AudioStream, run on a worker thread. Defaults to library.load_audio.
 var preview_loader: Callable = Callable()
+## Test seam: Callable(lo_hz, hi_hz) -> float linear magnitude. Defaults to the Preview bus analyzer.
+var magnitude_source: Callable = Callable()
 
 var _all: Array[SongEntry] = []
 ## id -> index in _all (rescans replace entries in place instead of clearing the list).
@@ -134,6 +152,10 @@ var _stream_cache: Array = []
 ## _process once finished, in _exit_tree at the latest): an unreaped task keeps its lambda alive
 ## until engine shutdown, which crashed the game on quit (0xC0000005, 02-06 harness finding).
 var _preview_tasks: Array[int] = []
+# visualizer
+var _viz_levels := PackedFloat32Array()
+var _viz_edges := PackedFloat32Array()
+var _reduce: bool = false
 
 # album cover (D-11): selected song only, worker-loaded, never while the library scans
 var _cover: AlbumCover
@@ -197,8 +219,13 @@ func _ready() -> void:
 	_rebuild(false)
 	_initial_selection()
 	_preview_player = AudioStreamPlayer.new()
-	_preview_player.bus = "Music" if AudioServer.get_bus_index("Music") >= 0 else "Master"
+	_preview_player.bus = _preview_bus_name()
 	add_child(_preview_player)
+	_viz_levels.resize(VIZ_BARS)
+	_viz_levels.fill(0.0)
+	_viz_edges = visualizer_band_edges()
+	apply_effect_settings()
+	UiKit.register_fx(self)
 	set_process(true)
 	grab_focus()
 
@@ -855,6 +882,7 @@ func _process(delta: float) -> void:
 		_message_kind = ""
 	tick_preview(Time.get_ticks_msec())
 	_reap_preview_tasks(false)
+	step_visualizer(delta)
 	if _cover != null:
 		_cover.reap(false)
 		if _cover_wait and (library == null or not library.scanning):
@@ -959,6 +987,90 @@ func _stop_preview(fade: bool) -> void:
 	elif _preview_player != null:
 		_preview_player.stop()
 	_preview_state = "none"
+
+
+static func _preview_bus_name() -> StringName:
+	if AudioServer.get_bus_index(PREVIEW_BUS) >= 0:
+		return PREVIEW_BUS
+	return &"Music" if AudioServer.get_bus_index(&"Music") >= 0 else &"Master"
+
+
+# ---- visualizer (VIS-06) ----
+
+## VIZ_BARS + 1 log-spaced band edges from VIZ_LO_HZ to VIZ_HI_HZ.
+static func visualizer_band_edges() -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	var span := VIZ_HI_HZ / VIZ_LO_HZ
+	for i in VIZ_BARS + 1:
+		out.append(VIZ_LO_HZ * pow(span, float(i) / float(VIZ_BARS)))
+	return out
+
+
+## Current bar levels 0..1 (a copy).
+func visualizer_levels() -> PackedFloat32Array:
+	return _viz_levels.duplicate()
+
+
+func _viz_playing() -> bool:
+	return _preview_state == "playing" and Settings.volume_music > 0.0
+
+
+## Advances the bars by `delta` seconds (called from _process; tests call it directly).
+## Playing: targets from the spectrum, rising at full scale per VIZ_ATTACK_SEC and falling at full
+## scale per VIZ_RELEASE_SEC. Not playing: targets 0 (no analyzer queries). Reduce motion: static
+## mid-height bars while the preview plays, nothing otherwise.
+func step_visualizer(delta: float) -> void:
+	if _viz_levels.size() != VIZ_BARS:
+		_viz_levels.resize(VIZ_BARS)
+		_viz_levels.fill(0.0)
+	if _viz_edges.size() != VIZ_BARS + 1:
+		_viz_edges = visualizer_band_edges()
+	var playing := _viz_playing()
+	if _reduce:
+		_viz_levels.fill(VIZ_STATIC if playing else 0.0)
+		return
+	var up := delta / VIZ_ATTACK_SEC
+	var down := delta / VIZ_RELEASE_SEC
+	if not playing:
+		for i in VIZ_BARS:
+			_viz_levels[i] = maxf(0.0, _viz_levels[i] - down)
+		return
+	var src := magnitude_source
+	var inst: AudioEffectSpectrumAnalyzerInstance = null
+	if not src.is_valid():
+		var bus := AudioServer.get_bus_index(PREVIEW_BUS)
+		if bus >= 0 and AudioServer.get_bus_effect_count(bus) > 0:
+			inst = AudioServer.get_bus_effect_instance(bus, 0) as AudioEffectSpectrumAnalyzerInstance
+	for i in VIZ_BARS:
+		var m := 0.0
+		if src.is_valid():
+			m = float(src.call(_viz_edges[i], _viz_edges[i + 1]))
+		elif inst != null:
+			var v := inst.get_magnitude_for_frequency_range(_viz_edges[i], _viz_edges[i + 1])
+			m = maxf(v.x, v.y)
+		var target := 0.0
+		if m > 0.0:
+			target = clampf((linear_to_db(m) - VIZ_FLOOR_DB) / -VIZ_FLOOR_DB, 0.0, 1.0)
+		var cur := _viz_levels[i]
+		if target > cur:
+			_viz_levels[i] = minf(target, cur + up)
+		else:
+			_viz_levels[i] = maxf(target, cur - down)
+
+
+# ---- effect contract (UiKit.register_fx) ----
+
+func apply_effect_settings() -> void:
+	_reduce = UiKit.reduce_motion()
+
+
+## visualizer_animated: bars follow the music (off under Reduce motion; Low keeps them).
+## sweep: the detail-panel sonar sweep (off in Low and under Reduce motion; restyled in plan 19).
+func effect_counts() -> Dictionary:
+	return {
+		"visualizer_animated": not _reduce,
+		"sweep": not (UiKit.low_effects() or _reduce),
+	}
 
 
 # ---- test seam ----
@@ -1606,20 +1718,27 @@ func _paint_preview_row(c: CanvasItem) -> void:
 	if _message_kind == "audio":
 		_txt(c, Vector2(1080, 760), "!", Palette.SIZE_LABEL, Palette.DESTRUCTIVE, true)
 		_txt(c, Vector2(1100, 760), _fit(_message, Palette.SIZE_LABEL, 732.0), Palette.SIZE_LABEL, Palette.DESTRUCTIVE)
+		_paint_viz_line(c)
 		return
-	if _preview_state != "playing" or Settings.volume_music <= 0.0:
+	var any := false
+	for v in _viz_levels:
+		if v > 0.0:
+			any = true
+			break
+	if not any and not _viz_playing():
+		_paint_viz_line(c)
 		return
-	var heights: Array[float] = [12.0, 20.0, 16.0, 8.0]
-	if not Settings.reduce_motion:
-		var bus := AudioServer.get_bus_index("Music")
-		var peak := 0.0
-		if bus >= 0:
-			peak = clampf(db_to_linear(AudioServer.get_bus_peak_volume_left_db(bus, 0)), 0.0, 1.0)
-		for i in 4:
-			heights[i] = 4.0 + 20.0 * clampf(peak * (0.6 + 0.4 * sin(_t * 9.0 + float(i) * 1.7)), 0.0, 1.0)
-	for i in 4:
-		c.draw_rect(Rect2(1080.0 + 10.0 * i, 760.0 - heights[i], 6.0, heights[i]), C_TEAL)
-	_txt(c, Vector2(1136, 760), "PREVIEW", Palette.SIZE_LABEL, C_CAP)
+	for i in VIZ_BARS:
+		var h := maxf(VIZ_TIP, _viz_levels[i] * VIZ_MAX_H)
+		var r := Rect2(VIZ_X0 + VIZ_PITCH * i, VIZ_BOTTOM - h, VIZ_W, h)
+		c.draw_rect(r, Palette.SONAR)
+		c.draw_rect(Rect2(r.position, Vector2(VIZ_W, VIZ_TIP)), Palette.SONAR_PALE)
+
+
+## No preview: a flat 2 px TEXT_LO 35% line across the visualizer's width.
+func _paint_viz_line(c: CanvasItem) -> void:
+	var w := VIZ_PITCH * (VIZ_BARS - 1) + VIZ_W
+	c.draw_rect(Rect2(VIZ_X0, VIZ_BOTTOM - VIZ_TIP, w, VIZ_TIP), Palette.alpha(Palette.TEXT_LO, 0.35))
 
 
 func _start_label(e: SongEntry) -> String:
