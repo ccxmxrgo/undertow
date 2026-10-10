@@ -158,6 +158,13 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	_run_root.add_child(hud)
 	hud.bind(score)
 	hud.set_autoplay(autoplay_used)
+	judge.judged.connect(hud.on_judged)  # after HullScore: live accuracy reads updated counts
+	# Bathymeter scale: all-Perfect estimate (reads JudgeConfig only) and the saved best (or -1).
+	hud.set_depth_scale(Bathymeter.estimate_max_depth(chart, cfg))
+	var best_store := ScoreStore.new()
+	best_store.load()
+	var best_rec := best_store.best(chart.id)
+	hud.set_record(float(best_rec["depth"]) if not best_rec.is_empty() else -1.0)
 	streak_counter = StreakCounter.new()
 	_run_root.add_child(streak_counter)
 	streak_counter.bind(score)
