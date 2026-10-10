@@ -42,6 +42,8 @@ var hud: Hud
 var arena: Arena
 var streak_counter: StreakCounter
 var feedback: Feedback
+## Board juice between Highway and Feedback (02.2-10): bursts, rings, crack, shake, sparks.
+var fx_layer: FxLayer
 var fail_screen: FailScreen
 ## Last finished-dive record outcome {eligible, new_record, previous_depth, best_depth}.
 var record_info: Dictionary = {}
@@ -131,8 +133,14 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	judge.judged.connect(highway.on_judged)
 	judge.stray.connect(highway.on_stray)
 	judge.sustain_end.connect(highway.on_sustain_end)
+	fx_layer = FxLayer.new()
+	board_root.add_child(fx_layer)
+	fx_layer.bind(highway, board_root)  # the Miss shake moves the board only; the HUD stays still
+	judge.judged.connect(fx_layer.on_judged)
+	fx_layer.set_tier(1)
+	score.multiplier_changed.connect(fx_layer.set_tier)
+	highway.hold_changed.connect(fx_layer.on_sustain_state)
 	feedback = Feedback.new()
-	feedback.nudge_target = board_root  # the board nudges on a Miss; the HUD stays still
 	board_root.add_child(feedback)
 	feedback.connect_judge(judge)
 	highway_notes = HighwayNotes.new()
@@ -188,6 +196,9 @@ func _begin_count_in(skipped: bool = false) -> void:
 
 
 func _on_run_built() -> void:
+	# Prewarm the burst emitters off-screen before the first note (intro / count-in).
+	if fx_layer != null:
+		fx_layer.prewarm()
 	debug_overlay = DebugOverlay.new()
 	_run_root.add_child(debug_overlay)
 	debug_overlay.setup(conductor, judge)
@@ -321,12 +332,15 @@ func _on_failed() -> void:
 	fail_screen.retry_pressed.connect(_on_retry)
 	fail_screen.menu_pressed.connect(go_to_menu)
 	fail_screen.play(FailScreen.SQUASH_SEC)
+	if fx_layer != null:
+		fx_layer.stop()
 	var pivot := Vector2(Trench.VP.x, Trench.HIT_Y)
 	var squashed: Array[Control] = [highway, feedback, highway_notes]
 	for ctl in squashed:
 		ctl.pivot_offset = pivot
 	var tw := create_tween().set_parallel(true)
 	_fail_tween = tw
+	tw.tween_property(fx_layer, "modulate:a", 0.0, FailScreen.SQUASH_SEC)
 	for ctl in squashed:
 		if Settings.reduce_motion:
 			tw.tween_property(ctl, "modulate:a", 0.0, FailScreen.SQUASH_SEC)

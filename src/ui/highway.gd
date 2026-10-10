@@ -14,6 +14,9 @@ extends Control
 ## HullScore.multiplier_changed). Colours from Palette only. The Phase 1 clock-smoothness
 ## spike readout is kept behind `show_spike_readout`.
 
+## Emitted where a sustain hold starts or ends (FxLayer sustain sparks, 02.2-10).
+signal hold_changed(lane: int, held: bool)
+
 const LANES := 4
 const RECEPTOR_PULSE_USEC := 120000
 const SCREEN_W := 1920.0
@@ -411,6 +414,7 @@ func on_judged(lane: int, note_index: int, judgment: int, error_s: float) -> voi
 	if float(chart.notes[note_index]["duration"]) > 0.0:
 		_state[note_index] = S_HOLDING
 		_holding[lane] = note_index
+		hold_changed.emit(lane, true)
 	else:
 		_state[note_index] = S_HIT
 	_last_error_ms = error_s * 1000.0
@@ -436,6 +440,7 @@ func on_sustain_end(lane: int, completed: bool) -> void:
 		return
 	_state[idx] = S_HIT if completed else S_EARLY_RELEASE
 	_holding[lane] = -1
+	hold_changed.emit(lane, false)
 
 
 func _process(_delta: float) -> void:

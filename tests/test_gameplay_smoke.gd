@@ -150,7 +150,7 @@ func test_arena_and_streak_layering_and_restart() -> void:
 	var gp := _launch(false)
 	await get_tree().process_frame
 	# Board layers share BoardRoot in render order; the HUD layers stay outside it, above.
-	var board := [gp.arena, gp.highway, gp.feedback, gp.highway_notes]
+	var board := [gp.arena, gp.highway, gp.fx_layer, gp.feedback, gp.highway_notes]
 	for n in board:
 		assert_object((n as Node).get_parent()).is_same(gp.board_root)
 	for i in range(board.size() - 1):
@@ -162,7 +162,7 @@ func test_arena_and_streak_layering_and_restart() -> void:
 		assert_object((n as Node).get_parent()).is_same(gp._run_root)
 	for i in range(order.size() - 1):
 		assert_int((order[i] as Node).get_index()).is_less((order[i + 1] as Node).get_index())
-	assert_object(gp.feedback.nudge_target).is_same(gp.board_root)
+	assert_object(gp.fx_layer._board).is_same(gp.board_root)  # the Miss shake moves the board only
 	assert_object(gp.highway_notes.highway).is_same(gp.highway)
 	gp.score.combo_changed.emit(10)
 	assert_str(gp.streak_counter.popup_text()).is_equal("10 STREAK")
