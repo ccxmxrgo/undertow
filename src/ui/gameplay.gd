@@ -158,6 +158,7 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	_run_root.add_child(hud)
 	hud.bind(score)
 	hud.set_autoplay(autoplay_used)
+	hud.setup_song(chart, conductor)  # progress track + section banner (read song_time only)
 	judge.judged.connect(hud.on_judged)  # after HullScore: live accuracy reads updated counts
 	# Bathymeter scale: all-Perfect estimate (reads JudgeConfig only) and the saved best (or -1).
 	hud.set_depth_scale(Bathymeter.estimate_max_depth(chart, cfg))

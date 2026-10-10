@@ -6,7 +6,8 @@ extends Control
 ## Right console (02.2-13): DEPTH caption + Heading 40 SONAR depth in a fixed 6-char box with a
 ## " M" unit, ACCURACY caption + live D-08 accuracy ("--.-%" in TEXT_LO before the first judged
 ## note), NO-FAIL / AUTOPLAY mode chips, and the Bathymeter.
-## Board-attached: the segmented HullArc and the "HULL CRITICAL" caption.
+## Board-attached: the segmented HullArc and the "HULL CRITICAL" caption, the top ProgressTrack
+## (title, section name, ticks, time remaining) and the timed SectionBanner (02.2-14).
 ## combo_value/hull_value/depth_value/mult_value/streak_value stay as hidden live labels so the
 ## label API (tests/harness) keeps working; hull_caption is the visible critical caption.
 ## Hull critical = red AND a pulsing arc AND cracks AND the "HULL CRITICAL" caption AND a 30%
@@ -58,6 +59,8 @@ var multiplier_ring: MultiplierRing
 var torpedo_socket: TorpedoSocket
 var bathymeter: Bathymeter
 var hull_arc: HullArc
+var progress_track: ProgressTrack
+var section_banner: SectionBanner
 
 var _score: HullScore
 var _hull: float = 100.0
@@ -67,6 +70,8 @@ var _perfect: int = 0
 var _depth: float = 0.0
 var _scale_est: float = 0.0
 var _best: float = -1.0
+var _song_chart: ChartData
+var _song_conductor: Conductor
 
 
 func _ready() -> void:
@@ -82,6 +87,15 @@ func _ready() -> void:
 	depth_value = _hidden_label("0 M")
 	hull_caption = _make_hull_caption()
 	accuracy_label = _make_accuracy_label()
+	progress_track = ProgressTrack.new()
+	progress_track.name = "ProgressTrack"
+	add_child(progress_track)
+	section_banner = SectionBanner.new()
+	section_banner.name = "SectionBanner"
+	add_child(section_banner)
+	if _song_chart != null:
+		progress_track.setup(_song_chart, _song_conductor)
+		section_banner.setup(_song_chart, _song_conductor)
 	hull_arc = HullArc.new()
 	hull_arc.name = "HullArc"
 	add_child(hull_arc)
@@ -115,6 +129,16 @@ func bind(score: HullScore, p_hull_max: float = 100.0) -> void:
 		multiplier_ring.bind(score)
 	if is_node_ready():
 		_refresh_all()
+
+
+## Song for the progress track and section banner (UI-SPEC 4.8, 4.9). Both only read
+## conductor.song_time(). Safe before or after the node enters the tree.
+func setup_song(chart: ChartData, conductor: Conductor) -> void:
+	_song_chart = chart
+	_song_conductor = conductor
+	if progress_track != null:
+		progress_track.setup(chart, conductor)
+		section_banner.setup(chart, conductor)
 
 
 ## Judge listener (connected by Gameplay after HullScore): recomputes the live accuracy from
