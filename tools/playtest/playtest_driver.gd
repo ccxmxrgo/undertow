@@ -1400,6 +1400,8 @@ func sc_h() -> void:
 	check("results show AUTOPLAY USED", g.results != null and g.results.flags.has("AUTOPLAY USED"), g.results.flags if g.results else null)
 	# Back to menu via results
 	# 02.2-15: three buttons (Retry / Song Select / Back to Menu) wrap; Up from Retry = Back to Menu.
+	# 02.2-16: a press during the results entrance only skips it, so wait for the entrance first.
+	await wait_until(func() -> bool: return g.results == null or not g.results.entrance_running(), 3.0)
 	await press_key(KEY_UP)
 	check("results focus Back to Menu", focus_owner() == g.results.menu_button, focus_owner())
 	await press_key(KEY_ENTER)
@@ -1702,6 +1704,7 @@ func sc_layout() -> void:
 	var done: bool = await wait_until(func() -> bool: return g2.state == Gameplay.State.DONE, 120.0)
 	check("autoplay run reaches results", done)
 	await wait(0.8)
+	await wait_until(func() -> bool: return g2.results == null or not g2.results.entrance_running(), 3.0)
 	await _assert_overlay("ResultsScreen", g2.results, g2.results, g2)
 	await shot("results")
 
@@ -1955,6 +1958,44 @@ func _pending_dt_within(g: Gameplay, lo: float, hi: float) -> bool:
 	return false
 
 
+## 02.2-16: deterministic fake offsets (seconds) for the hosted results screens: `perfect` hits around
+## `bias_ms` inside the Perfect window and `good` hits out in the Good band on the late side.
+static func fake_offsets(perfect: int, good: int, bias_ms: float, seed_v: int) -> PackedFloat32Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_v
+	var out := PackedFloat32Array()
+	for i in perfect:
+		out.append(clampf(rng.randfn(bias_ms, 11.0), -34.0, 34.0) / 1000.0)
+	for i in good:
+		var side := -1.0 if i % 3 == 0 else 1.0
+		out.append(side * rng.randf_range(38.0, 66.0) / 1000.0)
+	return out
+
+
+## 02.2-16: waits for the results entrance to finish (the S ring too), then checks the grade letter
+## against RunStats, the histogram against the run's offsets, no MainMenu behind, takes the shot and
+## checks that no menu text shows where the menu used to be (`menu_rects`, read before diving).
+func review_results(label: String, rs: ResultsScreen, score: HullScore, offsets: PackedFloat32Array,
+		menu_rects: Array) -> void:
+	if not check("%s: results screen shown" % label, rs != null and is_instance_valid(rs)):
+		return
+	var settled: bool = await wait_until(func() -> bool: return not rs.entrance_running(), 3.0)
+	await wait(0.15)
+	check("%s: entrance finished within 0.9 s (+ frame slack)" % label, settled and ResultsScreen.ENTRANCE_SEC <= 0.9,
+		ResultsScreen.ENTRANCE_SEC)
+	var want := RunStats.grade(RunStats.accuracy(score.perfect_count, score.good_count, score.miss_count), score.miss_count)
+	check("results grade letter matches RunStats (%s)" % label, rs.grade_letter == want, "%s vs %s" % [rs.grade_letter, want])
+	var bins_ok := rs.histogram != null and rs.histogram.bins == RunStats.histogram(offsets)
+	check("histogram bins match the run's offsets (%s)" % label, bins_ok,
+		{"bins": Array(rs.histogram.bins) if rs.histogram else null, "n": offsets.size(), "summary": rs.histogram.summary if rs.histogram else ""})
+	check("no visible MainMenu behind results (%s)" % label, visible_main_menus().is_empty(), visible_main_menus())
+	await shot(label)
+	if not menu_rects.is_empty():
+		var lum := luma_outside_overlay(last_img, menu_rects, rs)
+		metrics["%s_menu_band_luma" % label] = lum
+		check("no menu text behind results (%s)" % label, int(lum["samples"]) > 0 and float(lum["max"]) < 0.35, lum)
+
+
 func sc_polish() -> void:
 	isolate_settings(true)
 	_use_temp_scores(POLISH_SCORES)
@@ -2090,6 +2131,7 @@ func sc_polish() -> void:
 	await wait(0.3)
 
 	# --- normal dive with the keyboard bot ------------------------------------------------------
+	var dive_menu_rects: Array = menu_text_rects(cur() as MainMenu) if cur() is MainMenu else []
 	var g: Gameplay = await start_dive_from_menu(false)
 	if g == null:
 		return
@@ -2222,7 +2264,7 @@ func sc_polish() -> void:
 	await wait_until(func() -> bool: return streak_done[0], 5.0)
 	if not is_instance_valid(g) or g.state != Gameplay.State.DONE:
 		return
-	await wait(0.6)
+	await wait(0.2)
 	metrics["bot_record_info"] = g.record_info
 	metrics["bot_score"] = {"depth": g.score.depth(), "max_combo": g.score.max_combo, "perfect": g.score.perfect_count,
 		"good": g.score.good_count, "miss": g.score.miss_count}
@@ -2230,8 +2272,22 @@ func sc_polish() -> void:
 		bool(g.record_info.get("new_record", false)) and float(g.record_info.get("previous_depth", 0.0)) < 0.0
 		and g.results != null and g.results.record_banner != null, g.record_info)
 	check("no visible MainMenu behind in-game results", visible_main_menus().is_empty(), visible_main_menus())
-	await shot("results_first_record")
+	var bot_offsets: PackedFloat32Array = g.record_info.get("offsets", PackedFloat32Array())
+	check("bot dive recorded one offset per Perfect/Good", bot_offsets.size() == g.score.perfect_count + g.score.good_count,
+		"%d offsets, P%d G%d" % [bot_offsets.size(), g.score.perfect_count, g.score.good_count])
+	await review_results("results_first_record", g.results, g.score, bot_offsets, dive_menu_rects)
 	var first_depth := g.score.depth()
+	# 02.2-16: Retry Dive (initial focus) on a real dive's results starts a new run in place. The new
+	# run is abandoned (goto MENU below), so it writes no record.
+	check("results initial focus is Retry Dive", focus_owner() == g.results.retry_button, focus_owner())
+	var old_results := g.results
+	await press_key(KEY_ENTER)
+	var restarted: bool = await wait_until(func() -> bool:
+		return (is_instance_valid(g) and g.state == Gameplay.State.RUNNING and g.conductor != null
+			and g.conductor.song_time() > 0.3), 8.0)
+	check("Retry Dive restarts the dive", restarted and scene_is(GAMEPLAY)
+		and (not is_instance_valid(old_results) or not old_results.is_inside_tree()),
+		{"state": g.state if is_instance_valid(g) else "freed", "scene": cur().scene_file_path if cur() else ""})
 
 	# --- records / results layouts ----------------------------------------------------------------
 	await goto(MENU)
@@ -2258,12 +2314,18 @@ func sc_polish() -> void:
 	metrics["menu_text_rects"] = str(menu_rects)
 	var rs := ResultsScreen.new()
 	host_overlay(rs)
-	rs.setup(hs, false, info, false)
-	await wait(0.5)
+	var rec_offsets := fake_offsets(hs.perfect_count, hs.good_count, 6.0, 1602)
+	rs.setup(hs, false, info, false, {"title": "Hand Chart", "artist": "UNDERTOW test", "difficulty": "expert",
+		"offsets": rec_offsets, "perfect_window": cfgj.perfect_window})
+	await wait(0.2)
+	check("histogram bins match the fake offsets",
+		rs.histogram != null and rs.histogram.bins == RunStats.histogram(rec_offsets)
+		and rs.histogram.perfect_window == cfgj.perfect_window,
+		Array(rs.histogram.bins) if rs.histogram else null)
 	check("results show NEW RECORD and a Previous best row",
 		rs.record_banner != null and rs.rows.any(func(r: Array) -> bool: return r[0] == "Previous best"), rs.rows)
 	check("no visible MainMenu behind results", visible_main_menus().is_empty(), visible_main_menus())
-	await shot("results_new_record")
+	await review_results("results_new_record", rs, hs, rec_offsets, [])
 	var lum := luma_outside_overlay(last_img, menu_rects, rs)
 	metrics["results_menu_band_luma"] = lum
 	check("no menu text behind results", not menu_rects.is_empty() and int(lum["samples"]) > 0
@@ -2288,13 +2350,15 @@ func sc_polish() -> void:
 	check("practice run is not recorded", not bool(pres["recorded"]) and not bool(pres["new_record"]), pres)
 	var prs := ResultsScreen.new()
 	host_overlay(prs)
-	prs.setup(ps, false, pinfo, true)
-	await wait(0.4)
+	var pr_offsets := fake_offsets(ps.perfect_count, ps.good_count, -9.0, 2216)
+	prs.setup(ps, false, pinfo, true, {"title": "Hand Chart", "artist": "UNDERTOW test", "difficulty": "expert",
+		"offsets": pr_offsets, "perfect_window": cfgj.perfect_window})
+	await wait(0.2)
 	check("practice results: PRACTICE DIVE flag and 'Not recorded' note",
 		prs.flags.has("PRACTICE DIVE") and prs.note_label != null and prs.note_label.text.begins_with("Not recorded"),
 		[prs.flags, prs.note_label.text if prs.note_label else null])
 	check("no visible MainMenu behind practice results", visible_main_menus().is_empty(), visible_main_menus())
-	await shot("results_practice_not_recorded")
+	await review_results("results_practice_not_recorded", prs, ps, pr_offsets, menu_rects)
 	await release_overlay(prs)
 	var fs := FailScreen.new()
 	host_overlay(fs)
@@ -2316,6 +2380,39 @@ func sc_polish() -> void:
 	await shot("menu_best_line")
 	check("records stayed in the temp record book (real scores.cfg path unused)",
 		ScoreStore.default_path == POLISH_SCORES, ScoreStore.default_path)
+
+	# --- 02.2-16: results routes from real (Autoplay, not recorded) dives --------------------------
+	var route_rects: Array = menu_text_rects(cur() as MainMenu) if cur() is MainMenu else []
+	var ga: Gameplay = await start_dive_from_menu(true)
+	if ga == null:
+		return
+	var ga_done: bool = await wait_until(func() -> bool: return not is_instance_valid(ga) or ga.state == Gameplay.State.DONE, 120.0)
+	if not check("autoplay dive (Song Select route) reaches results", ga_done and is_instance_valid(ga) and ga.results != null):
+		return
+	await review_results("results_route_song_select", ga.results, ga.score, ga.record_info.get("offsets", PackedFloat32Array()),
+		route_rects)
+	await press_key(KEY_RIGHT)
+	check("Right from Retry Dive focuses Song Select", focus_owner() == ga.results.song_select_button, focus_owner())
+	await press_key(KEY_ENTER)
+	var ss_ok: bool = await wait_until(func() -> bool: return scene_is(SONG_SELECT) and cur() is SongSelect, 6.0)
+	check("Song Select button opens Song Select", ss_ok, cur().scene_file_path if cur() else "")
+	await wait(0.3)
+	await goto(MENU)
+	await wait(0.3)
+	route_rects = menu_text_rects(cur() as MainMenu) if cur() is MainMenu else []
+	var gb: Gameplay = await start_dive_from_menu(true)
+	if gb == null:
+		return
+	var gb_done: bool = await wait_until(func() -> bool: return not is_instance_valid(gb) or gb.state == Gameplay.State.DONE, 120.0)
+	if not check("autoplay dive (Back to Menu route) reaches results", gb_done and is_instance_valid(gb) and gb.results != null):
+		return
+	await review_results("results_route_menu", gb.results, gb.score, gb.record_info.get("offsets", PackedFloat32Array()),
+		route_rects)
+	await press_key(KEY_UP)
+	check("Up from Retry Dive wraps to Back to Menu", focus_owner() == gb.results.menu_button, focus_owner())
+	await press_key(KEY_ENTER)
+	var menu_ok: bool = await wait_until(func() -> bool: return scene_is(MENU) and cur() is MainMenu, 6.0)
+	check("Back to Menu opens the menu", menu_ok, cur().scene_file_path if cur() else "")
 
 
 # ------------------------------------------------------------------------------------------------

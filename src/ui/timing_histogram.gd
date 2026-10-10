@@ -10,7 +10,10 @@ extends Control
 ##   colours  bins fully inside +/- perfect_window SONAR_PALE, others TEXT_MID; the window is read
 ##            from JudgeConfig (or the run's run_info.perfect_window), never hard-coded
 ##   guides   dashed 1 px TEXT_LO 35% at +/- perfect_window; centre line 2 px TEXT_HI 40% at x 1552
-##   axis     "-70" / "0" / "+70" baseline 628, "EARLY" / "LATE" baseline 268, Label 20 TEXT_LO
+##   axis     "-70" / "0" / "+70" baseline 628, "EARLY" / "LATE" baseline 292 (spec 268; moved in the
+##            02.2-16 visual review: at 268 "EARLY" stacked under the TIMING caption at baseline 248
+##            and read as one caption; 292 keeps 8 px above the tallest bar top, y 300), Label 20 TEXT_LO
+##   bars draw an 80% body with a 2 px full-colour top cap (bar_color is the cap / token colour)
 ##   summary  RunStats.summary_text(mean) Label 20 TEXT_MID at (1314, 664)
 ##   empty    "No hits to chart." centred in the chart area, no bars, no summary
 ## Animation: grow(progress 0..1) over GROW_SEC; each bar grows over DUR_SLOW with a 10 ms
@@ -29,7 +32,7 @@ const PITCH := 17.0
 const GAP := 4.0
 const CENTER_X := 1552.0
 const AXIS_BASE_Y := 628.0
-const SIDE_BASE_Y := 268.0
+const SIDE_BASE_Y := 292.0
 const SUMMARY_BASE_Y := 664.0
 const CENTER_W := 2.0
 const CENTER_ALPHA := 0.4
@@ -37,6 +40,8 @@ const GUIDE_ALPHA := 0.35
 const GUIDE_DASH := 6.0
 const AXIS_ALPHA := 0.35
 const WINDOW_BAND_ALPHA := 0.05
+const BAR_BODY_ALPHA := 0.8
+const BAR_CAP := 2.0
 const BIN_STAGGER := 0.01
 const GROW_SEC := Palette.DUR_SLOW + (RunStats.BIN_COUNT - 1) * BIN_STAGGER
 const EMPTY_TEXT := "No hits to chart."
@@ -175,7 +180,9 @@ func _draw() -> void:
 			var r := bar_rect(i)
 			if r.size.y <= 0.0:
 				continue
-			draw_rect(r, bar_color(i))
+			var col := bar_color(i)
+			draw_rect(r, Palette.alpha(col, BAR_BODY_ALPHA))
+			draw_rect(Rect2(r.position, Vector2(r.size.x, minf(BAR_CAP, r.size.y))), col)
 	draw_line(Vector2(CENTER_X, top), Vector2(CENTER_X, BASELINE_Y), Palette.alpha(Palette.TEXT_HI, CENTER_ALPHA),
 		CENTER_W)
 	draw_set_transform(Vector2.ZERO)
