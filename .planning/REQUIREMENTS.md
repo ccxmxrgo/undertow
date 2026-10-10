@@ -40,7 +40,7 @@
 ### Instrument Extraction (research first)
 
 - [x] **STEM-01**: A research study compares stem-separation and stem-to-chart approaches on real songs and records the chosen approach
-- [ ] **STEM-02**: Player can load an audio file they own and extract instrument stems (drums, bass, guitar/other, vocals)
+- [x] **STEM-02**: Player can load an audio file they own and extract instrument stems (drums, bass, guitar/other, vocals)
 - [ ] **STEM-03**: Player can generate a 4-lane chart from ONE chosen instrument stem
 - [ ] **STEM-04**: Player can generate an "instrument lanes" chart where each lane follows a different instrument
 - [ ] **STEM-05**: Extracted songs are saved to the library, synced to the original audio, and playable like any other song
@@ -189,7 +189,7 @@
 | SONG-06 | Phase 2 | Complete |
 | SONG-07 | Phase 2 | Complete |
 | STEM-01 | Phase 2.1 | Complete |
-| STEM-02 | Phase 2.1 | Pending |
+| STEM-02 | Phase 2.1 | Complete |
 | STEM-03 | Phase 2.1 | Pending |
 | STEM-04 | Phase 2.1 | Pending |
 | STEM-05 | Phase 2.1 | Pending |

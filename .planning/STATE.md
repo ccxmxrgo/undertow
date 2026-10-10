@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 02.1-02-PLAN.md
-last_updated: "2026-10-10T00:49:31.123Z"
+last_updated: "2026-10-10T01:01:12.617Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 40
-  completed_plans: 34
+  completed_plans: 35
   percent: 50
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.1 (Instrument Extraction Tool) — EXECUTING
-Plan: 4 of 9
+Plan: 5 of 9
 Status: Ready to execute
 Last activity: 2026-10-10
 
@@ -63,6 +63,7 @@ Progress: [#########.] 93%
 | Phase 02.1 P01 | 12 min | 3 tasks | 13 files |
 | Phase 02.1 P02 | 10min | 3 tasks | 7 files |
 | Phase 02.1 P03 | 12 min | 3 tasks | 6 files |
+| Phase 02.1 P04 | 15 min | 3 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,8 @@ Recent decisions affecting current work:
 - [Phase 02.1]: 02.1-03: Octave compromise - fold exact octaves only when alternating, after another octave, or amp < 0.3; isolated octave = +-2 lanes; no pitch-class fold
 - [Phase 02.1]: 02.1-03: VISIBLE SLIDE in contour_lanes (after 2 clamped same-direction steps re-centre to lane 1 rising / n_lanes-2 falling)
 - [Phase 02.1]: 02.1-03: Hard halves Expert chords by strength before density cap; Medium chords only on kept downbeats that were Expert chords (<= 3%)
+- [Phase 02.1]: 02.1-04: phase correction uses 1/16-subgrid residuals (|r|<30 ms); constant songs = LSQ line + global shift, others = +-8 smoothing + local shift + re-smooth; refined beats moved before 0 s are dropped
+- [Phase 02.1]: 02.1-04: decode.json length_s is soundfile's full decode (HRT 161.876 s vs Godot 161.866 s); song_length must use the harness decoded length
 
 ### Pending Todos
 
@@ -108,6 +111,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T00:49:25.627Z
+Last session: 2026-10-10T01:01:12.611Z
 Stopped at: Completed 02.1-02-PLAN.md
 Resume file: None
