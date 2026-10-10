@@ -116,13 +116,13 @@ Plans:
 
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 2/25 plans executed
+**Plans:** 3/25 plans executed
 
 Plans:
 
 - [x] 02.2-01-PLAN.md — Wave 0: timing gate, uncapped 1080p perf scenario + baseline (D-17), visual scenario scaffold, results bleed-through fix (D-20)
 - [x] 02.2-02-PLAN.md — Wave 0: Abyssal Cockpit tokens, colour-literal scan test, contrast test C1..C19
-- [ ] 02.2-03-PLAN.md — Wave 0: ChartData sections/time_sigs (D-18), BeatClock.beats_between, RunStats (D-08/D-09), HitOffsetRecorder
+- [x] 02.2-03-PLAN.md — Wave 0: ChartData sections/time_sigs (D-18), BeatClock.beats_between, RunStats (D-08/D-09), HitOffsetRecorder
 - [ ] 02.2-04-PLAN.md — Design system: Oxanium (D-21) and token-built theme (aliases flip)
 - [ ] 02.2-05-PLAN.md — Design system: UiKit components, effect-settings contract, FocusMarker, UiIcons
 - [ ] 02.2-06-PLAN.md — Living title screen: AbyssBackdrop, wordmark + shimmer, icon menu layout
