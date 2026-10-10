@@ -13,6 +13,9 @@ extends RefCounted
 static var max_depth := 6
 static var max_candidates := 20000
 static var zip_cache_root := "user://song_cache/zips"
+## Content of a zip cache's ".done" marker. Bumped when the extractor keeps new file types
+## (2 = album art png/jpg kept); a cache with any other marker is wiped and re-extracted once.
+const EXTRACT_VERSION := "2"
 ## Test counters: how many charts were parsed and audio sets decoded.
 static var parse_count := 0
 static var decode_count := 0
@@ -192,7 +195,7 @@ func _import_zip(c: Dictionary, cache: SongCache) -> Array[SongEntry]:
 	ctx_hash.update(("%s|%d|%d" % [norm(zp), FileAccess.get_modified_time(zp), _file_len(zp)]).to_utf8_buffer())
 	var dest := zip_cache_root.path_join(ctx_hash.finish().hex_encode())
 	var marker := dest.path_join(".done")
-	if not FileAccess.file_exists(marker):
+	if not _marker_current(marker):
 		_rm_tree(dest)
 		var r := ZipExtractor.extract(zp, dest)
 		if not r["ok"]:
@@ -201,7 +204,7 @@ func _import_zip(c: Dictionary, cache: SongCache) -> Array[SongEntry]:
 			return out
 		var mf := FileAccess.open(marker, FileAccess.WRITE)
 		if mf != null:
-			mf.store_string("ok")
+			mf.store_string(EXTRACT_VERSION)
 			mf.close()
 	var zctx := {"source": ctx["source"], "library_name": ctx["library_name"],
 			"zip_path": zp, "zip_dir": dest}
@@ -215,6 +218,12 @@ func _import_zip(c: Dictionary, cache: SongCache) -> Array[SongEntry]:
 			break
 		out.append_array(_import_candidate(s, cache))
 	return out
+
+
+static func _marker_current(marker: String) -> bool:
+	if not FileAccess.file_exists(marker):
+		return false
+	return FileAccess.get_file_as_string(marker).strip_edges() == EXTRACT_VERSION
 
 
 func _broken_zip(zp: String, ctx: Dictionary, err: String) -> SongEntry:

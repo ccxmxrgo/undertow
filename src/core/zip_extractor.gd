@@ -4,7 +4,11 @@ extends RefCounted
 ## path is validated, and entry count / sizes are capped (sizes read from the central
 ## directory BEFORE any data is decompressed, since ZIPReader has no size query).
 
-const ALLOWED_EXTS: Array[String] = ["chart", "ini", "ogg", "mp3", "wav", "opus", "mid"]
+const ALLOWED_EXTS: Array[String] = ["chart", "ini", "ogg", "mp3", "wav", "opus", "mid", "png", "jpg", "jpeg"]
+## Album art (D-11): images are kept, each capped at 8 MB; a larger image is skipped (the
+## song still extracts) and never written to disk.
+const IMAGE_EXTS: Array[String] = ["png", "jpg", "jpeg"]
+const MAX_IMAGE_BYTES := 8 * 1024 * 1024
 const MAX_ENTRIES := 4000
 const MAX_TOTAL_BYTES := 2 * 1024 * 1024 * 1024
 const MAX_ENTRY_BYTES := 512 * 1024 * 1024
@@ -31,11 +35,12 @@ static func safe_rel(entry_name: String) -> String:
 	return "/".join(parts)
 
 
-## limits (tests only): max_entries, max_total, max_entry.
+## limits (tests only): max_entries, max_total, max_entry, max_image.
 static func extract(zip_path: String, dest_dir: String, limits: Dictionary = {}) -> Dictionary:
 	var max_entries: int = limits.get("max_entries", MAX_ENTRIES)
 	var max_total: int = limits.get("max_total", MAX_TOTAL_BYTES)
 	var max_entry: int = limits.get("max_entry", MAX_ENTRY_BYTES)
+	var max_image: int = limits.get("max_image", MAX_IMAGE_BYTES)
 	var fail := {"ok": false, "error": SongEntry.ERR_ZIP}
 	var sizes: Variant = _central_sizes(zip_path)
 	if sizes == null:
@@ -66,7 +71,10 @@ static func extract(zip_path: String, dest_dir: String, limits: Dictionary = {})
 		if name_s.ends_with("/"):
 			continue
 		var rel := safe_rel(name_s)
-		if rel == "" or not ALLOWED_EXTS.has(rel.get_extension().to_lower()):
+		var ext := rel.get_extension().to_lower()
+		if rel == "" or not ALLOWED_EXTS.has(ext):
+			continue
+		if IMAGE_EXTS.has(ext) and int(sizes.get(name_s, -1)) > max_image:
 			continue
 		var target := dest_dir.path_join(rel)
 		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(target.get_base_dir()))

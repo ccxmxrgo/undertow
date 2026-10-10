@@ -129,7 +129,7 @@ func test_generated_is_deterministic() -> void:
 
 func test_generated_gradient_pair_from_hash() -> void:
 	for title in ["Sea Shanty 2", "HRT", "INVISIBLE", ""]:
-		var h := title.strip_edges().to_lower().sha256_buffer()
+		var h: PackedByteArray = String(title).strip_edges().to_lower().sha256_buffer()
 		var idx := int(h[0]) % 8
 		assert_int(AlbumCover.gradient_index(title)).is_equal(idx)
 		var img := AlbumCover.generated(title)
