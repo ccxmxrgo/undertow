@@ -11,6 +11,7 @@ func before_test() -> void:
 
 func after_test() -> void:
 	SongFixture.rm_tree(D)
+	SongScanner.zip_cache_root = "user://song_cache/zips"
 
 
 # ---- ZipExtractor ----
@@ -41,8 +42,67 @@ func test_extract_nested_and_allow_list() -> void:
 	assert_bool(FileAccess.file_exists(D + "/out/Song/notes.chart")).is_true()
 	assert_bool(FileAccess.file_exists(D + "/out/Song/song.ini")).is_true()
 	assert_bool(FileAccess.file_exists(D + "/out/Song/readme.exe")).is_false()
-	assert_bool(FileAccess.file_exists(D + "/out/Song/album.png")).is_false()
+	# Album art is kept (D-11 / D-19 superseded): png, jpg and jpeg.
+	assert_bool(FileAccess.file_exists(D + "/out/Song/album.png")).is_true()
 	assert_array(SongFixture.read_bytes(z)).is_equal(before)
+
+
+func test_extract_keeps_images_with_size_cap() -> void:
+	var z := D + "/art.zip"
+	SongFixture.make_zip(z, {
+		"Song/notes.chart": SongFixture.CHART,
+		"Song/album.jpg": "jpgjpg",
+		"Song/other.JPEG": "jpegjpeg",
+		"Song/big.png": "0123456789",
+		"../album.png": "evil",
+		"Song/../../album.jpg": "evil",
+	})
+	assert_bool(ZipExtractor.ALLOWED_EXTS.has("png")).is_true()
+	assert_bool(ZipExtractor.ALLOWED_EXTS.has("jpg")).is_true()
+	assert_bool(ZipExtractor.ALLOWED_EXTS.has("jpeg")).is_true()
+	assert_int(ZipExtractor.MAX_IMAGE_BYTES).is_equal(8 * 1024 * 1024)
+	var r := ZipExtractor.extract(z, D + "/out/inner", {"max_image": 8})
+	assert_bool(r["ok"]).is_true()
+	assert_bool(FileAccess.file_exists(D + "/out/inner/Song/notes.chart")).is_true()
+	assert_bool(FileAccess.file_exists(D + "/out/inner/Song/album.jpg")).is_true()
+	assert_bool(FileAccess.file_exists(D + "/out/inner/Song/other.JPEG")).is_true()
+	# Over the per-image cap: skipped, the song itself still extracts.
+	assert_bool(FileAccess.file_exists(D + "/out/inner/Song/big.png")).is_false()
+	# Traversal names are still refused for images.
+	assert_bool(FileAccess.file_exists(D + "/out/album.png")).is_false()
+	assert_bool(FileAccess.file_exists(D + "/album.jpg")).is_false()
+	assert_bool(FileAccess.file_exists(D + "/out/album.jpg")).is_false()
+
+
+func test_old_zip_cache_marker_reextracts_once() -> void:
+	var lib := D + "/lib"
+	var src := D + "/src"
+	SongFixture.make_song(src)
+	var img := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	img.save_png(src + "/album.png")
+	SongFixture.zip_folder(src, lib + "/pack.zip")
+	var old_root := SongScanner.zip_cache_root
+	SongScanner.zip_cache_root = D + "/zipcache"
+	var roots := [{"path": lib, "source": "test", "library_name": "Lib"}]
+	var first := SongScanner.new().scan_sync(roots, null)
+	assert_str(first[0].status).is_equal("ok")
+	var dirs := DirAccess.get_directories_at(ProjectSettings.globalize_path(D + "/zipcache"))
+	assert_int(dirs.size()).is_equal(1)
+	var dest := (D + "/zipcache").path_join(dirs[0])
+	assert_str(FileAccess.get_file_as_string(dest + "/.done")).is_equal(SongScanner.EXTRACT_VERSION)
+	assert_bool(FileAccess.file_exists(dest + "/album.png")).is_true()
+	assert_str(first[0].chart_path.get_base_dir()).is_equal(dest)
+	# Simulate a cache written by the old extractor: "ok" marker, images dropped.
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(dest + "/album.png"))
+	SongFixture.write_text(dest + "/.done", "ok")
+	SongScanner.new().scan_sync(roots, null)
+	assert_bool(FileAccess.file_exists(dest + "/album.png")).is_true()
+	assert_str(FileAccess.get_file_as_string(dest + "/.done")).is_equal(SongScanner.EXTRACT_VERSION)
+	# Current marker: no re-extract (a file removed from the cache stays removed).
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(dest + "/album.png"))
+	SongScanner.new().scan_sync(roots, null)
+	assert_bool(FileAccess.file_exists(dest + "/album.png")).is_false()
+	SongScanner.zip_cache_root = old_root
 
 
 func test_extract_zip_slip_writes_nothing_outside() -> void:
