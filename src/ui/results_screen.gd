@@ -25,8 +25,10 @@ func setup(score: HullScore, autoplay_used: bool, record_info: Dictionary = {},
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	if theme == null:
 		theme = Palette.load_theme()
+	# Opaque (D-20 / VIS-05): nothing behind the results may show through. Plan 15 swaps this for
+	# the calm AbyssBackdrop.
 	var dim := ColorRect.new()
-	dim.color = Palette.alpha(Palette.BG, 0.85)
+	dim.color = Palette.alpha(Palette.BG, 1.0)
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UiLayout.fill_rect(dim)
 	add_child(dim)
@@ -116,10 +118,21 @@ func setup(score: HullScore, autoplay_used: bool, record_info: Dictionary = {},
 	menu_button.custom_minimum_size = Vector2(320.0, 56.0)
 	menu_button.pressed.connect(func() -> void: menu_pressed.emit())
 	box.add_child(menu_button)
-	retry_button.focus_neighbor_bottom = retry_button.get_path_to(menu_button)
-	menu_button.focus_neighbor_top = menu_button.get_path_to(retry_button)
+	# Closed focus loop: every direction and Tab / Shift+Tab stay on the two buttons.
+	_link_focus(retry_button, menu_button)
+	_link_focus(menu_button, retry_button)
 	if is_inside_tree():
 		retry_button.grab_focus()
+
+
+static func _link_focus(a: Control, b: Control) -> void:
+	var p := a.get_path_to(b)
+	a.focus_neighbor_left = p
+	a.focus_neighbor_right = p
+	a.focus_neighbor_top = p
+	a.focus_neighbor_bottom = p
+	a.focus_next = p
+	a.focus_previous = p
 
 
 func _bar() -> ColorRect:

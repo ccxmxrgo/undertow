@@ -278,6 +278,91 @@ func focus_owner() -> Control:
 	return get_viewport().gui_get_focus_owner()
 
 
+## D-20: overlays (results / fail) are hosted the way the game shows them: nothing of the current
+## scene may stay visible or processing behind. Hides and disables cur(), then adds `node` under /root.
+var _hosted_scene: Node = null
+var _hosted_mode: int = Node.PROCESS_MODE_INHERIT
+
+
+func host_overlay(node: Control) -> void:
+	var c := cur()
+	if c != null:
+		_hosted_scene = c
+		_hosted_mode = c.process_mode
+		if c is CanvasItem:
+			(c as CanvasItem).visible = false
+		c.process_mode = Node.PROCESS_MODE_DISABLED
+	get_tree().root.add_child(node)
+
+
+## Frees the overlay and restores the hidden scene.
+func release_overlay(node: Node) -> void:
+	if is_instance_valid(node):
+		node.queue_free()
+	if _hosted_scene != null and is_instance_valid(_hosted_scene):
+		if _hosted_scene is CanvasItem:
+			(_hosted_scene as CanvasItem).visible = true
+		_hosted_scene.process_mode = _hosted_mode as Node.ProcessMode
+	_hosted_scene = null
+	await frame()
+
+
+## MainMenu nodes anywhere in the tree that are visible (must be none behind results).
+func visible_main_menus() -> Array:
+	var out: Array = []
+	for n in get_tree().root.find_children("*", "MainMenu", true, false):
+		if n.is_inside_tree() and not n.is_queued_for_deletion() and (n as CanvasItem).is_visible_in_tree():
+			out.append(str(n.get_path()))
+	return out
+
+
+## Design-space rects of the MainMenu title ("UNDERTOW") and its button column (read before hiding).
+func menu_text_rects(m: MainMenu) -> Array:
+	var rects: Array = []
+	for l in m.find_children("*", "Label", true, false):
+		if (l as Label).text == "UNDERTOW":
+			rects.append((l as Control).get_global_rect())
+	var col := Rect2()
+	for b in [m.start_button, m.practice_button, m.calibrate_button, m.settings_button, m.autoplay_button,
+			m.open_folder_button, m.quit_button]:
+		if b != null and (b as Control).is_visible_in_tree():
+			col = (b as Control).get_global_rect() if col.size == Vector2.ZERO else col.merge((b as Control).get_global_rect())
+	if col.size != Vector2.ZERO:
+		rects.append(col)
+	return rects
+
+
+## Max luminance of `img` inside `rects` (design space), skipping pixels covered by any visible,
+## non-fullscreen Control of `overlay` (its own labels, buttons, bars). Returns {max, samples}.
+func luma_outside_overlay(img: Image, rects: Array, overlay: Control) -> Dictionary:
+	var skip: Array = []
+	var full := Vector2(Highway.SCREEN_W, Highway.SCREEN_H)
+	for n in overlay.find_children("*", "Control", true, false):
+		var c := n as Control
+		if c.is_visible_in_tree() and not c.size.is_equal_approx(full):
+			skip.append(c.get_global_rect().grow(4.0))
+	var mx := 0.0
+	var count := 0
+	for r in rects:
+		var rr: Rect2 = r
+		var y := rr.position.y
+		while y < rr.end.y:
+			var x := rr.position.x
+			while x < rr.end.x:
+				var pt := Vector2(x, y)
+				var covered := false
+				for sr in skip:
+					if (sr as Rect2).has_point(pt):
+						covered = true
+						break
+				if not covered:
+					mx = maxf(mx, _luma(_img_px(img, pt)))
+					count += 1
+				x += 2.0
+			y += 2.0
+	return {"max": mx, "samples": count}
+
+
 # --- synthetic input ----------------------------------------------------------------------------
 
 
@@ -1985,6 +2070,7 @@ func sc_polish() -> void:
 	check("eligible bot dive set the first record (NEW RECORD, no previous)",
 		bool(g.record_info.get("new_record", false)) and float(g.record_info.get("previous_depth", 0.0)) < 0.0
 		and g.results != null and g.results.record_banner != null, g.record_info)
+	check("no visible MainMenu behind in-game results", visible_main_menus().is_empty(), visible_main_menus())
 	await shot("results_first_record")
 	var first_depth := g.score.depth()
 
@@ -2009,15 +2095,23 @@ func sc_polish() -> void:
 		"best_depth": float(store.best(TestCharts.HAND_CHART_ID)["depth"])}
 	check("second submit beats the first record (previous = bot dive depth)",
 		bool(res["new_record"]) and absf(float(info["previous_depth"]) - first_depth) < 1.0, info)
+	var menu_rects: Array = menu_text_rects(cur() as MainMenu) if cur() is MainMenu else []
+	metrics["menu_text_rects"] = str(menu_rects)
 	var rs := ResultsScreen.new()
-	get_tree().root.add_child(rs)
+	host_overlay(rs)
 	rs.setup(hs, false, info, false)
 	await wait(0.5)
 	check("results show NEW RECORD and a Previous best row",
 		rs.record_banner != null and rs.rows.any(func(r: Array) -> bool: return r[0] == "Previous best"), rs.rows)
+	check("no visible MainMenu behind results", visible_main_menus().is_empty(), visible_main_menus())
 	await shot("results_new_record")
-	rs.queue_free()
-	await frame()
+	var lum := luma_outside_overlay(last_img, menu_rects, rs)
+	metrics["results_menu_band_luma"] = lum
+	check("no menu text behind results", not menu_rects.is_empty() and int(lum["samples"]) > 0
+		and float(lum["max"]) < 0.35, lum)
+	check("results backdrop uniform where the menu text was (max luma <= backdrop + 0.02)",
+		float(lum["max"]) <= _luma(Palette.BG) + 0.02, [lum, _luma(Palette.BG)])
+	await release_overlay(rs)
 	var ps := HullScore.new(cfgj)
 	ps.no_fail = true
 	ps.perfect_count = 40
@@ -2032,17 +2126,17 @@ func sc_polish() -> void:
 		"best_depth": float(store.best(TestCharts.HAND_CHART_ID)["depth"])}
 	check("practice run is not recorded", not bool(pres["recorded"]) and not bool(pres["new_record"]), pres)
 	var prs := ResultsScreen.new()
-	get_tree().root.add_child(prs)
+	host_overlay(prs)
 	prs.setup(ps, false, pinfo, true)
 	await wait(0.4)
 	check("practice results: PRACTICE DIVE flag and 'Not recorded' note",
 		prs.flags.has("PRACTICE DIVE") and prs.note_label != null and prs.note_label.text.begins_with("Not recorded"),
 		[prs.flags, prs.note_label.text if prs.note_label else null])
+	check("no visible MainMenu behind practice results", visible_main_menus().is_empty(), visible_main_menus())
 	await shot("results_practice_not_recorded")
-	prs.queue_free()
-	await frame()
+	await release_overlay(prs)
 	var fs := FailScreen.new()
-	get_tree().root.add_child(fs)
+	host_overlay(fs)
 	var saved_best := float(store.best(TestCharts.HAND_CHART_ID)["depth"])
 	fs.setup(612.0, 17, saved_best)
 	fs.play(0.0)
@@ -2051,8 +2145,7 @@ func sc_polish() -> void:
 		fs.stats_label.text == "Max combo: 17" and fs.best_label.text.begins_with("Saved best: "),
 		[fs.stats_label.text, fs.best_label.text])
 	await shot("implosion_stats")
-	fs.queue_free()
-	await frame()
+	await release_overlay(fs)
 	await goto(MENU)
 	await wait(0.4)
 	m = cur() as MainMenu

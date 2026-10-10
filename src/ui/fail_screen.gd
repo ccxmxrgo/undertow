@@ -28,7 +28,7 @@ func setup(depth_m: float, max_combo: int = 0, saved_best: float = -1.0) -> void
 	if theme == null:
 		theme = Palette.load_theme()
 	var dim := ColorRect.new()
-	dim.color = Palette.alpha(Palette.BG, 0.7)
+	dim.color = Palette.alpha(Palette.BG, 0.9)  # UI-SPEC 9.2
 	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	UiLayout.fill_rect(dim)
 	add_child(dim)
