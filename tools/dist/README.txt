@@ -1,12 +1,16 @@
-UNDERTOW - early playtest build (v0.4, 2026-10-10)
+UNDERTOW - early playtest build (v0.5, 2026-10-10)
 =================================================
 
 You're a submarine sinking into a deep-sea trench. This build is still the
 single-player core: it's for checking that timing, the look and now real
 songs feel good. Torpedoes and online versus come later.
 
-v0.4 brings five bundled songs, all charted from the music itself.
+v0.5 gives every screen a new look: a deep-sea submarine cockpit looking
+through a neon sonar into the abyss. Timing is exactly the same as v0.4.
 This build is for friends only: please don't share it further.
+
+Want to help test? Open TESTER-CHECKLIST.txt (next to this file). It is a
+short list of things to try, with boxes to tick, and says how to report a bug.
 
 
 HOW TO RUN
@@ -59,6 +63,42 @@ SELECT SONG controls:
   Open Songs Folder  F6
   Back ............. Esc
 Highlight a song for half a second to hear a preview.
+
+
+WHAT'S NEW IN v0.5
+------------------
+- A new look everywhere, one "abyssal cockpit" style on every screen.
+- Title screen: an animated abyss (rocks, light shafts, drifting snow,
+  a submarine with its searchlight) behind the UNDERTOW logo, with menu
+  music, icons and a one-line description for each item, and a LAST DIVE
+  card with your last song and best depth.
+- Menu music: a bundled song plays quietly on the menus. Turn it off in
+  Settings > Audio > Menu music. Menus also make soft blips when you move,
+  confirm or go back (Settings > Audio > SFX sets their volume).
+- Song select: album art (album.png / album.jpg in the song folder, or a
+  generated cover), difficulty tiles with note count and a 1-5 intensity
+  meter, and a visualizer that moves with the preview.
+- The board: filled lanes, beat and bar lines, solid gem notes, pads that
+  light up when you press, and hit explosions (big on PERFECT, small on GOOD,
+  a red fizzle on MISS). The trench glows more as your multiplier grows, and
+  the life on the walls pulses on the beat.
+- A cockpit HUD: a multiplier ring around your streak, a depth gauge (with
+  your best depth marked), a hull arc, a song progress bar with section
+  names, and a live accuracy %.
+- Results: a grade (S A B C D), accuracy, depth, max combo, PERFECT / GOOD /
+  MISS bars and an early/late timing histogram, so you can see if you rush
+  or drag. Buttons: Retry Dive, Song Select, Back to Menu.
+- Pause, IMPLOSION, Settings, calibration and the intro are restyled, and
+  screens change with a short sonar wipe.
+- For weaker PCs: Settings > Display > Low effects (fewer particles, no glow,
+  a simpler background; notes stay fully bright).
+  Settings > Gameplay > Reduce motion stops the shake, parallax and other
+  big movement.
+- Accuracy now counts PERFECT as 100%, GOOD as 50% and MISS as 0%.
+
+The questions we really need answered (see TESTER-CHECKLIST.txt):
+  "Does it look like a finished game now? Is anything hard to read during
+  play? Anything that feels too busy?"
 
 
 WHAT'S NEW IN v0.4

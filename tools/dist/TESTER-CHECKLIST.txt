@@ -1,0 +1,129 @@
+UNDERTOW v0.5 - tester checklist
+================================
+
+Thanks for testing! Tick the boxes as you go ([x]) and write a few words
+next to anything that feels off. You don't have to do everything: even
+half of this list helps a lot. Send this file back (or just your notes)
+on Discord or WhatsApp.
+
+Controls in short: lanes 1 2 3 4, Esc = pause / back, Enter = confirm,
+F11 = fullscreen / window. The README has the full list.
+
+
+1. SETUP
+--------
+[ ] Unzip the WHOLE folder somewhere (e.g. your Desktop). Keep the .exe and
+    the .pck file together.
+[ ] Double-click undertow-debug.exe.
+[ ] If Windows says "Windows protected your PC": click "More info", then
+    "Run anyway" (the game isn't signed, that's expected).
+[ ] Do the CALIBRATE SONAR wizard first (it opens by itself on first launch,
+    or Main menu > Calibrate Sonar). Wired headphones/speakers if you can.
+    My audio offset was: ______ ms
+[ ] The game opened without errors or a crash.
+
+
+2. MAIN MENU
+------------
+[ ] The background moves (abyss, light, drifting snow, a submarine).
+[ ] Menu music plays quietly.
+[ ] Moving up/down through the items: each one shows a short description
+    and you hear a soft blip.
+[ ] The LAST DIVE card shows your last song and best depth (after your
+    first dive).
+
+
+3. SONG SELECT (Main menu > Start Dive)
+---------------------------------------
+[ ] Every song has a cover picture (album art or a generated one).
+[ ] The difficulty tiles (Left / Right) show a note count and a 1-5
+    intensity meter.
+[ ] Waiting on a song for half a second plays a preview, and the
+    visualizer moves with the music.
+[ ] Typing filters the list by title or artist; Esc clears it.
+[ ] F2 changes the sort order.
+
+
+4. PLAY THE 3 SONGS
+-------------------
+Play each song once on Expert and once on Easy (Enter starts the dive).
+
+                         Expert   Easy
+  HRT                     [ ]     [ ]
+  Sea Shanty 2            [ ]     [ ]
+  INVISIBLE               [ ]     [ ]
+
+For each one:
+[ ] Are the notes in sync with the music? (on the beat / early / late?)
+[ ] Does the timing feel fair? (PERFECT / GOOD / MISS)
+[ ] Can you tell the 4 note shapes apart quickly?
+[ ] Hit explosions, the multiplier ring and the hull arc react to your
+    play; section names show up at the top during the song.
+Write down anything odd as: song, difficulty, time (e.g. "HRT, Easy, 1:20").
+
+
+5. RESULTS SCREEN
+-----------------
+[ ] The grade (S A B C D), accuracy %, depth and max combo look right.
+[ ] The early/late histogram shows up (does it match how you felt?).
+[ ] "Retry Dive" restarts the song.
+[ ] "Song Select" goes back to the song list.
+[ ] "Back to Menu" goes to the main menu.
+
+
+6. PAUSE AND SETTINGS
+---------------------
+During a dive press Esc:
+[ ] The pause menu appears and the song stops.
+[ ] Resume Dive continues from the same place.
+[ ] Restart Dive asks before restarting.
+Open Settings (from the pause menu or the main menu):
+[ ] Display > Low effects: the background gets simpler, notes stay bright.
+[ ] Gameplay > Reduce motion: less shaking and movement.
+[ ] Audio > Master, Music and SFX sliders change the volume (SFX = the menu
+    blips). Menu music can be turned off.
+[ ] Gameplay > Scroll speed: try a slow and a fast speed. Still readable?
+[ ] Controls: rebind a lane key, play a bit, then Reset Controls.
+
+
+7. CALIBRATION AND PRACTICE
+---------------------------
+[ ] Settings > Calibration > Re-run Calibration works and saves a value.
+[ ] Main menu > Practice Dive (No-Fail): play badly on purpose. You
+    shouldn't sink, and the results say the dive was not recorded.
+[ ] Settings > Gameplay > No-Fail does the same for normal dives.
+
+
+8. PERFORMANCE
+--------------
+[ ] Did the game run smoothly? Any stutter, freeze or slow moment?
+    (When? Which song / screen?)
+[ ] If it stuttered: does Low effects fix it?
+My PC: graphics card (GPU) __________________  screen Hz ______
+
+
+9. THE BIG QUESTIONS
+--------------------
+Does it look like a finished game now?
+  ______________________________________________________________
+Is anything hard to read during play?
+  ______________________________________________________________
+Anything that feels too busy?
+  ______________________________________________________________
+Anything else (confusing, ugly, annoying, or something you liked)?
+  ______________________________________________________________
+
+
+HOW TO REPORT A BUG
+-------------------
+Please send:
+  - which screen (menu, song select, during a song, results, pause, settings)
+  - the song and difficulty, and roughly when (e.g. "INVISIBLE, Expert, 2:05")
+  - what happened, and what you expected
+  - a screenshot if you can (Win + Shift + S, or the Print Screen key)
+  - your PC: Windows version, graphics card, and your headphones/speakers
+    (wired / Bluetooth / USB)
+If the game crashed: start undertow-debug.console.exe instead, do the same
+thing again, and screenshot the black text window. It shows the error.
+
+Thanks for diving!
