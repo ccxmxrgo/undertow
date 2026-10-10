@@ -72,6 +72,30 @@ class PreviewTest(unittest.TestCase):
         self.assertEqual(structure.pick_preview([0, 20000, 41000], [0.1, 0.4, 0.3]), 20000)
         self.assertEqual(structure.pick_preview([0, 20000, 41000], [0.1, 0.4, 0.4]), 20000)
 
+    def test_skips_sections_in_the_first_10_s(self):
+        # HRT: the loudest section starts at 2.8 s
+        self.assertEqual(structure.pick_preview([2789, 22322, 44649], [0.9, 0.5, 0.6], 161877), 44649)
+        self.assertEqual(structure.pick_preview([9999, 10000], [0.9, 0.1], 100000), 10000)
+
+    def test_skips_sections_starting_less_than_30_s_before_the_end(self):
+        # Space Synth Wave: the loudest section starts 2.4 s before the end
+        starts = [162, 16157, 160142, 176143, 189642]
+        rms = [0.1, 0.5, 0.4, 0.8, 0.9]
+        self.assertEqual(structure.pick_preview(starts, rms, 192014), 160142)
+        self.assertEqual(structure.pick_preview([20000, 70000], [0.1, 0.9], 100000), 70000)
+        self.assertEqual(structure.pick_preview([20000, 70001], [0.1, 0.9], 100000), 20000)
+
+    def test_fallback_is_30_percent_clamped_to_30_s_of_audio(self):
+        self.assertEqual(structure.pick_preview([], [], 100000), 30000)
+        self.assertEqual(structure.pick_preview([500, 95000], [0.5, 0.9], 100000), 30000)
+        # 30% of 40 s = 12 s, but only 10 s may start before the 30 s tail
+        self.assertEqual(structure.pick_preview([1000], [0.5], 40000), 10000)
+        self.assertEqual(structure.pick_preview([1000], [0.5], 20000), 0)
+
+    def test_without_song_length_only_the_intro_rule_applies(self):
+        self.assertEqual(structure.pick_preview([2000, 50000], [0.9, 0.1]), 50000)
+        self.assertEqual(structure.pick_preview([0, 20000, 41000], [0.1, 0.4, 0.3]), 20000)
+
 
 if __name__ == "__main__":
     unittest.main()
