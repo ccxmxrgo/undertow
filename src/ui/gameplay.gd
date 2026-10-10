@@ -299,6 +299,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed(&"pause") and state == State.RUNNING and _began and pause_menu != null 			and not pause_menu.is_open() and not pause_menu.is_counting_down():
 		get_viewport().set_input_as_handled()
+		pause_menu.set_run_info(chart.title, chart.difficulty, progress_pct())
 		pause_menu.open()
 		return
 	if event.is_action_pressed(&"debug_autoplay"):
@@ -358,7 +359,18 @@ func _finish() -> void:
 	results.menu_pressed.connect(go_to_menu)
 
 
+## Song progress 0..100 from the song clock and the song length (pause run line, IMPLOSION).
+func progress_pct() -> float:
+	if chart == null or conductor == null:
+		return 0.0
+	var length := ProgressTrack.song_length_of(chart)
+	if length <= 0.0:
+		return 0.0
+	return clampf(conductor.song_time() / length, 0.0, 1.0) * 100.0
+
+
 func _on_failed() -> void:
+	var fail_pct := progress_pct()  # read before the conductor stops
 	state = State.FAILED
 	conductor.stop()  # audio stops immediately
 	lane_input.enabled = false
@@ -371,7 +383,7 @@ func _on_failed() -> void:
 	fail_store.load()
 	var saved := fail_store.best(chart.id)
 	fail_screen.setup(score.depth(), score.max_combo,
-		float(saved["depth"]) if not saved.is_empty() else -1.0)
+		float(saved["depth"]) if not saved.is_empty() else -1.0, fail_pct)
 	fail_screen.retry_pressed.connect(_on_retry)
 	fail_screen.menu_pressed.connect(go_to_menu)
 	fail_screen.play(FailScreen.SQUASH_SEC)
