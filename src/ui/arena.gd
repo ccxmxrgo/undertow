@@ -36,10 +36,16 @@ const EDGE_FADE_TO := 1000.0
 const KEEP_OUT_PX := 48.0
 const KEEP_OUT_NEAR_D := -0.043
 
-## Band fills (7.7): ABYSS_600 at 0.03 + 0.05 n.
-const BAND_ALPHA_BASE := 0.03
-const BAND_ALPHA_N := 0.05
+## Band fills (7.7): ABYSS_600 between ring k and k+1 (spec alpha 0.03 + 0.05 n, raised below).
 const BAND_MIN_PX := 1.5  # minimum band width where wavy rings would cross
+## Visual review (02.2-11): at 0.03 + 0.05 n the bands were invisible on the abyss, so each band is
+## a gradient: the lit rock lip at the nearer ring (0.06 + 0.16 n) fading to 30% toward the VP.
+const BAND_LIP_BASE := 0.06
+const BAND_LIP_N := 0.16
+const BAND_INNER := 0.3
+## Wall stroke glow (UI-SPEC 3.3 stroke glow, Full only): a wide faint stroke under each ring.
+const WALL_GLOW_W := 6.0
+const WALL_GLOW_A := 0.22
 
 ## Bio colonies (7.7): alpha 0.25 + 0.55 pulse x tier gain, radius 2 + 2 pulse.
 const COLONY_ALPHA_BASE := 0.25
@@ -50,16 +56,32 @@ const TIER_GAIN: Array[float] = [1.0, 1.1, 1.2, 1.3]
 const COLONY_SPREAD := 11.0  # max dot offset from the cluster centre at depth scale 1
 const COLONY_MARGIN := 18.0  # cluster extent (spread x max depth scale + dot radius)
 const COLONY_FADE_PX := 40.0  # colonies fade in over this distance outside the keep-out
+## Colony centres stay this far inside the screen (the outer 32 px band stays dark, D-06; the
+## halo's bright core is ~25 px), fading over COLONY_FADE_PX.
+const COLONY_EDGE_PX := 64.0
+## Colonies also stay out of the cockpit console corners (UI-SPEC 7.2: x < 400 / x > 1520 below
+## y 600, where the streak and depth readouts sit), with a 16 px margin, fading over COLONY_FADE_PX.
+const CONSOLE_TOP := 584.0
+const CONSOLE_LEFT_X := 416.0
+const CONSOLE_RIGHT_X := 1504.0
 ## Colonies sit on wall vertices whose direction from the VP is at least this far from straight down,
 ## so they live on the side walls and the ceiling, not on the floor that holds the board.
 const COLONY_MIN_ANGLE_DEG := 62.0
-const COLONY_GLOW_MUL := 1.6 * 2.2  # glow_sm: 1.6 x the cluster size (cluster ~2.2 x spread)
+## Halo: glow_sm alpha; drawn at ~2x the glow_sm size (visual review: at 1.6 x the cluster the halo
+## vanished into the dots and the walls did not read as bioluminescent).
+const COLONY_GLOW_MUL := 1.6 * 2.2 * 2.0
+## Halo floor so the walls still read as alive between beats (the dots keep the spec pulse).
+const HALO_FLOOR := 0.5
 
 ## Lantern-fish band (7.7, 3.1 decoration exception): lane-1 / lane-3 hues at alpha <= 0.65.
 const FISH_ALPHA_MAX := 0.65
 const FISH_RX := 7.0
 const FISH_RY := 3.0
 const TIER4_MIN_ENERGY := 0.75
+const FISH_X0 := 120.0
+const FISH_X1 := 1800.0
+const FISH_Y0 := 108.0
+const FISH_Y1 := 192.0
 
 ## Distant creature (7.7).
 const CREATURE_Y_MIN := 120.0
@@ -80,6 +102,9 @@ const LEVIATHAN_SIZE := Vector2(420.0, 120.0)
 const JELLY_SIZE := Vector2(90.0, 140.0)
 const JELLY_TENDRILS := 5
 const JELLY_TENDRIL_PTS := 8
+const LEVIATHAN_LIGHTS := 7
+const CREATURE_LIGHT_A := 0.35
+const JELLY_GLOW_A := 0.16
 
 ## 0..1 whole-arena alpha, driven by the intro (plan 04).
 var reveal: float = 1.0
@@ -122,6 +147,7 @@ var _ring_r := PackedFloat32Array()
 var _ring_n := PackedFloat32Array()
 var _ring_fade := PackedFloat32Array()
 var _band_pts := PackedVector2Array()
+var _band_cols := PackedColorArray()
 
 # Colonies: static layout plus per-frame screen state.
 var _colony_vertex := PackedInt32Array()
@@ -238,6 +264,7 @@ func _init() -> void:
 	_ring_n.resize(RINGS_FULL)
 	_ring_fade.resize(RINGS_FULL)
 	_band_pts.resize(2 * (HALF_PTS + 1))
+	_band_cols.resize(2 * (HALF_PTS + 1))
 	_snow_pos.resize(SNOW_FULL)
 	_snow_z.resize(SNOW_FULL)
 	for i in SNOW_FULL:
@@ -526,14 +553,20 @@ func _update_colonies() -> void:
 		if fade <= 0.0:
 			continue
 		var p := _ring_point(k, _colony_vertex[c])
-		if p.x < -COLONY_MARGIN or p.x > W + COLONY_MARGIN or p.y < -COLONY_MARGIN or p.y > H + COLONY_MARGIN:
+		var edge := minf(minf(p.x, W - p.x), minf(p.y, H - p.y)) - COLONY_EDGE_PX
+		if edge <= 0.0:
 			continue
+		var console := minf(maxf(p.x - CONSOLE_LEFT_X, CONSOLE_TOP - p.y),
+			maxf(CONSOLE_RIGHT_X - p.x, CONSOLE_TOP - p.y)) - COLONY_MARGIN
+		if console <= 0.0:
+			continue
+		edge = minf(edge, console)
 		var clear := path_clearance(p) - COLONY_MARGIN
 		if clear <= 0.0:
 			continue
 		_colony_center[c] = p
 		_colony_scale[c] = 0.7 + 0.6 * _ring_n[k]
-		_colony_vis[c] = fade * clampf(clear / COLONY_FADE_PX, 0.0, 1.0)
+		_colony_vis[c] = fade * clampf(clear / COLONY_FADE_PX, 0.0, 1.0) * clampf(edge / COLONY_FADE_PX, 0.0, 1.0)
 
 
 ## Screen positions of every colony dot drawn this frame (tests: keep-out and determinism).
@@ -625,6 +658,13 @@ func _update_creature(t: float) -> void:
 	_cr_pos = _creature_pos(e, t)
 
 
+## Screen position of photophore i on the leviathan (same layout as _draw_creature).
+func _leviathan_light(i: int) -> Vector2:
+	var f := float(i) / float(LEVIATHAN_LIGHTS - 1)
+	var lp := Vector2(150.0 - 290.0 * f, 14.0 + 10.0 * sin(f * PI))
+	return _cr_pos + Vector2(lp.x * _cr_dir, lp.y)
+
+
 func creature_active() -> bool:
 	return _cr_active
 
@@ -670,8 +710,11 @@ func _draw_walls(count: int) -> void:
 		var r := _ring_r[k]
 		var lw := 1.2 + 3.6 * n
 		var col := Palette.WALL_TEAL if k % 2 == 0 else Palette.WALL_VIOLET
+		var line_a := (0.08 + 0.35 * n) * fade
 		draw_set_transform(Trench.VP, 0.0, Vector2(r, r * WALL_SQUASH))
-		draw_polyline(_unit_rings[k], _a(col, (0.08 + 0.35 * n) * fade), lw / r, false)
+		if not _low and not menu_mode:  # Song Select keeps its 01.2 walls (outer band stays dark)
+			draw_polyline(_unit_rings[k], _a(col, line_a * WALL_GLOW_A), (lw + WALL_GLOW_W * (0.4 + n)) / r, false)
+		draw_polyline(_unit_rings[k], _a(col, line_a), lw / r, false)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -686,10 +729,19 @@ func _draw_bands() -> void:
 		var fade := _ring_fade[k]
 		if fade <= 0.0:
 			continue
-		var col := _a(Palette.ABYSS_600, (BAND_ALPHA_BASE + BAND_ALPHA_N * _ring_n[j]) * fade)
+		var lip := _a(Palette.ABYSS_600, band_alpha(_ring_n[j]) * fade)
+		var deep := Color(lip, lip.a * BAND_INNER)
+		for i in HALF_PTS + 1:
+			_band_cols[i] = lip
+			_band_cols[2 * HALF_PTS + 1 - i] = deep
 		for half in 2:
 			_fill_band(k, j, half)
-			draw_colored_polygon(_band_pts, col)
+			draw_polygon(_band_pts, _band_cols)
+
+
+## Alpha of a band's lit lip at the nearer ring's depth n (see BAND_LIP_*).
+static func band_alpha(n: float) -> float:
+	return BAND_LIP_BASE + BAND_LIP_N * n
 
 
 ## Half band k (inner ring) -> j (outer ring) into _band_pts. Both edges follow their wavy wall
@@ -741,7 +793,8 @@ func _draw_colonies() -> void:
 			draw_circle(ctr + offs[j] * s, dot_r, _a(col, alpha * vis * (1.0 - 0.12 * float(j))))
 
 
-## Lantern fish: small elongated glows swimming in a loose band at y 100..200 (crowd energy logic).
+## Lantern fish: a loose school of small elongated glows swimming at y 100..200 (crowd energy
+## logic). Lane-1 / lane-3 hues (cyan, pink) at alpha <= 0.65 (UI-SPEC 3.1 decoration exception).
 func _draw_fish(low: bool) -> void:
 	var lit := visible_crowd()
 	var pulse := 0.0 if low else _pulse
@@ -751,10 +804,14 @@ func _draw_fish(low: bool) -> void:
 		if (i * 7) % CROWD_FULL >= lit:
 			continue
 		var pos := _fish_pos(i)
-		var face := -1.0 if i % 3 == 0 else 1.0
-		var sc := 1.0 + 0.35 * pulse * (1.0 + 0.5 * e)
-		var col := Palette.lane_color(3) if i % 2 == 0 else Palette.lane_color(1)
-		var alpha := minf((0.3 + pulse * 0.5 * (float(i % 3) / 2.0 + 0.3)) * energy_alpha, FISH_ALPHA_MAX)
+		var edge := _fish_edge_fade(pos.x)
+		if edge <= 0.0:
+			continue
+		var face := _fish_face(i)
+		var size := _fish_size(i)
+		var sc := size * (1.0 + 0.35 * pulse * (1.0 + 0.5 * e))
+		var col := _fish_color(i)
+		var alpha := minf((0.3 + pulse * 0.5 * (float(i % 3) / 2.0 + 0.3)) * energy_alpha, FISH_ALPHA_MAX) * edge
 		draw_set_transform(pos, 0.0, Vector2(FISH_RX * sc * face, FISH_RY * sc))
 		draw_circle(Vector2.ZERO, 1.0, _a(col, alpha * 0.8))
 		draw_colored_polygon(_fish_tail, _a(col, alpha * 0.45))
@@ -762,12 +819,33 @@ func _draw_fish(low: bool) -> void:
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
+func _fish_color(i: int) -> Color:
+	return Palette.lane_color(0) if i % 2 == 0 else Palette.lane_color(2)
+
+
+func _fish_face(i: int) -> float:
+	return -1.0 if i % 3 == 0 else 1.0
+
+
+func _fish_size(i: int) -> float:
+	return 0.75 + 0.5 * fposmod(float(i) * 0.4142, 1.0)
+
+
+## School layout: fish swim slowly in their facing direction across x 120..1800 and wrap; each
+## fades out over the last 80 px of the span so the wrap never pops. Static under reduce motion.
 func _fish_pos(i: int) -> Vector2:
-	var base := Vector2(192.0 + 62.4 * i + 14.0 * sin(7.1 * i), 150.0 + 30.0 * sin(3.3 * i))
+	var span := FISH_X1 - FISH_X0
+	var x0 := FISH_X0 + fposmod(float(i) * 0.6180339 + 0.05 * sin(7.1 * i), 1.0) * span
+	var y := FISH_Y0 + (FISH_Y1 - FISH_Y0) * fposmod(float(i) * 0.3819660 + 0.11 * sin(3.3 * i), 1.0)
 	if _reduce:
-		return base
-	var face := -1.0 if i % 3 == 0 else 1.0
-	return base + Vector2(face * 18.0 * sin(0.21 * _t + 1.3 * i), 4.0 * sin(0.8 * _t + 2.1 * i))
+		return Vector2(x0, y)
+	var speed := 6.0 + 10.0 * fposmod(float(i) * 0.7548777, 1.0)
+	var x := FISH_X0 + fposmod(x0 - FISH_X0 + _fish_face(i) * speed * _t, span)
+	return Vector2(x, y + 5.0 * sin(0.8 * _t + 2.1 * i))
+
+
+func _fish_edge_fade(x: float) -> float:
+	return clampf(minf(x - FISH_X0, FISH_X1 - x) / 80.0, 0.0, 1.0)
 
 
 func _draw_snow(count: int) -> void:
@@ -787,6 +865,12 @@ func _draw_creature() -> void:
 		draw_set_transform(_cr_pos, 0.0, Vector2(_cr_dir, 1.0))
 		draw_colored_polygon(_leviathan, fill)
 		draw_polyline(_leviathan_rim, rim, 1.0, true)
+		# A faint row of photophores along the flank (visual review: alive, still distant).
+		for i in LEVIATHAN_LIGHTS:
+			var f := float(i) / float(LEVIATHAN_LIGHTS - 1)
+			var lp := Vector2(150.0 - 290.0 * f, 14.0 + 10.0 * sin(f * PI))  # local (see _leviathan_light)
+			var tw := 0.5 + 0.5 * sin(_t * 1.3 + float(i) * 0.9)
+			draw_circle(lp, 2.0, _a(Palette.SONAR_PALE, CREATURE_LIGHT_A * (0.5 + 0.5 * tw)))
 	else:
 		var squeeze := 1.0 + 0.06 * sin(_t * 2.2)
 		draw_set_transform(_cr_pos, 0.0, Vector2(squeeze, 2.0 - squeeze))
@@ -816,7 +900,17 @@ func _draw_glow() -> void:
 		var col := Palette.SONAR if c % 2 == 0 else Palette.BIO_VIOLET
 		var sz := COLONY_SPREAD * COLONY_GLOW_MUL * _colony_scale[c] * (1.0 + 0.25 * _pulse)
 		gl.draw_texture_rect(_dot_tex, Rect2(_colony_center[c] - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false,
-			_a(col, glow_a * alpha * vis))
+			_a(col, glow_a * maxf(alpha, HALO_FLOOR) * vis))
+	if _cr_active and _cr_kind == LEVIATHAN:
+		for i in LEVIATHAN_LIGHTS:
+			var lp := _leviathan_light(i)
+			var tw := 0.5 + 0.5 * sin(_t * 1.3 + float(i) * 0.9)
+			gl.draw_texture_rect(_dot_tex, Rect2(lp - Vector2(10.0, 10.0), Vector2(20.0, 20.0)), false,
+				_a(Palette.SONAR, CREATURE_LIGHT_A * 0.6 * (0.5 + 0.5 * tw)))
+	if _cr_active and _cr_kind == JELLYFISH:
+		var jg := Vector2(150.0, 130.0) * (1.0 + 0.08 * sin(_t * 2.2))
+		gl.draw_texture_rect(_dot_tex, Rect2(_cr_pos + Vector2(0.0, -40.0) - jg * 0.5, jg), false,
+			_a(Palette.BIO_VIOLET, JELLY_GLOW_A))
 	if menu_mode:
 		return
 	var lit := visible_crowd()
@@ -824,7 +918,10 @@ func _draw_glow() -> void:
 	for i in CROWD_FULL:
 		if (i * 7) % CROWD_FULL >= lit:
 			continue
-		var col := Palette.lane_color(3) if i % 2 == 0 else Palette.lane_color(1)
-		var size := Vector2(46.0, 18.0) * (1.0 + 0.3 * _pulse)
-		gl.draw_texture_rect(_dot_tex, Rect2(_fish_pos(i) - size * 0.5, size), false,
-			_a(col, glow_a * (0.5 + 0.5 * e) * (0.6 + 0.4 * _pulse)))
+		var fp := _fish_pos(i)
+		var edge := _fish_edge_fade(fp.x)
+		if edge <= 0.0:
+			continue
+		var size := Vector2(46.0, 18.0) * _fish_size(i) * (1.0 + 0.3 * _pulse)
+		gl.draw_texture_rect(_dot_tex, Rect2(fp - size * 0.5, size), false,
+			_a(_fish_color(i), glow_a * (0.5 + 0.5 * e) * (0.6 + 0.4 * _pulse) * edge))

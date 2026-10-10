@@ -43,7 +43,7 @@ const EMPTY_SONGS := LIB_ROOT + "/empty_songs"
 const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
 	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0, "immersion": 240.0,
-	"songs": 360.0, "align": 150.0, "perf": 470.0, "visual": 420.0}
+	"songs": 360.0, "align": 150.0, "perf": 470.0, "visual": 420.0, "autoplay5": 600.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note. Values stay >= 5 ms
 ## from window edges (35 / 70 / 100 ms) so frame jitter cannot flip the expected judgment.
 const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
@@ -111,6 +111,7 @@ func _run() -> void:
 		"align": await sc_align()
 		"perf": await sc_perf()
 		"visual": await sc_visual()
+		"autoplay5": await sc_autoplay5()
 		_: check("known scenario", false, scenario)
 	_finish()
 
@@ -2601,16 +2602,37 @@ func sc_immersion() -> void:
 	var edges := [Vector2(3, 540), Vector2(1917, 540), Vector2(960, 3), Vector2(960, 1077),
 		Vector2(3, 360), Vector2(1917, 720)]
 	var edge_vals: Array = []
-	var edge_ok := true
 	var red_free := true
 	for e in edges:
 		var p := _patch(img_full, e, 1)
 		edge_vals.append(snappedf(_chan_max(p), 0.001))
-		edge_ok = edge_ok and _chan_max(p) <= 0.35
 		red_free = red_free and not (p.r > 0.5 and p.g < 0.25 and p.b < 0.25)
 	metrics["edge_values"] = edge_vals
-	check("screen edges are clean (max channel <= 0.35, D-06)", edge_ok, edge_vals)
 	check("no red dominance at the edges outside a miss glitch", red_free, edge_vals)
+	# 02.2-11: the arena may only pass its walls behind the note path. Sample 12 points inside the
+	# expanded keep-out but outside the board strips (40 px beyond the outer rails, d 0.2..0.9):
+	# no SONAR / BIO_VIOLET colony-coloured pixel there. (Replaces the old "screen edges are
+	# clean" check: the living trench and the cockpit frame now light the screen edges on purpose.)
+	var keep := Arena.note_path_polygon()
+	var path_hits: Array = []
+	var path_inside := true
+	for side in [-1.0, 1.0]:
+		for di in 6:
+			var dd := 0.2 + 0.14 * float(di)
+			var sp := Trench.point(2.0 * side, dd) + Vector2(40.0 * side, 0.0)
+			path_inside = path_inside and Geometry2D.is_point_in_polygon(sp, keep)
+			for oy in [-1, 0, 1]:
+				for ox in [-1, 0, 1]:
+					var pc := _img_px(img_full, sp + Vector2(ox, oy))
+					if _colony_coloured(pc):
+						path_hits.append({"at": sp.round(), "rgb": [snappedf(pc.r, 0.01), snappedf(pc.g, 0.01), snappedf(pc.b, 0.01)]})
+	var geo_hits := 0
+	for dp in g.arena.colony_dots():
+		if Geometry2D.is_point_in_polygon(dp, keep):
+			geo_hits += 1
+	metrics["note_path_decor"] = {"pixel_hits": path_hits.size(), "colony_dots_inside": geo_hits}
+	check("no arena decoration inside the note path", path_inside and path_hits.is_empty() and geo_hits == 0,
+		{"samples_inside_keep_out": path_inside, "hits": path_hits.slice(0, 4), "colony_dots_inside": geo_hits})
 	Settings.low_effects = true
 	Settings.settings_changed.emit()
 	await wait(0.3)
@@ -3598,6 +3620,8 @@ func sc_visual() -> void:
 		await shot("visual_baseline", g)
 	check("visual scenario runs", ok and is_instance_valid(g) and g.state == Gameplay.State.RUNNING)
 	if ok and is_instance_valid(g):
+		await _visual_trench(g)
+	if ok and is_instance_valid(g):
 		await _visual_bursts(g)
 	await goto(MENU)
 
@@ -3605,6 +3629,148 @@ func sc_visual() -> void:
 func grab() -> Image:
 	await RenderingServer.frame_post_draw
 	return get_viewport().get_texture().get_image()
+
+
+## True for a pixel that reads as a bio-colony dot: hue within cos 0.995 of SONAR or BIO_VIOLET
+## and bright enough (max channel >= 0.3). The VP glow (cos 0.976 to SONAR, max 0.32) and the
+## translucent wall rings over it stay below this.
+func _colony_coloured(c: Color) -> bool:
+	if _chan_max(c) < 0.3:
+		return false
+	var v := Vector3(c.r, c.g, c.b)
+	if v.length() < 0.001:
+		return false
+	for ref in [Palette.SONAR, Palette.BIO_VIOLET]:
+		var rv := Vector3(ref.r, ref.g, ref.b)
+		if v.normalized().dot(rv.normalized()) >= 0.995:
+			return true
+	return false
+
+
+## Sum of the brightest channel around 4 visible colony centres in the frame drawn right now,
+## once `cond` holds (positions read from the arena after frame_post_draw, so they match the image).
+## Colonies are taken from the HUD-free centre band (x 420..1500, y 290..640, UI-SPEC 7.1).
+func _colony_luma(g: Gameplay, cond: Callable, label: String) -> Dictionary:
+	var a := g.arena
+	var deadline := Time.get_ticks_msec() + 6000
+	while Time.get_ticks_msec() < deadline and is_instance_valid(g):
+		await get_tree().process_frame
+		if not cond.call():
+			continue
+		var img: Image
+		if label != "":
+			await shot(label, g)
+			img = last_img
+		else:
+			img = await grab()
+		if not cond.call():
+			continue  # the frame drawn is past the beat window; try the next beat
+		var picks: Array = []
+		for c in Arena.COLONIES_FULL:
+			var vis: float = a._colony_vis[c]
+			var ctr: Vector2 = a._colony_center[c]
+			if vis >= 0.6 and ctr.x >= 420.0 and ctr.x <= 1500.0 and ctr.y >= 290.0 and ctr.y <= 640.0:
+				picks.append(c)
+		if picks.size() < 4:
+			continue
+		var total := 0.0
+		var vals: Array = []
+		for i in 4:
+			var v := _region_max(img, a._colony_center[picks[i]], 3.0, 1.0)
+			vals.append(snappedf(v, 0.001))
+			total += v
+		return {"n": 4, "sum": snappedf(total, 0.001), "vals": vals, "pulse": snappedf(a.beat_pulse(), 0.01)}
+	return {"n": 0, "sum": 0.0}
+
+
+## 02.2-11: the living trench. A shot at a beat peak (colonies bright), the colony brightness check
+## on vs off the beat, and two forced creature crossings (leviathan, jellyfish) for the visual review.
+func _visual_trench(g: Gameplay) -> void:
+	var a := g.arena
+	var on := await _colony_luma(g, func() -> bool: return is_instance_valid(g) and a.beat_pulse() > 0.8,
+		"gameplay_trench_beat")
+	var off := await _colony_luma(g, func() -> bool: return is_instance_valid(g) and a.beat_pulse() < 0.2, "")
+	check("bio colonies brighter on the beat than off it",
+		int(on["n"]) == 4 and int(off["n"]) == 4 and float(on["sum"]) > float(off["sum"]) * 1.2, {"on": on, "off": off})
+	if not is_instance_valid(g):
+		return
+	var sched := a.creature_schedule()
+	if sched.is_empty():
+		check("creature schedule exists", false)
+		return
+	var e: Dictionary = sched[0]
+	var saved := e.duplicate()
+	for kind in [Arena.LEVIATHAN, Arena.JELLYFISH]:
+		if not is_instance_valid(g):
+			return
+		# Forced for the shot: put the first crossing at x ~ 640 (dir +1) right now.
+		e["kind"] = kind
+		e["dir"] = 1.0
+		var sz := Vector2(420.0, 120.0) if kind == Arena.LEVIATHAN else Vector2(90.0, 140.0)
+		e["start"] = g.conductor.song_time() - (640.0 + sz.x * 0.5 + 40.0) / float(e["speed"])
+		await wait(0.15)
+		await shot("gameplay_trench_creature_%s" % ("leviathan" if kind == Arena.LEVIATHAN else "jellyfish"), g)
+		var r := a.creature_rect(g.conductor.song_time())
+		check("distant creature (%s, forced) visible and above the note path" % ("leviathan" if kind == Arena.LEVIATHAN else "jellyfish"),
+			a.creature_active() and r.position.y >= 120.0 and r.end.y <= 340.0, {"rect": r})
+	for k in saved:
+		e[k] = saved[k]
+
+
+# ------------------------------------------------------------------------------------------------
+# autoplay5 (02.2-11, W2): Sea Shanty 2 (densest bundled song) on Expert with Full effects and the
+# real board/FX, autoplay to the results. The visuals must not disturb judgment: 0 Good / 0 Miss.
+# ------------------------------------------------------------------------------------------------
+func sc_autoplay5() -> void:
+	isolate_settings(true)
+	await wait_library_idle(60.0)
+	Settings.low_effects = false
+	Settings.reduce_motion = false
+	Settings.settings_changed.emit()
+	var dir := ""
+	for b in BundledSongs.SONGS:
+		if str(b["id"]) == "sea_shanty_2":
+			dir = str(b["dir"])
+	if not check("Sea Shanty 2 is bundled", dir != "", dir):
+		return
+	await goto(MENU)
+	SongSelect.run_autoplay = true
+	Gameplay.pending_intro = IntroTimeline.Mode.NONE
+	await goto(SONG_SELECT)
+	var g := await dive_from_song_select(dir, "expert")
+	if g == null or not await wait_for_began(g):
+		check("autoplay5 dive began", false)
+		return
+	var counts: Dictionary = g.arena.effect_counts()
+	check("Full effects on the live board (arena 36 colonies, creature on; FX Full)",
+		int(counts["colonies"]) == 36 and bool(counts["creature"]) and not Settings.low_effects
+		and int(g.fx_layer.effect_counts()["perfect_amount"]) == 24, {"arena": counts})
+	var length := 0.0
+	for n in g.chart.notes:
+		length = maxf(length, float(n["time"]) + float(n["duration"]))
+	metrics["song_length_s"] = snappedf(length, 0.1)
+	metrics["notes"] = g.chart.notes.size()
+	note("Sea Shanty 2 Expert: %d notes, last note end %.1f s" % [g.chart.notes.size(), length])
+	await wait_until(func() -> bool: return not is_instance_valid(g) or g.conductor.song_time() > minf(40.0, length * 0.3),
+		60.0)
+	if is_instance_valid(g):
+		await shot("autoplay5_midsong", g)
+	var done: bool = await wait_until(func() -> bool:
+		return not is_instance_valid(g) or g.state == Gameplay.State.DONE, length + 60.0)
+	if not is_instance_valid(g):
+		check("autoplay5 run reached the results", false, "gameplay freed")
+		return
+	check("autoplay5 run reached the results", done and g.state == Gameplay.State.DONE, g.state)
+	await wait(0.8)
+	await shot("autoplay5_results", g)
+	var sc := g.score
+	metrics["perfect"] = sc.perfect_count
+	metrics["good"] = sc.good_count
+	metrics["miss"] = sc.miss_count
+	check("Sea Shanty 2 Expert autoplay at Full effects: 0 Good / 0 Miss",
+		done and sc.good_count == 0 and sc.miss_count == 0 and sc.perfect_count > 0,
+		"P%d G%d M%d of %d" % [sc.perfect_count, sc.good_count, sc.miss_count, g.chart.notes.size()])
+	await goto(MENU)
 
 
 ## 02.2-10: hit bursts and the judgment popup. Shot ~40 ms after a PERFECT; "burst visible"

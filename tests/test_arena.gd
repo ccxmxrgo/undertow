@@ -331,3 +331,25 @@ func test_band_polygons_always_triangulate() -> void:
 			assert_bool(Geometry2D.triangulate_polygon(poly).is_empty()).override_failure_message(
 				"band polygon failed to triangulate at scroll step %d" % step).is_false()
 	assert_int(drawn).is_greater_equal(10)
+
+
+# Visual review / songs harness: the outer 32 px band stays dark (D-06), also on Song Select.
+func test_colonies_keep_clear_of_the_screen_edges() -> void:
+	var a: Arena = auto_free(Arena.new())
+	a.apply_effect_settings()
+	for step in 120:
+		a.set_scroll(float(step) / 120.0)
+		for p in a.colony_dots():
+			var edge := minf(minf(p.x, Arena.W - p.x), minf(p.y, Arena.H - p.y))
+			assert_float(edge).override_failure_message("colony dot %s too close to the edge" % p).is_greater_equal(40.0)
+
+
+# Visual review: no colony behind the console readouts (streak left, depth right, below y 600).
+func test_colonies_stay_out_of_the_console_corners() -> void:
+	var a: Arena = auto_free(Arena.new())
+	a.apply_effect_settings()
+	for step in 120:
+		a.set_scroll(float(step) / 120.0)
+		for p in a.colony_dots():
+			var in_console := p.y > 600.0 and (p.x < 400.0 or p.x > 1520.0)
+			assert_bool(in_console).override_failure_message("colony dot %s in a console corner" % p).is_false()
