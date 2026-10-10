@@ -15,6 +15,12 @@ var meta: Dictionary = {}
 ## "easy" / "medium" / "hard" / "expert" (empty for hand-made charts).
 var difficulty: String = ""
 var artist: String = ""
+## Chart sections from [Events] "section <name>" (D-10): {time: float, name: String}, seconds,
+## sorted. Not part of the fingerprint.
+var sections: Array[Dictionary] = []
+## Time signatures (D-18): {time: float, num: int, den: int}, seconds, sorted, first at the
+## chart start. Not part of the fingerprint.
+var time_sigs: Array[Dictionary] = []
 
 
 func add_note(lane: int, time: float, duration: float = 0.0) -> void:

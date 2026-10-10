@@ -24,6 +24,12 @@ const DIFFICULTIES: Array[String] = ["easy", "medium", "hard", "expert"]
 const DEFAULT_BPM := 120.0
 const MIN_BPM := 1.0
 const MAX_BPM := 2000.0
+## Untrusted [Events] / TS limits (T-02.2-05..07).
+const MAX_SECTIONS := 256
+const MAX_TIME_SIGS := 256
+const MAX_SECTION_NAME := 64
+const MAX_TS_NUM := 32
+const MAX_TS_EXP := 5
 
 const _TRACK_NAMES := {
 	"easy": "EasySingle",
@@ -84,6 +90,8 @@ static func build(parsed: ParsedChart, difficulty: String, delay_ms: int = 0) ->
 	chart.finalize()
 
 	chart.solos = _solos(parsed, difficulty, chart, segs, res, delay)
+	chart.sections = _sections(parsed, segs, res, delay)
+	chart.time_sigs = _time_sigs(parsed, segs, res, delay)
 	chart.meta = {
 		"mapping_version": MAPPING_VERSION,
 		"importer_version": IMPORTER_VERSION,
@@ -244,6 +252,87 @@ static func _solos(parsed: ParsedChart, difficulty: String, chart: ChartData, se
 			if n["time"] >= st and n["time"] <= en:
 				count += 1
 		out.append({"start": st, "end": en, "note_count": count})
+	return out
+
+
+## [Events] "section <name>" -> [{time, name}] sorted, deduplicated, sanitized, capped.
+static func _sections(parsed: ParsedChart, segs: Array, res: int, delay: float) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var seen := {}
+	for e in parsed.events:
+		var text: String = str(e.get("text", ""))
+		var stripped := text.strip_edges(true, false)
+		if not stripped.to_lower().begins_with("section "):
+			continue
+		var name := _clean_section_name(stripped.substr(8))
+		if name == "":
+			continue
+		var t := maxf(_tick_to_sec(segs, res, int(e["tick"])) + delay, 0.0)
+		if not is_finite(t):
+			continue
+		var key := "%d|%s" % [int(round(t * 1000000.0)), name]
+		if seen.has(key):
+			continue
+		seen[key] = true
+		out.append({"time": t, "name": name})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["time"] < b["time"])
+	if out.size() > MAX_SECTIONS:
+		out.resize(MAX_SECTIONS)
+	return out
+
+
+## Control characters removed, whitespace runs collapsed to one space, trimmed, capped.
+static func _clean_section_name(raw: String) -> String:
+	var out := ""
+	var pending_space := false
+	for i in raw.length():
+		var c := raw.unicode_at(i)
+		if c == 9 or c == 10 or c == 13 or c == 32:
+			pending_space = out != ""
+			continue
+		if c < 32 or c == 127:
+			continue
+		if pending_space:
+			out += " "
+			pending_space = false
+		out += raw[i]
+		if out.length() >= MAX_SECTION_NAME:
+			break
+	return out.substr(0, MAX_SECTION_NAME).strip_edges()
+
+
+## TS events -> [{time, num, den}] (den = 2^exp), clamped, last at a tick wins, default
+## 4/4 at the chart start when the first TS is missing or later.
+static func _time_sigs(parsed: ParsedChart, segs: Array, res: int, delay: float) -> Array[Dictionary]:
+	var raw: Array = []  # {tick, num, den}
+	for ts in parsed.time_sigs:
+		var num := clampi(int(ts.get("num", 4)), 1, MAX_TS_NUM)
+		var ts_exp := clampi(int(ts.get("exp", 2)), 0, MAX_TS_EXP)
+		var tick := int(ts.get("tick", 0))
+		if tick < 0:
+			continue
+		var entry := {"tick": tick, "num": num, "den": 1 << ts_exp}
+		if not raw.is_empty() and raw[raw.size() - 1]["tick"] == tick:
+			raw[raw.size() - 1] = entry
+		else:
+			raw.append(entry)
+		if raw.size() >= MAX_TIME_SIGS:
+			break
+	if raw.is_empty() or raw[0]["tick"] > 0:
+		raw.push_front({"tick": 0, "num": 4, "den": 4})
+		if raw.size() > MAX_TIME_SIGS:
+			raw.resize(MAX_TIME_SIGS)
+	var out: Array[Dictionary] = []
+	for r in raw:
+		var t := _tick_to_sec(segs, res, int(r["tick"])) + delay
+		if not is_finite(t):
+			continue
+		out.append({"time": t, "num": r["num"], "den": r["den"]})
+	# negative delay: keep the last signature at or before 0 and start it at 0
+	while out.size() > 1 and out[1]["time"] <= 0.0:
+		out.remove_at(0)
+	if not out.is_empty() and out[0]["time"] < 0.0:
+		out[0]["time"] = 0.0
 	return out
 
 
