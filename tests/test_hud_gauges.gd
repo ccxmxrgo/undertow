@@ -208,3 +208,223 @@ func test_frame_draws_once_and_stays_cached() -> void:
 		await get_tree().process_frame
 	assert_int(f.redraw_count).is_equal(1)
 	assert_bool(f.is_processing()).is_false()
+
+
+# ---- Bathymeter (02.2-13, UI-SPEC 4.6) ----------------------------------------------------
+
+func _chart(notes: Array) -> ChartData:
+	var c := ChartData.new()
+	for n in notes:
+		c.add_note(int(n[0]), float(n[1]), float(n[2]))
+	c.finalize()
+	return c
+
+
+func test_estimate_max_depth_singles() -> void:
+	var cfg := JudgeConfig.new()
+	var notes := []
+	for i in 25:
+		notes.append([i % 4, 1.0 + i * 0.5, 0.0])
+	var expected := 0.0
+	for i in 25:
+		expected += float(cfg.score_perfect) * mini(1 + i / 10, 4) / cfg.score_per_meter
+	assert_float(expected).is_equal_approx(45.0, 0.001)
+	assert_float(Bathymeter.estimate_max_depth(_chart(notes), cfg)).is_equal_approx(expected, 0.001)
+
+
+func test_estimate_max_depth_sustain_ticks() -> void:
+	var cfg := JudgeConfig.new()
+	var plain := Bathymeter.estimate_max_depth(_chart([[0, 1.0, 0.0]]), cfg)
+	var held := Bathymeter.estimate_max_depth(_chart([[0, 1.0, 1.0]]), cfg)
+	# floor(1.0 / 0.1) ticks x score_sustain_tick x multiplier 1, in meters.
+	var ticks := floori(1.0 / cfg.sustain_tick_interval + 1e-9)
+	assert_float(held - plain).is_equal_approx(float(ticks * cfg.score_sustain_tick) / cfg.score_per_meter, 0.001)
+	assert_float(Bathymeter.estimate_max_depth(ChartData.new(), cfg)).is_equal(0.0)
+
+
+func test_estimate_matches_an_all_perfect_hullscore_run() -> void:
+	var parsed := ChartParser.parse_bytes(FileAccess.get_file_as_bytes("res://songs/hrt/notes.chart"))
+	assert_bool(parsed.ok).is_true()
+	var chart := ChartImporter.build(parsed, "expert", 0)
+	var has_sustain := false
+	for n in chart.notes:
+		has_sustain = has_sustain or float(n["duration"]) > 0.0
+	assert_bool(has_sustain).is_true()
+	var cfg := JudgeConfig.new()
+	var judge := InputJudge.new(chart, cfg)
+	var hs := HullScore.new(cfg)
+	hs.connect_judge(judge)
+	var ap := Autoplay.new(chart, judge)
+	var lastn: Dictionary = chart.notes[chart.notes.size() - 1]
+	var last: float = float(lastn["time"]) + float(lastn["duration"]) + 1.0
+	var t := 0.0
+	while t < last:
+		t += 1.0 / 60.0
+		ap.update(t)
+		judge.tick(t)
+	assert_int(hs.miss_count).is_equal(0)
+	assert_float(Bathymeter.estimate_max_depth(chart, cfg)).is_equal_approx(hs.depth(), 1.0)
+
+
+func _bathy(scale: float, best: float) -> Bathymeter:
+	var b: Bathymeter = auto_free(Bathymeter.new())
+	add_child(b)
+	b.setup(scale, best)
+	return b
+
+
+func test_bathymeter_marker_math_and_scale() -> void:
+	assert_float(Bathymeter.marker_y_for(0.0, 100.0)).is_equal(632.0)
+	assert_float(Bathymeter.marker_y_for(50.0, 100.0)).is_equal(832.0)
+	assert_float(Bathymeter.marker_y_for(500.0, 100.0)).is_equal(1032.0)
+	assert_float(Bathymeter.marker_y_for(-5.0, 100.0)).is_equal(632.0)
+	assert_float(Bathymeter.marker_y_for(5.0, 0.0)).is_equal(632.0)
+	var b := _bathy(100.0, -1.0)
+	assert_float(b.scale_m()).is_equal(100.0)
+	assert_bool(b.best_visible()).is_false()
+	var b2 := _bathy(100.0, 150.0)
+	assert_float(b2.scale_m()).is_equal(150.0)
+	assert_bool(b2.best_visible()).is_true()
+	assert_float(b2.best_y()).is_equal(1032.0)
+	var b3 := _bathy(100.0, 0.0)  # a record of 0 m still exists
+	assert_bool(b3.best_visible()).is_true()
+	var b4 := _bathy(100.0, INF)  # T-02.2-24: non-finite best ignored
+	assert_bool(b4.best_visible()).is_false()
+	assert_float(b4.scale_m()).is_equal(100.0)
+
+
+func test_bathymeter_marker_eases_with_tau() -> void:
+	var b := _bathy(100.0, -1.0)
+	b.set_depth(50.0)
+	assert_float(b.target_y()).is_equal(832.0)
+	assert_float(b.shown_y()).is_equal(632.0)
+	b._process(0.08)
+	assert_float(b.shown_y()).is_equal_approx(832.0 - 200.0 * exp(-1.0), 0.01)
+	for i in 60:
+		b._process(1.0 / 60.0)
+	assert_float(b.shown_y()).is_equal_approx(832.0, 0.06)
+	b.set_depth(NAN)  # ignored
+	assert_float(b.target_y()).is_equal(832.0)
+
+
+func test_bathymeter_marker_instant_under_reduce_motion() -> void:
+	Settings.reduce_motion = true
+	var b := _bathy(100.0, -1.0)
+	b.set_depth(25.0)
+	assert_float(b.shown_y()).is_equal(732.0)
+	assert_bool(b.is_in_group(UiKit.FX_GROUP)).is_true()
+
+
+func test_bathymeter_best_flashes_once_when_passed() -> void:
+	var b := _bathy(100.0, 40.0)
+	b.set_depth(30.0)
+	assert_bool(b.best_flashing()).is_false()
+	b.set_depth(45.0)
+	assert_bool(b.best_flashing()).is_true()
+	b._process(Palette.DUR_BASE + 0.01)
+	assert_bool(b.best_flashing()).is_false()
+	b.set_depth(60.0)
+	assert_bool(b.best_flashing()).is_false()
+	b.queue_redraw()
+	await get_tree().process_frame
+
+
+# ---- HullArc (02.2-13, UI-SPEC 4.7) -------------------------------------------------------
+
+func _arc() -> HullArc:
+	var a: HullArc = auto_free(HullArc.new())
+	add_child(a)
+	return a
+
+
+func test_hull_arc_segments_lit() -> void:
+	assert_float(HullArc.segments_lit(100.0)).is_equal(20.0)
+	assert_float(HullArc.segments_lit(47.5)).is_equal(9.5)
+	assert_float(HullArc.segments_lit(0.0)).is_equal(0.0)
+	assert_float(HullArc.segments_lit(140.0)).is_equal(20.0)
+	assert_float(HullArc.segments_lit(-3.0)).is_equal(0.0)
+
+
+func test_hull_arc_geometry_kept() -> void:
+	assert_object(HullArc.CENTER).is_equal(Vector2(960.0, 450.0))
+	assert_float(HullArc.RADIUS).is_equal(612.0)
+	assert_float(HullArc.ANGLE_LEFT).is_equal(2.028)
+	assert_float(HullArc.ANGLE_RIGHT).is_equal(1.114)
+	assert_float(HullArc.R_IN).is_equal(607.0)
+	assert_float(HullArc.R_OUT).is_equal(617.0)
+	assert_int(HullArc.SEGMENTS).is_equal(20)
+	# Segment 0 starts at the left end; gaps of 0.006 rad between neighbours.
+	var s0 := HullArc.segment_angles(0)
+	var s1 := HullArc.segment_angles(1)
+	assert_float(s0.y).is_equal_approx(2.028 - 0.003, 0.0001)
+	assert_float(s0.x - s1.y).is_equal_approx(0.006, 0.0001)
+	assert_float(HullArc.segment_angles(19).x).is_equal_approx(1.114 + 0.003, 0.0001)
+	assert_float(HullArc.angle_for(30.0)).is_equal_approx(Hud.hull_arc_angle(30.0), 0.0001)
+
+
+func test_hull_arc_colours_by_hull() -> void:
+	assert_object(HullArc.color_for(80.0)).is_equal(Palette.SONAR)
+	assert_object(HullArc.color_for(50.0)).is_equal(Palette.TEXT_HI)
+	assert_object(HullArc.color_for(31.0)).is_equal(Palette.TEXT_HI)
+	assert_object(HullArc.color_for(30.0)).is_equal(Palette.WARNING_RED)
+	assert_object(HullArc.color_for(0.0)).is_equal(Palette.WARNING_RED)
+
+
+func test_hull_arc_cracks_near_edge_and_everywhere_when_critical() -> void:
+	# 70% -> 14 lit; lost segments 14, 15, 16 crack.
+	assert_array(HullArc.cracked_segments(70.0)).is_equal([14, 15, 16])
+	# 47.5% -> 9.5 lit; the partial boundary 9 plus 10, 11 (within 3 of the edge).
+	assert_array(HullArc.cracked_segments(47.5)).is_equal([9, 10, 11])
+	assert_array(HullArc.cracked_segments(100.0)).is_empty()
+	# Critical: every unlit segment cracks.
+	var crit := HullArc.cracked_segments(25.0)
+	assert_int(crit.size()).is_equal(15)
+	assert_int(crit[0]).is_equal(5)
+	assert_int(crit[14]).is_equal(19)
+
+
+func test_hull_arc_crack_shapes_are_deterministic() -> void:
+	var a := HullArc.crack_lines(7)
+	var b := HullArc.crack_lines(7)
+	assert_int(a.size()).is_equal(2)
+	assert_int(a[0].size()).is_equal(3)
+	assert_array(Array(a[0])).is_equal(Array(b[0]))
+	assert_array(Array(a[1])).is_equal(Array(b[1]))
+	assert_bool(Array(HullArc.crack_lines(8)[0]) != Array(a[0])).is_true()
+
+
+func test_hull_arc_damage_flash_then_shrink() -> void:
+	var a := _arc()
+	a.set_hull(100.0, 0.0)
+	a.set_hull(90.0, -10.0)
+	assert_bool(a.is_flashing()).is_true()
+	a._process(0.1)
+	assert_float(a.shown_pct()).is_equal(100.0)  # holds while the lost segments flash red
+	a._process(0.11)
+	assert_bool(a.is_flashing()).is_false()
+	for i in 10:
+		a._process(0.015)
+	assert_float(a.shown_pct()).is_less(91.0)
+	for i in 30:
+		a._process(0.016)
+	assert_float(a.shown_pct()).is_equal(90.0)
+	# Regen snaps up.
+	a.set_hull(91.0, 1.0)
+	assert_float(a.shown_pct()).is_equal(91.0)
+
+
+func test_hull_arc_pulses_when_critical_static_under_reduce() -> void:
+	var a := _arc()
+	a.set_hull(25.0, -5.0)
+	assert_bool(a.is_critical()).is_true()
+	assert_bool(a.pulsing()).is_true()
+	var lo := a.fill_alpha(int(1000000.0 / 6.0))  # half a 3 Hz period
+	assert_float(lo).is_less(0.5)
+	assert_float(a.fill_alpha(0)).is_equal_approx(1.0, 0.001)
+	Settings.reduce_motion = true
+	a.apply_effect_settings()
+	assert_bool(a.pulsing()).is_false()
+	assert_float(a.fill_alpha(int(1000000.0 / 6.0))).is_equal(1.0)
+	assert_bool(a.is_in_group(UiKit.FX_GROUP)).is_true()
+	a.queue_redraw()
+	await get_tree().process_frame
