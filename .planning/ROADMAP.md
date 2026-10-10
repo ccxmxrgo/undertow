@@ -116,7 +116,7 @@ Plans:
   6. The user's three custom songs (HRT, Sea Shanty 2, INVISIBLE) and the two existing bundled songs ship with audio-driven charts that pass the measured sync gate (median note-to-onset within ±5 ms, ≥90% of notes within ±25 ms)
 
 **Depends on:** Phase 2
-**Plans:** 8/9 plans executed
+**Plans:** 9/9 plans complete
 
 Plans:
 
@@ -128,7 +128,7 @@ Plans:
 - [x] 02.1-06-PLAN.md — HRT + INVISIBLE bundled and gated (stem fill), D-13 override (PROJECT.md + CLAUDE.md), headless BUNDLED_OK 20
 - [x] 02.1-07-PLAN.md — STEM-07: re-chart April + Space Synth Wave, retire author_chart.gd to legacy, tests on committed charts
 - [x] 02.1-08-PLAN.md — STEM-02/04/05: extract_song.ps1 player flow, INSTRUMENT LANES mode, same-hash proof (after 07)
-- [ ] 02.1-09-PLAN.md — Final v0.4 rebuild, gate table, UAT sheet, end-of-phase human verification
+- [x] 02.1-09-PLAN.md — Final v0.4 rebuild, gate table, UAT sheet, end-of-phase human verification
 
 ### Phase 3: Offline Versus
 
