@@ -73,7 +73,7 @@ class InstrumentLanesTest(unittest.TestCase):
         self.assertTrue(all(b - a >= RES // 4 for a, b in zip(ticks, ticks[1:])))
 
     def test_cross_lane_flams_merge_into_the_stronger(self):
-        ons = {"bass": [_on(1.0, 1.0), _on(9.0, 1.0)], "drums": [_on(1.04, 2.0), _on(9.5, 2.0)]}
+        ons = {"bass": [_on(1.0, 1.0), _on(9.0, 1.0)], "drums": [_on(1.04, 2.0), _on(9.5, 0.5)]}
         notes = il.instrument_expert(ons, _tm(), target_nps=100.0)
         near = [n for n in notes if n["t"] < 2.0]
         self.assertEqual(len(near), 1)
