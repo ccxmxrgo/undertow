@@ -2833,6 +2833,10 @@ const FIXTURE_NAMES := ["Abyssal Echo", "Ballast", "Coral Static", "Depth Charge
 	"Gyre", "Hadal Zone", "Ink Cloud", "Jetsam", "Kelp Forest", "Lantern Fish", "Maelstrom", "Nautilus",
 	"Oarfish", "Pressure Hull", "Quiet Running", "Riptide", "Sonar Ping", "Thermocline", "Upwelling",
 	"Vent Field", "Whale Fall"]
+## Plan 02.2-19: fixture folder that gets tests/fixtures/album_art/album.png and section events.
+const ART_SONG := "Coral Static"
+const ART_FIXTURE := "res://tests/fixtures/album_art/album.png"
+const ART_SECTIONS: Array[String] = ["Intro", "Verse 1", "Chorus", "Outro"]
 const HINT_KEYS := "UP DOWN SONG  ·  LEFT RIGHT DIFFICULTY  ·  ENTER DIVE  ·  F5 RESCAN  ·  ESC BACK"
 const HINT_FILTER := "TYPE TO FILTER  ·  BACKSPACE EDIT  ·  ESC CLEAR FILTER  ·  UP DOWN SONG  ·  ENTER DIVE"
 const HINT_PAD := "D-PAD SONG  ·  LEFT RIGHT DIFFICULTY  ·  A DIVE  ·  Y SORT  ·  X RESCAN  ·  B BACK"
@@ -2881,6 +2885,13 @@ func _make_fixture_library() -> void:
 	_fixture_art(256, 256).save_jpg(FIXTURE_SONGS.path_join("Ebb Tide").path_join("album.jpg"), 0.9)
 	SongFixture.zip_folder(zsrc, FIXTURE_SONGS.path_join("Zipped Song.zip"), "Zipped Song")
 	SongFixture.rm_tree(zsrc)
+	# Plan 02.2-19: the first-party album.png fixture (plan 17) copied into an existing fixture folder,
+	# whose chart also gets section events for the sections block.
+	var art_dir := FIXTURE_SONGS.path_join(ART_SONG)
+	SongFixture.write_bytes(art_dir.path_join("album.png"), FileAccess.get_file_as_bytes(ART_FIXTURE))
+	SongFixture.write_text(art_dir.path_join("notes.chart"), SongFixture.CHART.replace("[Events]\n{\n}",
+		"[Events]\n{\n  0 = E \"section Intro\"\n  384 = E \"section Verse 1\"\n  768 = E \"section Chorus\"\n"
+		+ "  1152 = E \"section Outro\"\n}"))
 	_fixture_song(FIXTURE_SONGS.path_join("Dive Test Song"), "Dive Test Song", "Harness Band", 6.0)
 
 
@@ -2917,24 +2928,25 @@ func _check_rows_fit(ss: SongSelect, label: String) -> void:
 		if e == null:
 			continue
 		var sel: bool = id == st["selected"]
-		var badge := "TEST" if e.source == "test" else ("NEEDS A CHART" if e.status == "needs_chart" else "")
-		var bw := ss._w(badge, Palette.SIZE_LABEL) if badge != "" else 0.0
-		var title_max := 776.0 - (bw + 24.0 if badge != "" else 0.0)
+		var bd := SongSelect.row_badge(e)
+		var badge: String = bd[0]
+		var bw := UiKit.chip_width(badge, bd[1]) + SongSelect.BADGE_GAP if badge != "" else 0.0
+		var title_max := SongSelect.row_title_max(badge, bd[1])
 		var title := e.title if e.title != "" else "Untitled"
 		var shown := ss._fit(title, Palette.SIZE_BODY, title_max, sel)
 		if shown != title:
 			truncated.append(shown)
-		var title_end := 112.0 + ss._w(shown, Palette.SIZE_BODY, sel) + (bw + 24.0 if badge != "" else 0.0)
+		var title_end := 112.0 + ss._w(shown, Palette.SIZE_BODY, sel) + bw
 		var best_left := 992.0 - ss._w("99999 m", Palette.SIZE_LABEL)
 		var second_end: float
-		var second_limit := 904.0
+		var second_limit := SongSelect.ROW_LEN_RIGHT
 		if e.status == "broken":
 			second_end = 128.0 + ss._w(ss._fit(e.error, Palette.SIZE_LABEL, 740.0), Palette.SIZE_LABEL)
 		else:
 			var second := SongSelect.NEEDS_HINT_ROW if e.status == "needs_chart" else (e.artist if e.artist != "" else "Unknown artist")
 			second_end = 112.0 + ss._w(ss._fit(second, Palette.SIZE_LABEL, 700.0), Palette.SIZE_LABEL)
 			if e.length_sec > 0.0:
-				second_limit = 904.0 - ss._w(SongListModel.fmt_length(e.length_sec), Palette.SIZE_LABEL) - 8.0
+				second_limit = SongSelect.ROW_LEN_RIGHT - ss._w(SongListModel.fmt_length(e.length_sec), Palette.SIZE_LABEL) - 8.0
 		if title_end > best_left - 8.0 or second_end > second_limit or title_end > 1008.0:
 			bad.append("%s title_end %.0f (limit %.0f) second_end %.0f (limit %.0f)" % [title, title_end,
 				best_left - 8.0, second_end, second_limit])
@@ -2962,30 +2974,66 @@ func _check_footer(ss: SongSelect, label: String) -> void:
 		"%.1f" % credits_x)
 
 
-## Brightest channel inside the outer 32 px band (sampled every 6 px). Only the Arena vignette may
-## show there, so it must stay dark like the gameplay edges (<= 0.35, 1.2 rule).
-func _check_outer_band(img: Image, label: String) -> void:
-	var worst := 0.0
-	var at := Vector2.ZERO
-	var pts: Array = []
-	var x := 2.0
-	while x < 1920.0:
-		for y in [2.0, 14.0, 28.0, 1052.0, 1066.0, 1078.0]:
-			pts.append(Vector2(x, y))
-		x += 6.0
-	var y2 := 2.0
-	while y2 < 1080.0:
-		for xx in [2.0, 14.0, 28.0, 1892.0, 1906.0, 1918.0]:
-			pts.append(Vector2(xx, y2))
-		y2 += 6.0
-	for p in pts:
-		var v := _chan_max(_img_px(img, p))
-		if v > worst:
-			worst = v
-			at = p
-	metrics["%s_outer_band_max" % label] = {"max": snappedf(worst, 0.001), "at": str(at)}
-	check("%s: nothing bright in the outer 32 px (max channel <= 0.35)" % label, worst <= 0.35,
-		"%.3f at %s" % [worst, at])
+## Replaces the retired outer-32-px check (RESEARCH Pitfall 9, clean-edge rule retired): the
+## backdrop may reach the edges, but no bright decoration may sit over the list text. For every
+## visible song row, the brightest-luminance pixel of its title must keep >= 4.5:1 (WCAG) against
+## the row background sampled in the text-free gap left of the title (x 96, row centre).
+func _check_list_text_contrast(ss: SongSelect, img: Image, label: String) -> void:
+	var st := ss.debug_state()
+	var worst := 99.0
+	var worst_at := ""
+	var n := 0
+	for i in range(int(st["offset"]), mini(int(st["offset"]) + SongSelect.ROWS, ss._view.size())):
+		var e: Variant = ss._view[i]
+		if e == null:
+			continue
+		var y := SongSelect.LIST_Y + float(i - int(st["offset"])) * SongSelect.ROW_PITCH
+		var sel: bool = (e as SongEntry).id == st["selected"]
+		var title := (e as SongEntry).title if (e as SongEntry).title != "" else "Untitled"
+		var shown := ss._fit(title, Palette.SIZE_BODY, 600.0, sel)
+		var tw := minf(ss._w(shown, Palette.SIZE_BODY, sel), 600.0)
+		var bg := _patch(img, Vector2(96.0, y + 36.0), 2)
+		var best := bg
+		var x := 112.0
+		while x < 112.0 + tw:
+			var yy := y + 12.0
+			while yy <= y + 34.0:
+				var px := _img_px(img, Vector2(x, yy))
+				if Wcag.luminance(px) > Wcag.luminance(best):
+					best = px
+				yy += 1.0
+			x += 1.0
+		var r := Wcag.ratio(best, bg)
+		n += 1
+		if r < worst:
+			worst = r
+			worst_at = "%s (row %d)" % [title, i - int(st["offset"])]
+	metrics["%s_list_text_contrast" % label] = {"min": snappedf(worst, 0.01), "at": worst_at, "rows": n}
+	check("%s: no bright decoration over the list text (row title vs its row background >= 4.5:1)" % label,
+		n > 0 and worst >= 4.5, "%.2f at %s (%d rows)" % [worst, worst_at, n])
+
+
+## Viewport image of the next drawn frame (not saved).
+func _grab() -> Image:
+	await RenderingServer.frame_post_draw
+	return get_viewport().get_texture().get_image()
+
+
+## Hash of the album-cover area (inset 6 px past the edge and brackets) in design pixels.
+func _cover_hash(img: Image) -> int:
+	var r := SongSelect.COVER_RECT.grow(-6.0)
+	var bytes := PackedByteArray()
+	var y := r.position.y
+	while y < r.end.y:
+		var x := r.position.x
+		while x < r.end.x:
+			var c := _img_px(img, Vector2(x, y))
+			bytes.append(c.r8)
+			bytes.append(c.g8)
+			bytes.append(c.b8)
+			x += 2.0
+		y += 2.0
+	return hash(bytes)
 
 
 ## Glyphs the font stack cannot render (tofu): shaped glyphs without a font.
@@ -3086,7 +3134,7 @@ func sc_songs() -> void:
 	_check_rows_fit(ss, "midlist")
 	_check_footer(ss, "midlist")
 	await shot("library_midlist")
-	_check_outer_band(last_img, "midlist")
+	_check_list_text_contrast(ss, last_img, "midlist")
 
 	# --- preview gate: none before 0.4 s after the last highlight change ------------------------------
 	var left_pending := [-1]
@@ -3219,6 +3267,63 @@ func sc_songs() -> void:
 	check("corrupt album.png falls back to the generated cover", ss.debug_state()["cover"] == "generated",
 		ss.debug_state()["cover"])
 
+	# --- 02.2-19: album.png fixture, generated cover stability, sections, visualizer, tile counts ----------
+	var art_e := _entry_titled(ART_SONG)
+	if art_e != null:
+		ss.select_for_test(art_e.id)
+		check("selected song with album.png shows its art",
+			await wait_until(func() -> bool: return ss.debug_state()["cover"] == "art", 3.0), ss.debug_state()["cover"])
+		var sec_ok: bool = await wait_until(func() -> bool:
+			return ss.debug_state()["sections"]["state"] == "ready", 3.0)
+		var sec: Dictionary = ss.debug_state()["sections"]
+		check("sections block lists the chart's sections (count chip, names)", sec_ok
+			and sec["names"] == ART_SECTIONS and int(sec["count"]) == ART_SECTIONS.size(), sec)
+		await wait(0.8)
+		await shot("art_cover")
+	else:
+		check("selected song with album.png shows its art", false, "fixture %s missing" % ART_SONG)
+	var gen_e := _entry_titled("Abyssal Echo")
+	if gen_e != null:
+		ss.select_for_test(gen_e.id)
+		await wait(0.8)
+		check("song without art shows a generated cover", ss.debug_state()["cover"] == "generated",
+			ss.debug_state()["cover"])
+		var sec2: Dictionary = ss.debug_state()["sections"]
+		check("chart without section events shows the empty sections line", sec2["state"] == "ready"
+			and int(sec2["count"]) == 0 and ss.section_names_text([]) == SongSelect.NO_SECTIONS, sec2)
+		await shot("generated_cover")
+		var h1 := _cover_hash(last_img)
+		var tex_a: Texture2D = ss._cover.generated_texture(gen_e.title)
+		var data_a := tex_a.get_image().get_data() if tex_a != null else PackedByteArray()
+		ss.select_for_test(ebb.id)
+		await wait(0.8)
+		ss.select_for_test(gen_e.id)
+		await wait(0.8)
+		var h2 := _cover_hash(await _grab())
+		var fresh := AlbumCover.generated(gen_e.title).get_data()
+		check("generated cover identical on reselect (screen area and image data hash)",
+			h1 == h2 and hash(data_a) == hash(fresh) and not data_a.is_empty(),
+			{"screen": [h1, h2], "data": [hash(data_a), hash(fresh)]})
+	# Visualizer on a bundled song: preview starts after the gate, bars must move within 3 s.
+	ss.select_for_test(april.id)
+	var pv_ok: bool = await wait_until(func() -> bool: return ss.debug_state()["preview_state"] == "playing", 5.0)
+	var viz_peak := [0.0]
+	var moved := false
+	if pv_ok:
+		moved = await wait_until(func() -> bool:
+			for v in ss.visualizer_levels():
+				viz_peak[0] = maxf(viz_peak[0], v)
+			return viz_peak[0] > 0.1, 3.0)
+	metrics["bundled_visualizer_max"] = viz_peak[0]
+	check("visualizer moves while the preview plays (max level > 0.1 within 3 s, bundled April)", moved,
+		"preview %s, max %.2f (driver %s)" % [ss.debug_state()["preview_state"], viz_peak[0],
+		AudioServer.get_driver_name()])
+	var tl: Array = ss.debug_state()["tiles"]
+	var di := SongListModel.DIFFICULTY_ORDER.find(ss._diff)
+	var want_n := int(april.difficulty(ss._diff).get("note_count", -1))
+	check("difficulty tile shows note count", di >= 0 and want_n > 0
+		and tl[di]["text"] == "%s NOTES" % SongListModel.fmt_count(want_n), [ss._diff, tl[di] if di >= 0 else null, want_n])
+
 	# --- sort orders, broken last ---------------------------------------------------------------------------
 	var sorts := {}
 	var sort_ok := true
@@ -3264,14 +3369,14 @@ func sc_songs() -> void:
 	Settings.settings_changed.emit()
 	await wait(0.5)
 	await shot("low_effects")
-	_check_outer_band(last_img, "low_effects")
+	_check_list_text_contrast(ss, last_img, "low_effects")
 	check("Low effects: same rows and selection", ss.debug_state()["rows"] == rows_full)
 	Settings.low_effects = false
 	Settings.reduce_motion = true
 	Settings.settings_changed.emit()
 	await wait(0.5)
 	await shot("reduce_motion")
-	_check_outer_band(last_img, "reduce_motion")
+	_check_list_text_contrast(ss, last_img, "reduce_motion")
 	check("Reduce motion: same rows, scroll snapped (no smooth scroll)",
 		ss.debug_state()["rows"] == rows_full and is_equal_approx(ss._scroll_vis, float(ss._offset)))
 	Settings.reduce_motion = false
@@ -3322,7 +3427,7 @@ func sc_songs() -> void:
 	check("only bundled songs: onboarding row shown, footer shows the Songs path (%d rows)" % (2 + BundledSongs.SONGS.size()),
 		bool(st["onboarding"]) and int(st["view_size"]) == 2 + BundledSongs.SONGS.size(), st)
 	await shot("onboarding_bundled_only")
-	_check_outer_band(last_img, "onboarding")
+	_check_list_text_contrast(ss, last_img, "onboarding")
 	var fake: Node = load("res://src/autoload/song_library.gd").new()
 	fake.auto_scan = false
 	fake.songs_root_override = EMPTY_SONGS

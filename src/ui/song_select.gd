@@ -76,6 +76,9 @@ const ROW_EDGE_A := 0.3
 const ROW_HOVER_EDGE_A := 0.6
 const ROW_SEL_FILL_A := 0.92
 const ROW_H := 72.0
+## Right edge of the length text (12 px clear of the difficulty pips) and the title-to-badge gap.
+const ROW_LEN_RIGHT := 892.0
+const BADGE_GAP := 12.0
 ## Detail-panel sonar decoration: static rings / crosshair and the sweep + ping (Full only).
 const SONAR_CENTER := Vector2(1456.0, 512.0)
 const SONAR_RING_A := 0.07
@@ -1536,9 +1539,9 @@ func _paint_info_row(c: CanvasItem, y: float) -> void:
 		ly += 28.0
 
 
-## Width the row title may use: 776 px minus the badge chip and its 8 px gap.
+## Width the row title may use: 776 px minus the badge chip and its BADGE_GAP.
 static func row_title_max(badge: String, variant: String) -> float:
-	return 776.0 - (UiKit.chip_width(badge, variant) + Palette.SP_SM if badge != "" else 0.0)
+	return 776.0 - (UiKit.chip_width(badge, variant) + BADGE_GAP if badge != "" else 0.0)
 
 
 func _paint_row(c: CanvasItem, e: SongEntry, y: float, index: int) -> void:
@@ -1569,7 +1572,7 @@ func _paint_row(c: CanvasItem, e: SongEntry, y: float, index: int) -> void:
 	var shown_title := _fit(title, Palette.SIZE_BODY, title_max, sel)
 	_txt(c, Vector2(112, y + 32), shown_title, Palette.SIZE_BODY, title_col, sel)
 	if badge[0] != "":
-		_chip(c, 112.0 + _w(shown_title, Palette.SIZE_BODY, sel) + Palette.SP_SM, y + 22.0, badge[0], badge[1])
+		_chip(c, 112.0 + _w(shown_title, Palette.SIZE_BODY, sel) + BADGE_GAP, y + 22.0, badge[0], badge[1])
 	# second line
 	if broken:
 		_txt(c, Vector2(112, y + 60), "!", Palette.SIZE_LABEL, Palette.WARNING_RED, true)
@@ -1580,7 +1583,7 @@ func _paint_row(c: CanvasItem, e: SongEntry, y: float, index: int) -> void:
 			second = NEEDS_HINT_ROW
 		_txt(c, Vector2(112, y + 60), _fit(second, Palette.SIZE_LABEL, 700.0), Palette.SIZE_LABEL, Palette.TEXT_MID)
 		if e.length_sec > 0.0:
-			_txt_r(c, 904, y + 60, SongListModel.fmt_length(e.length_sec), Palette.SIZE_LABEL, Palette.TEXT_LO)
+			_txt_r(c, ROW_LEN_RIGHT, y + 60, SongListModel.fmt_length(e.length_sec), Palette.SIZE_LABEL, Palette.TEXT_LO)
 	# best depth
 	if e.status == "ok":
 		var bd := SongListModel.best_depth(e, _best_by_fp)
