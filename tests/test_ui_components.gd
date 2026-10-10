@@ -393,7 +393,10 @@ func test_press_squash_respects_reduce_motion() -> void:
 	var tw := UiKit.press_squash(b)
 	assert_object(tw).is_not_null()
 	assert_vector(b.pivot_offset).is_equal(Vector2(256, 32))
-	await await_millis(200)
+	tw.pause()
+	tw.custom_step(UiKit.PRESS_SEC * 0.5)
+	assert_float(b.scale.x).is_equal_approx(UiKit.PRESS_SCALE, 0.001)
+	tw.custom_step(UiKit.PRESS_SEC)
 	assert_vector(b.scale).is_equal_approx(Vector2.ONE, Vector2(0.001, 0.001))
 
 
@@ -454,10 +457,14 @@ func test_glow_texture_is_cached_radial_128() -> void:
 	assert_int(t.width).is_equal(128)
 	assert_int(t.height).is_equal(128)
 	assert_int(t.fill).is_equal(GradientTexture2D.FILL_RADIAL)
-	assert_array(Array(t.gradient.offsets)).is_equal([0.0, 0.25, 0.6, 1.0])
+	var offs: Array[float] = []
+	for o in t.gradient.offsets:
+		offs.append(snappedf(o, 0.001))
+	assert_array(offs).is_equal([0.0, 0.25, 0.6, 1.0])
 	var a: Array[float] = []
 	for col in t.gradient.colors:
 		a.append(snappedf(col.a, 0.001))
+		assert_float(col.r + col.g + col.b).is_equal(3.0)
 	assert_array(a).is_equal([1.0, 0.55, 0.12, 0.0])
 
 
@@ -486,9 +493,11 @@ func test_pop_in_scales_and_settles_unless_reduce_motion() -> void:
 	var tw := UiKit.pop_in(c)
 	assert_object(tw).is_not_null()
 	assert_vector(c.pivot_offset).is_equal(Vector2(50, 16))
-	await await_millis(80)
-	assert_float(c.scale.x).is_greater(1.0)
-	await await_millis(250)
+	# Step the tween by hand (frame timing in headless runs is not reliable).
+	tw.pause()
+	tw.custom_step(Palette.DUR_BASE * 0.5)
+	assert_float(c.scale.x).is_equal_approx(UiKit.POP_SCALE, 0.001)
+	tw.custom_step(Palette.DUR_BASE)
 	assert_vector(c.scale).is_equal_approx(Vector2.ONE, Vector2(0.001, 0.001))
 
 
