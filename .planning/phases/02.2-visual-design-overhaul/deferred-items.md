@@ -113,3 +113,18 @@
   passage. Running the plan 24 readability steps inside the same dive moved the shot and made the
   check fail. Those steps now run on their own dive. Possible hardening: pick the popup by birth
   time and skip the sample when a newer popup was born within 0.35 s.
+
+## Found in 02.2-25
+
+- **Scenario b "chords present and each chord note judged independently" fails under xvfb** together
+  with the known "bot hit intended offsets" item: one bot press lands 30-47 ms late (software GL
+  frame hitch), so a chord note on a +-35 ms offset is judged GOOD. "All judgments match JudgeConfig
+  windows" passes, so the judge is right. It fails the same way at the plan-23 commit 218d900 (clean
+  worktree under xvfb, 2026-10-10). Re-check on the Windows PC.
+- **Scenario f "all pad-played notes judged PERFECT" is flaky under xvfb** (24 / 25 at HEAD once,
+  then 25 / 25 twice; 23 / 25 once at 218d900). Same cause (late bot press). Re-check on the PC.
+- **Scenario c "per-frame song_time delta tracks system delta" failed once (27 ms spike)** while a
+  second Godot process ran next to it; 11 / 11 when re-run alone.
+- **The pck contains `export_presets.cfg`** because the export include_filter has `*.cfg`. It holds
+  no secrets (no keys or passwords; checked 2026-10-10) and was the same in v0.4. Possible cleanup:
+  add `export_presets.cfg` to the exclude_filter.
