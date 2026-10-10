@@ -57,3 +57,20 @@
 - **Scenario immersion "lens mask edge is smooth" samples the 1.0 s frame**, which under xvfb
   (~20 fps) can land in the BLACK stage (1.10..1.25 s), so the check can pass on a black frame. Not
   a failure; on the PC the frame lands in the lens stage as intended.
+
+## Found in 02.2-21
+
+- **Scenario a: the calibration measurement depends on the wizard's frame cost.** Taps are stamped
+  in `_input` when Godot processes the event (once per frame), and the harness injects its taps
+  inside a frame, so the stamp lands after the rest of that frame is rendered. Under xvfb software
+  GL the measured offset was 51.3 ms at the pre-plan commit edcba01, 74.3 ms with the table
+  AbyssBackdrop behind the restyled wizard, 53.2 ms with no backdrop, and 58..60 ms in the final
+  build (the backdrop is hidden while the audio test runs). The remaining ~7 ms is the richer stage
+  (NotePainter gem, ping ring, glass panels) rasterised by llvmpipe. On a real GPU these costs are
+  well under 1 ms. Re-run scenario a on the Windows PC and compare with the 02.2-07 figure
+  (49..52 ms). Possible follow-up for a later phase: stamp taps with the OS event time instead of
+  the processing time.
+- **Scenario i "resumes from the same place (+-20 ms)" is flaky under xvfb + Dummy audio.** It
+  passed once and failed once (88.3 ms) at the pre-plan commit edcba01 in a clean worktree, and
+  failed at 109.8 ms after this plan. Same cause as the scenario d resume check from 02.2-20
+  (Dummy audio driver). Re-check on the PC with WASAPI.

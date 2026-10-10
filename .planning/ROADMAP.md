@@ -116,7 +116,7 @@ Plans:
 
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 20/25 plans executed
+**Plans:** 21/25 plans executed
 
 Plans:
 
@@ -140,7 +140,7 @@ Plans:
 - [x] 02.2-18-PLAN.md — Song select: intensity tiles, Preview-bus visualizer
 - [x] 02.2-19-PLAN.md — Song select: table backdrop, glass rows, sections, evidence + visual review
 - [x] 02.2-20-PLAN.md — Pause, IMPLOSION, dialogs restyle; intro rig boot (room trimmed) + visual review
-- [ ] 02.2-21-PLAN.md — Settings and calibration restyle + visual review
+- [x] 02.2-21-PLAN.md — Settings and calibration restyle + visual review
 - [ ] 02.2-22-PLAN.md — Sonar-wipe ScreenTransition at the 5 call sites
 - [ ] 02.2-23-PLAN.md — UI navigation blips (muted in gameplay and calibration), chip pop
 - [ ] 02.2-24-PLAN.md — Low/Reduce enumeration test, final 1080p perf gate (FAILED-gate path), 5-song autoplay, cleanup, final visual review
