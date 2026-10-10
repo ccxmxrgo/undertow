@@ -113,13 +113,14 @@ Plans:
   4. The HUD is a cockpit instrument cluster: multiplier ring, depth gauge, hull gauge, song progress with section names, accuracy %
   5. The results screen is opaque (the menu bleed-through bug is fixed) and shows grade, accuracy, timing histogram and record
   6. Full effects holds >= 230 fps p95 at 1080p on the dev PC; Low effects and Reduce motion have working fallbacks; the timing core is unchanged and Autoplay stays all-Perfect
+
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 25 plans
+**Plans:** 1/25 plans executed
 
 Plans:
 
-- [ ] 02.2-01-PLAN.md — Wave 0: timing gate, uncapped 1080p perf scenario + baseline (D-17), visual scenario scaffold, results bleed-through fix (D-20)
+- [x] 02.2-01-PLAN.md — Wave 0: timing gate, uncapped 1080p perf scenario + baseline (D-17), visual scenario scaffold, results bleed-through fix (D-20)
 - [ ] 02.2-02-PLAN.md — Wave 0: Abyssal Cockpit tokens, colour-literal scan test, contrast test C1..C19
 - [ ] 02.2-03-PLAN.md — Wave 0: ChartData sections/time_sigs (D-18), BeatClock.beats_between, RunStats (D-08/D-09), HitOffsetRecorder
 - [ ] 02.2-04-PLAN.md — Design system: Oxanium (D-21) and token-built theme (aliases flip)
