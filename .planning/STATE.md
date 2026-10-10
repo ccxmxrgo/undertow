@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.1-01-PLAN.md
-last_updated: "2026-10-09T10:43:23.886Z"
-last_activity: 2026-10-09
+stopped_at: Completed 02.1-02-PLAN.md
+last_updated: "2026-10-10T00:42:47.095Z"
+last_activity: 2026-10-10
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 40
-  completed_plans: 32
+  completed_plans: 33
   percent: 50
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.1 (Instrument Extraction Tool) — EXECUTING
-Plan: 2 of 9
+Plan: 3 of 9
 Status: Ready to execute
-Last activity: 2026-10-09
+Last activity: 2026-10-10
 
 Progress: [#########.] 93%
 
@@ -61,6 +61,7 @@ Progress: [#########.] 93%
 | Phase 01 P08 | ~1h | 3 tasks | 14 files |
 | Phase 01 P10 | ~35min | 2 of 3 tasks | 6 files |
 | Phase 02.1 P01 | 12 min | 3 tasks | 13 files |
+| Phase 02.1 P02 | 10min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,8 @@ Progress: [#########.] 93%
 
 Decisions are logged in PROJECT.md Key Decisions table.
 
+- 02.1-02: per-beat B uses absolute-time error diffusion; per-beat error bound is half a milli-BPM step (~4 us at 86 BPM), so the plan's 2 us bound was replaced by that bound. Python tick_to_sec matches the Godot importer exactly.
+- 02.1-02: a lead-in that is not whole bars becomes a pickup bar (TS r at tick 0, song TS at r*res); bar_ticks start at bar 1. quantize merges again after snapping; write_chart raises ValueError on lanes outside 0..3, duplicate notes, non-int fields.
 - 01.1-05: window is created windowed (1600x900) and Settings.apply_window() goes fullscreen at boot; Godot 4.7.2 cannot leave a window created fullscreen. All harness scenarios use a temp ScoreStore path.
 - 01-10: real-hardware re-run closes gaps 1-6 (Bug 2 with documented limitation); drift-run jitter p99 0.48 ms with tau 0.4 s, no retune; export excludes build/*
 - 01-08: clock_slew_tau_s = 0.4 s (time-constant smoothing, p99 < 2 ms at 30-240 fps); overlays use UiLayout.fill_rect; DriftHarness.log_path injectable
@@ -101,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-09T10:43:23.880Z
-Stopped at: Completed 02.1-01-PLAN.md
+Last session: 2026-10-10T00:42:41.006Z
+Stopped at: Completed 02.1-02-PLAN.md
 Resume file: None
