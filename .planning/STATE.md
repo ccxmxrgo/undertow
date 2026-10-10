@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.1-07-PLAN.md
-last_updated: "2026-10-10T02:04:11.428Z"
+stopped_at: Completed 02.1-08-PLAN.md
+last_updated: "2026-10-10T02:21:47.659Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 40
-  completed_plans: 38
+  completed_plans: 39
   percent: 50
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.1 (Instrument Extraction Tool) — EXECUTING
-Plan: 8 of 9
+Plan: 9 of 9
 Status: Ready to execute
 Last activity: 2026-10-10
 
@@ -67,6 +67,7 @@ Progress: [#########.] 93%
 | Phase 02.1 P05 | 16 min | 3 tasks | 13 files |
 | Phase 02.1 P06 | 35 min | 3 tasks | 17 files |
 | Phase 02.1 P07 | 50 min | 2 tasks | 21 files |
+| Phase 02.1 P08 | 75min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,9 @@ Recent decisions affecting current work:
 - [Phase 02.1]: INVISIBLE ships at target-nps 2.8 (other + bass sections fill): plan attempt (c) at 2.5 passed the gate but fell under the SPEC 2 n/s Expert floor
 - [Phase 02.1]: HRT ships other + drums bars fill at target 3.0 (GATE PASS 91.9%); fill adds nothing since other has onsets in every bar
 - [Phase 02.1]: 02.1-07: April and Space re-charted on stem 'other' chosen by stem_rank.py (GATE PASS 89.7% / 95.6%), delays 58 / 164; author_chart.gd retired to tools/charting/legacy/
+- [Phase 02.1]: 02.1-08: STEM-02/04 ship as a dev-PC command (extract_song.ps1 -> autochart.py extract); in-game screen deferred
+- [Phase 02.1]: 02.1-08: instrument lanes order bass, drums, other, vocals (left to right); same-tick stems -> 2-lane chord of the two strongest
+- [Phase 02.1]: 02.1-08: pick_preview skips sections in the first 10 s and < 30 s before the end; previews hrt 22322, invisible 49867, space 80440; charts unchanged
 
 ### Pending Todos
 
@@ -119,6 +123,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T02:04:11.422Z
-Stopped at: Completed 02.1-07-PLAN.md
+Last session: 2026-10-10T02:21:47.653Z
+Stopped at: Completed 02.1-08-PLAN.md
 Resume file: None

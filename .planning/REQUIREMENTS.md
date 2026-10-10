@@ -42,8 +42,8 @@
 - [x] **STEM-01**: A research study compares stem-separation and stem-to-chart approaches on real songs and records the chosen approach
 - [x] **STEM-02**: Player can load an audio file they own and extract instrument stems (drums, bass, guitar/other, vocals)
 - [ ] **STEM-03**: Player can generate a 4-lane chart from ONE chosen instrument stem
-- [ ] **STEM-04**: Player can generate an "instrument lanes" chart where each lane follows a different instrument
-- [ ] **STEM-05**: Extracted songs are saved to the library, synced to the original audio, and playable like any other song
+- [x] **STEM-04**: Player can generate an "instrument lanes" chart where each lane follows a different instrument
+- [x] **STEM-05**: Extracted songs are saved to the library, synced to the original audio, and playable like any other song
 - [x] **STEM-06**: The user's three custom songs (HRT, Sea Shanty 2, Duran Duran INVISIBLE) are bundled with audio-driven charts (real tempo map, notes on audible events, lanes follow melody contour) that pass the measured sync gate (see `phases/02.1-instrument-extraction-tool/02.1-SPEC.md`)
 - [x] **STEM-07**: The two existing bundled songs are re-charted with the same audio-driven pipeline, replacing the plan-authored charts
 
@@ -191,8 +191,8 @@
 | STEM-01 | Phase 2.1 | Complete |
 | STEM-02 | Phase 2.1 | Complete |
 | STEM-03 | Phase 2.1 | Pending |
-| STEM-04 | Phase 2.1 | Pending |
-| STEM-05 | Phase 2.1 | Pending |
+| STEM-04 | Phase 2.1 | Complete |
+| STEM-05 | Phase 2.1 | Complete |
 | STEM-06 | Phase 2.1 | Complete |
 | STEM-07 | Phase 2.1 | Complete |
 | POL-01 | Phase 1.1 | Complete |
