@@ -330,3 +330,203 @@ func test_feedback_flash_state_per_lane_and_spawn_offset() -> void:
 	assert_object(fb._flashes[0]).is_null()
 	assert_int(fb.floating_count()).is_equal(1)
 	assert_float(Trench.hit_point(1).y - Feedback.FLOAT_START_OFFSET).is_equal_approx(Trench.HIT_Y - Feedback.FLOAT_START_OFFSET, 0.5)
+
+
+# ---- Plan 05: component kit (make_button, chips, brackets, glow, numerals, pop, fx contract).
+
+class FxProbe:
+	extends Node
+	var applied := 0
+
+	func _ready() -> void:
+		UiKit.register_fx(self)
+
+	func apply_effect_settings() -> void:
+		applied += 1
+
+	func effect_counts() -> Dictionary:
+		return {"probe": true}
+
+
+func test_make_button_with_icon_is_left_aligned_with_icon_child() -> void:
+	var b: Button = auto_free(UiKit.make_button("Start Dive", "dive", "primary", 64))
+	add_child(b)
+	assert_str(b.text).is_equal("Start Dive")
+	assert_float(b.custom_minimum_size.y).is_equal(64.0)
+	assert_int(b.alignment).is_equal(HORIZONTAL_ALIGNMENT_LEFT)
+	for st in UiKit.BUTTON_STATES:
+		assert_float(b.get_theme_stylebox(st).content_margin_left).is_equal(64.0)
+	var icon := b.get_node_or_null(^"Icon") as Control
+	assert_object(icon).is_not_null()
+	assert_vector(icon.position).is_equal(Vector2(24, 20))
+	assert_vector(icon.size).is_equal(Vector2(24, 24))
+	assert_int(icon.mouse_filter).is_equal(Control.MOUSE_FILTER_IGNORE)
+	assert_str(String(b.get_meta(&"ui_variant"))).is_equal("primary")
+	# Primary variant idle style comes from style_button.
+	var normal := b.get_theme_stylebox("normal") as StyleBoxFlat
+	assert_bool(normal.bg_color.is_equal_approx(UiKit.style_button("normal", "primary").bg_color)).is_true()
+
+
+func test_make_button_without_icon_is_centred() -> void:
+	var b: Button = auto_free(UiKit.make_button("Quit Game", "", "default", 48))
+	add_child(b)
+	assert_float(b.custom_minimum_size.y).is_equal(48.0)
+	assert_int(b.alignment).is_equal(HORIZONTAL_ALIGNMENT_CENTER)
+	assert_object(b.get_node_or_null(^"Icon")).is_null()
+
+
+func test_make_button_icon_colour_follows_state() -> void:
+	assert_that(UiKit.icon_color("normal")).is_equal(Palette.TEXT_LO)
+	assert_that(UiKit.icon_color("hover")).is_equal(Palette.SONAR)
+	assert_that(UiKit.icon_color("focus")).is_equal(Palette.SONAR)
+	assert_that(UiKit.icon_color("focus", "destructive")).is_equal(Palette.WARNING_RED)
+
+
+func test_press_squash_respects_reduce_motion() -> void:
+	var b: Button = auto_free(UiKit.make_button("Retry Dive", "", "primary"))
+	add_child(b)
+	b.size = Vector2(512, 64)
+	Settings.reduce_motion = true
+	assert_object(UiKit.press_squash(b)).is_null()
+	assert_vector(b.scale).is_equal(Vector2.ONE)
+	Settings.reduce_motion = false
+	var tw := UiKit.press_squash(b)
+	assert_object(tw).is_not_null()
+	assert_vector(b.pivot_offset).is_equal(Vector2(256, 32))
+	await await_millis(200)
+	assert_vector(b.scale).is_equal_approx(Vector2.ONE, Vector2(0.001, 0.001))
+
+
+func test_chip_styles_match_ui_spec() -> void:
+	var mode := UiKit.chip_style("mode")
+	assert_that(mode.edge).is_equal(Color(Palette.TEXT_MID, 0.7))
+	assert_that(mode.fill).is_equal(Color(Palette.ABYSS_700, 0.8))
+	assert_that(mode.text).is_equal(Palette.TEXT_HI)
+	var info := UiKit.chip_style("info")
+	assert_that(info.edge).is_equal(Color(Palette.SONAR, 0.6))
+	assert_that(info.text).is_equal(Palette.SONAR)
+	var reward := UiKit.chip_style("reward")
+	assert_that(reward.edge).is_equal(Palette.REWARD_GOLD)
+	assert_that(reward.fill).is_equal(Color(Palette.REWARD_GOLD, 0.14))
+	assert_that(reward.text).is_equal(Palette.REWARD_GOLD)
+	var muted := UiKit.chip_style("muted")
+	assert_that(muted.edge).is_equal(Color(Palette.TEXT_LO, 0.4))
+	assert_float(muted.fill.a).is_equal(0.0)
+	assert_that(muted.text).is_equal(Palette.TEXT_LO)
+	var diff := UiKit.chip_style("difficulty", 2)
+	assert_that(diff.edge).is_equal(Palette.lane_color(2))
+	assert_that(diff.fill).is_equal(Color(Palette.lane_color(2), 0.12))
+	assert_that(diff.text).is_equal(Palette.TEXT_HI)
+	assert_int(UiKit.CHIP_H).is_equal(32)
+	# Width: padding 12 each side; difficulty adds the 16 px glyph and a 4 px gap.
+	var w := UiKit.chip_width("NO-FAIL", "mode")
+	assert_float(w).is_greater(24.0)
+	assert_float(UiKit.chip_width("NO-FAIL", "difficulty")).is_equal(w + 20.0)
+
+
+func test_draw_chip_and_brackets_draw_without_error() -> void:
+	var c: Control = auto_free(Control.new())
+	add_child(c)
+	c.size = Vector2(400, 200)
+	c.draw.connect(func() -> void:
+		for v in ["mode", "info", "reward", "muted"]:
+			UiKit.draw_chip(c, Rect2(10, 10, 160, 32), "chip", v)
+		UiKit.draw_chip(c, Rect2(10, 50, 160, 32), "Hard", "difficulty", 1)
+		UiKit.draw_brackets(c, Rect2(0, 0, 400, 200), Color(Palette.SONAR, 0.8)))
+	c.queue_redraw()
+	await await_idle_frame()
+	var arms := UiKit.bracket_points(Rect2(0, 0, 400, 200))
+	assert_int(arms.size()).is_equal(2)
+	# Top-right arm: 20 px along the top edge, then 20 px down the right edge.
+	var tr: PackedVector2Array = arms[0]
+	assert_float(tr[1].x - tr[0].x).is_equal(float(Palette.BRACKET_ARM))
+	assert_float(tr[2].y - tr[1].y).is_equal(float(Palette.BRACKET_ARM))
+	var bl: PackedVector2Array = arms[1]
+	assert_float(bl[1].y - bl[0].y).is_equal(float(Palette.BRACKET_ARM))
+	assert_float(bl[2].x - bl[1].x).is_equal(float(Palette.BRACKET_ARM))
+	assert_float(bl[1].x).is_less(10.0)
+	assert_float(tr[1].x).is_greater(390.0)
+
+
+func test_glow_texture_is_cached_radial_128() -> void:
+	var t := UiKit.glow_texture()
+	assert_object(t).is_same(UiKit.glow_texture())
+	assert_int(t.width).is_equal(128)
+	assert_int(t.height).is_equal(128)
+	assert_int(t.fill).is_equal(GradientTexture2D.FILL_RADIAL)
+	assert_array(Array(t.gradient.offsets)).is_equal([0.0, 0.25, 0.6, 1.0])
+	var a: Array[float] = []
+	for col in t.gradient.colors:
+		a.append(snappedf(col.a, 0.001))
+	assert_array(a).is_equal([1.0, 0.55, 0.12, 0.0])
+
+
+func test_additive_material_is_cached() -> void:
+	var m := UiKit.additive_material()
+	assert_object(m).is_same(UiKit.additive_material())
+	assert_int(m.blend_mode).is_equal(CanvasItemMaterial.BLEND_MODE_ADD)
+
+
+func test_fixed_number_box_fits_any_digits() -> void:
+	for f in [Palette.display_font(), Palette.font()]:
+		var w := UiKit.fixed_number_box(f, 96, 4)
+		assert_float(w).is_equal_approx(f.get_string_size("9999", HORIZONTAL_ALIGNMENT_LEFT, -1, 96).x, 0.01)
+		assert_float(w).is_equal_approx(f.get_string_size("0000", HORIZONTAL_ALIGNMENT_LEFT, -1, 96).x, 0.01)
+		assert_float(UiKit.fixed_number_box(f, 96, 2)).is_less(w)
+
+
+func test_pop_in_scales_and_settles_unless_reduce_motion() -> void:
+	var c: Control = auto_free(Control.new())
+	add_child(c)
+	c.size = Vector2(100, 32)
+	Settings.reduce_motion = true
+	assert_object(UiKit.pop_in(c)).is_null()
+	assert_vector(c.scale).is_equal(Vector2.ONE)
+	Settings.reduce_motion = false
+	var tw := UiKit.pop_in(c)
+	assert_object(tw).is_not_null()
+	assert_vector(c.pivot_offset).is_equal(Vector2(50, 16))
+	await await_millis(80)
+	assert_float(c.scale.x).is_greater(1.0)
+	await await_millis(250)
+	assert_vector(c.scale).is_equal_approx(Vector2.ONE, Vector2(0.001, 0.001))
+
+
+func test_register_fx_follows_tree_and_does_not_leak() -> void:
+	var p := FxProbe.new()
+	add_child(p)
+	assert_bool(p.is_in_group(UiKit.FX_GROUP)).is_true()
+	assert_str(String(UiKit.FX_GROUP)).is_equal("fx_settings_aware")
+	Settings.settings_changed.emit()
+	assert_int(p.applied).is_equal(1)
+	remove_child(p)
+	Settings.settings_changed.emit()
+	assert_int(p.applied).is_equal(1)
+	add_child(p)
+	Settings.settings_changed.emit()
+	assert_int(p.applied).is_equal(2)
+	p.free()
+	Settings.settings_changed.emit()  # must not error on the freed node
+	assert_bool(is_instance_valid(p)).is_false()
+
+
+func test_ui_icons_names_and_unknown_name_is_noop() -> void:
+	assert_array(UiIcons.names()).contains_exactly([
+		"dive", "lifebuoy", "sonar", "sliders", "auto", "folder", "power",
+		"check", "chevron_left", "chevron_right"])
+	var c: Control = auto_free(Control.new())
+	add_child(c)
+	c.size = Vector2(400, 40)
+	var drawn := []
+	c.draw.connect(func() -> void:
+		var x := 0.0
+		for n in UiIcons.names():
+			drawn.append(UiIcons.draw(c, n, Rect2(x, 8, 24, 24), Palette.SONAR))
+			x += 32.0
+		drawn.append(UiIcons.draw(c, "no_such_icon", Rect2(0, 0, 24, 24), Palette.SONAR)))
+	c.queue_redraw()
+	await await_idle_frame()
+	assert_int(drawn.size()).is_equal(11)
+	for i in 10:
+		assert_bool(drawn[i]).is_true()
+	assert_bool(drawn[10]).is_false()
