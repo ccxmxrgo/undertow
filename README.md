@@ -7,7 +7,7 @@ Competitive online rhythm game in Godot. "Your streak is a torpedo."
 - Godot **4.7.2-stable**, standard (non-.NET) build, Windows. Everyone uses this exact version.
 - Export templates 4.7.2.stable (Windows Desktop).
 - gdUnit4 **v6.2.1** (vendored in `addons/gdUnit4`).
-- Font: Share Tech Mono (OFL, license in `assets/fonts/OFL.txt`).
+- Fonts: Share Tech Mono (OFL, license in `assets/fonts/OFL-ShareTechMono.txt`) and Oxanium (OFL, license in `assets/fonts/OFL-Oxanium.txt`); sources in `assets/fonts/README.txt`.
 - Renderer: Compatibility (`gl_compatibility`), 1920x1080 viewport, `canvas_items` stretch.
 
 ## Prerequisites

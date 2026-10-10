@@ -106,6 +106,9 @@ const SP_2XL := 48
 const SP_3XL := 64
 
 const FONT_PATH := "res://assets/fonts/ShareTechMono-Regular.ttf"
+## Oxanium variable font (OFL, D-03); weight 700 applied in display_font().
+const DISPLAY_FONT_PATH := "res://assets/fonts/Oxanium[wght].ttf"
+const DISPLAY_WEIGHT := 700
 const THEME_PATH := "res://ui/undertow_theme.tres"
 const SIZE_LABEL := 20
 const SIZE_BODY := 28
@@ -114,6 +117,7 @@ const SIZE_DISPLAY := 96
 
 static var _font: Font
 static var _bold: Font
+static var _display: Font
 
 
 ## c with its alpha replaced.
@@ -179,6 +183,27 @@ static func bold() -> Font:
 		v.variation_embolden = 0.5
 		_bold = v
 	return _bold
+
+
+## Oxanium Bold: the variable font with wght = 700 set through the INTEGER OpenType tag
+## (D-21; a String key is silently ignored and renders the axis default 200). Falls back
+## to Share Tech Mono for missing glyphs, and to it entirely if the file is missing.
+static func display_font() -> Font:
+	if _display == null:
+		var v := FontVariation.new()
+		var base: Font = null
+		if ResourceLoader.exists(DISPLAY_FONT_PATH):
+			base = load(DISPLAY_FONT_PATH) as Font
+		if base == null:
+			v.base_font = font()
+			v.variation_embolden = 0.5
+		else:
+			v.base_font = base
+			var tag := TextServerManager.get_primary_interface().name_to_tag("wght")
+			v.variation_opentype = {tag: DISPLAY_WEIGHT}
+			v.fallbacks = [font()]
+		_display = v
+	return _display
 
 
 ## The shared Theme; a minimal palette-only Theme if the .tres cannot be loaded.
