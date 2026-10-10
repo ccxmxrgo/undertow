@@ -428,3 +428,131 @@ func test_hull_arc_pulses_when_critical_static_under_reduce() -> void:
 	assert_bool(a.is_in_group(UiKit.FX_GROUP)).is_true()
 	a.queue_redraw()
 	await get_tree().process_frame
+
+
+# ---- Right console (02.2-13, UI-SPEC 7.3, 14) ---------------------------------------------
+
+const JP := InputJudge.Judgment.PERFECT
+const JG := InputJudge.Judgment.GOOD
+const JM := InputJudge.Judgment.MISS
+
+
+func _hud(score: HullScore) -> Hud:
+	var hud: Hud = auto_free(Hud.new())
+	add_child(hud)
+	hud.bind(score)
+	return hud
+
+
+func _judge(hud: Hud, score: HullScore, j: int, idx: int) -> void:
+	score.on_judged(0, idx, j, 0.0)
+	hud.on_judged(0, idx, j, 0.0)
+
+
+func test_accuracy_placeholder_then_live_value() -> void:
+	var score := HullScore.new(JudgeConfig.new())
+	var hud := _hud(score)
+	assert_str(hud.accuracy_label.text).is_equal("--.-%")
+	assert_object(hud.accuracy_label.get_theme_color("font_color")).is_equal(Palette.TEXT_LO)
+	for i in 3:
+		_judge(hud, score, JP, i)
+	_judge(hud, score, JG, 3)
+	assert_str(hud.accuracy_label.text).is_equal("87.5%")
+	assert_object(hud.accuracy_label.get_theme_color("font_color")).is_equal(Palette.TEXT_HI)
+	assert_object(hud.accuracy_label.get_theme_font("font")).is_same(Palette.display_font())
+	assert_int(hud.accuracy_label.get_theme_font_size("font_size")).is_equal(Palette.SIZE_HEADING)
+	assert_float(hud.accuracy_label.position.x).is_equal(1552.0)
+	_judge(hud, score, JM, 4)
+	assert_str(hud.accuracy_label.text).is_equal("70.0%")
+
+
+func test_depth_readout_fixed_box_no_layout_shift() -> void:
+	var score := HullScore.new(JudgeConfig.new())
+	var hud := _hud(score)
+	var box0 := hud.depth_box()
+	var unit0 := hud.depth_unit_x()
+	assert_float(box0.position.x).is_equal(1552.0)
+	assert_str(hud.depth_readout_text()).is_equal("0")
+	# Drive the depth to 99,999 m (score 9,999,900) through score_changed.
+	score.score = 9999900
+	score.score_changed.emit(score.score)
+	assert_str(hud.depth_readout_text()).is_equal("99,999")
+	assert_object(hud.depth_box()).is_equal(box0)
+	assert_float(hud.depth_unit_x()).is_equal(unit0)
+	var f := Palette.display_font()
+	var w := f.get_string_size("99,999", HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_HEADING).x
+	assert_float(box0.size.x).is_greater_equal(w)
+	# Hidden test label keeps its format.
+	assert_str(hud.depth_value.text).is_equal(hud.depth_text(score.depth()))
+	assert_bool(hud.depth_value.visible).is_false()
+
+
+func test_mode_chips_only_when_active() -> void:
+	var score := HullScore.new(JudgeConfig.new())
+	var hud := _hud(score)
+	assert_dict(hud.chip_rects()).is_empty()
+	hud.set_autoplay(true)
+	assert_bool(hud.is_autoplay_shown()).is_true()
+	var r: Dictionary = hud.chip_rects()
+	assert_array(r.keys()).is_equal(["AUTOPLAY"])
+	assert_float((r["AUTOPLAY"] as Rect2).position.y).is_equal(864.0)
+	assert_float((r["AUTOPLAY"] as Rect2).end.y).is_equal(896.0)
+	var s2 := HullScore.new(JudgeConfig.new())
+	s2.no_fail = true
+	var hud2 := _hud(s2)
+	var r2: Dictionary = hud2.chip_rects()
+	assert_float((r2["NO-FAIL"] as Rect2).position.y).is_equal(824.0)
+	assert_float((r2["NO-FAIL"] as Rect2).position.x).is_equal(1552.0)
+	hud.queue_redraw()
+	hud2.queue_redraw()
+	await get_tree().process_frame
+
+
+func test_hull_caption_style_and_hull_arc_child() -> void:
+	var score := HullScore.new(JudgeConfig.new())
+	var hud := _hud(score)
+	assert_object(hud.hull_arc).is_not_null()
+	assert_object(hud.hull_arc.get_parent()).is_same(hud)
+	for i in 9:
+		score.on_judged(0, i, JM, 0.2)  # 28%
+	assert_float(hud.hull_arc.pct()).is_equal_approx(28.0, 0.001)
+	assert_bool(hud.hull_caption.visible).is_true()
+	assert_str(hud.hull_caption.text).is_equal("HULL CRITICAL")
+	assert_object(hud.hull_caption.get_theme_color("font_color")).is_equal(Palette.WARNING_RED)
+	assert_int(hud.hull_caption.get_theme_constant("outline_size")).is_equal(3)
+	assert_object(hud.hull_caption.get_theme_color("font_outline_color")).is_equal(Palette.KEYLINE)
+	assert_int(hud.hull_caption.get_theme_font_size("font_size")).is_equal(Palette.SIZE_LABEL)
+	var cx := hud.hull_caption.position.x + hud.hull_caption.size.x * 0.5
+	assert_float(cx).is_equal_approx(960.0, 0.5)
+	assert_float(hud.hull_caption_baseline()).is_equal_approx(1028.0, 0.5)
+	await get_tree().process_frame
+
+
+func test_bathymeter_child_and_record() -> void:
+	var score := HullScore.new(JudgeConfig.new())
+	var hud := _hud(score)
+	assert_object(hud.bathymeter).is_not_null()
+	assert_object(hud.bathymeter.get_parent()).is_same(hud)
+	hud.set_depth_scale(200.0)
+	assert_bool(hud.bathymeter.best_visible()).is_false()
+	hud.set_record(250.0)
+	assert_bool(hud.bathymeter.best_visible()).is_true()
+	assert_float(hud.bathymeter.scale_m()).is_equal(250.0)
+	score.score = 12500  # 125 m
+	score.score_changed.emit(score.score)
+	assert_float(hud.bathymeter.target_y()).is_equal(Bathymeter.marker_y_for(125.0, 250.0))
+
+
+func test_badge_drawing_retired_and_keepout_in_consoles() -> void:
+	var score := HullScore.new(JudgeConfig.new())
+	score.no_fail = true
+	var hud := _hud(score)
+	hud.set_autoplay(true)
+	assert_bool(hud.has_method("_draw_badge")).is_false()
+	var shapes := hud.keepout_shapes()
+	assert_int(shapes.size()).is_greater_equal(6)
+	for poly in shapes:
+		for p in poly:
+			assert_bool(p.x <= 400.0 or p.x >= 1520.0).override_failure_message(
+				"HUD keep-out point %s outside the consoles" % p).is_true()
+			assert_bool(p.y >= 600.0).is_true()
