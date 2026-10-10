@@ -132,7 +132,7 @@ func test_receptor_squash_on_press_and_recovery() -> void:
 
 func test_strip_tint_is_tier_one_at_multiplier_one() -> void:
 	var hw: Highway = auto_free(Highway.new())
-	assert_int(hw.tier_multiplier).is_equal(1)
+	assert_int(hw.tier).is_equal(1)
 	assert_float(hw.cable_bright).is_equal(0.0)
 	assert_float(hw.strip_tint_alpha()).is_equal_approx(Palette.TIER_TINT[0], 0.00001)
 	assert_float(hw.strip_tint_alpha()).is_equal_approx(0.07, 0.00001)

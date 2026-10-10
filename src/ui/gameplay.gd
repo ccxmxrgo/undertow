@@ -121,6 +121,9 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	highway.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	board_root.add_child(highway)
 	highway.setup(chart, conductor, cfg)
+	# Streak tiers (UI-SPEC 7.6): the surface follows the score multiplier; every run starts at x1.
+	highway.set_tier(1)
+	score.multiplier_changed.connect(highway.set_tier)
 	# Hold the board's notes and beat pulse until the lead-in starts (WR-03).
 	highway.notes_enabled = false
 	arena.beat_live = false
