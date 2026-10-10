@@ -1,6 +1,7 @@
 class_name Palette
 extends RefCounted
 ## Single source of UI colors, spacing tokens and fonts (UI-SPEC). No other hues exist.
+## Only file allowed to contain colour literals (VIS-01).
 
 const BG := Color("000000")  # dominant 60%
 const PANEL := Color("0A1F0A")  # panels, hull track
@@ -16,6 +17,85 @@ const REC_TEXT := Color("E8E6F0")
 const LANE_COLORS: Array[Color] = [Color("22D3EE"), Color("FBBF24"), Color("F472B6"), Color("A3E635")]
 ## RGB multiplier for notes outside the Good window (alpha is never reduced).
 const NOTE_DIM := 0.60
+
+## ---- Abyssal Cockpit tokens (02.2 UI-SPEC section 3.1). Legacy names above keep their
+## values until plan 04 flips them; plan 24 deletes them.
+const ABYSS_900 := Color("03060D")  # dominant base (60%)
+const ABYSS_850 := Color("06101E")  # menu backdrop gradient mid-stop
+const ABYSS_800 := Color("060D1A")  # deep fills, gauge tubes, console base
+const ABYSS_700 := Color("0A1A2E")  # glass panel fill (at PANEL_ALPHA)
+const ABYSS_600 := Color("10263F")  # raised fill: focused row, pressed button
+const ABYSS_500 := Color("183A5A")  # unlit gauge segments; never a text background
+const HIGHWAY_BASE := Color("040A16")  # highway surface (at HIGHWAY_ALPHA)
+const VP_GLOW := Color("123A52")  # arena centre glow
+const WALL_TEAL := Color("1E8CB4")
+const WALL_VIOLET := Color("5A3CAA")
+const SONAR := Color("05D9E8")  # UI chrome accent
+const SONAR_PALE := Color("A0FFF0")  # hit line core, PERFECT, highlights
+const TEXT_HI := Color("E8E6F0")  # primary text, numerals
+const TEXT_MID := Color("A9B4CC")  # secondary text, GOOD
+const TEXT_LO := Color("8A93AD")  # captions, hints; never on ABYSS_500
+const BIO_VIOLET := Color("8C6CFF")  # decoration only
+const REWARD_GOLD := Color("FFD36B")  # records, grade S; never in the note-path keep-out
+const WARNING_RED := Color("FF4A3D")  # miss, hull critical, IMPLOSION, errors
+const KEYLINE := Color(0.011764706, 0.023529412, 0.050980393, 0.9)  # #03060D at 90%
+const SHADOW := Color(0.0, 0.0, 0.0, 0.35)  # #000000 at 35%
+const WHITE := Color(1.0, 1.0, 1.0, 1.0)  # top-light mixes; the only neutral
+const SILHOUETTE_FAR := Color("081526")
+const SILHOUETTE_MID := Color("0A1D2C")
+const SILHOUETTE_NEAR := Color("02050B")
+## Generated album-cover gradients [top-left, bottom-right] (UI-SPEC 4.10).
+const COVER_GRADIENTS: Array = [
+	[Color("0A1A2E"), Color("03060D")],
+	[Color("10263F"), Color("060D1A")],
+	[Color("0B2A3A"), Color("03060D")],
+	[Color("1A1640"), Color("060D1A")],
+	[Color("0A2A2E"), Color("03060D")],
+	[Color("141E3C"), Color("03060D")],
+	[Color("0E3046"), Color("060D1A")],
+	[Color("1B1236"), Color("03060D")],
+]
+const PANEL_ALPHA := 0.82
+const HIGHWAY_ALPHA := 0.90
+
+const GRADE_COLORS := {
+	"S": REWARD_GOLD,
+	"A": SONAR_PALE,
+	"B": TEXT_HI,
+	"C": TEXT_MID,
+	"D": TEXT_LO,
+	"-": TEXT_LO,
+}
+
+## Edges and chamfer cuts (UI-SPEC 2), pixels.
+const EDGE_HAIR := 1
+const EDGE := 2
+const EDGE_FOCUS := 2
+const FOCUS_BAR := 4
+const CUT_SM := 8
+const CUT_MD := 12
+const CUT_LG := 64
+const BRACKET_ARM := 20
+
+## Motion (UI-SPEC 3.4), seconds.
+const DUR_FAST := 0.12
+const DUR_BASE := 0.18
+const DUR_SLOW := 0.30
+const DUR_MAX := 0.40
+const STAGGER_MENU := 0.04
+const STAGGER_RESULTS := 0.06
+const BREATH_SEC := 1.6
+
+## Glow (UI-SPEC 3.3): [size multiplier, alpha].
+const GLOW_SM: Array[float] = [1.6, 0.35]
+const GLOW_MD: Array[float] = [2.4, 0.25]
+const GLOW_LG: Array[float] = [3.5, 0.15]
+const PANEL_GLOW_ALPHA := 0.18
+const PANEL_GLOW_FOCUS := 0.28
+const PANEL_GLOW_SIZE := 12
+
+## Streak tier lane tint (UI-SPEC 7.6); index = multiplier - 1.
+const TIER_TINT: Array[float] = [0.07, 0.09, 0.11, 0.14]
 
 const SP_XS := 4
 const SP_SM := 8
@@ -54,6 +134,26 @@ static func alpha(c: Color, a: float) -> Color:
 
 static func lane_color(lane: int) -> Color:
 	return LANE_COLORS[posmod(lane, LANE_COLORS.size())]
+
+
+## RGB lerp from a to b by t; alpha of a.
+static func mix(a: Color, b: Color, t: float) -> Color:
+	return Color(lerpf(a.r, b.r, t), lerpf(a.g, b.g, t), lerpf(a.b, b.b, t), a.a)
+
+
+## Ready-gem rim: lane colour mixed 55% toward white.
+static func rim_ready(lane: int) -> Color:
+	return mix(lane_color(lane), WHITE, 0.55)
+
+
+## Far (not yet ready) gem rim: lane colour mixed 25% toward white.
+static func rim_far(lane: int) -> Color:
+	return mix(lane_color(lane), WHITE, 0.25)
+
+
+## Grade letter colour; unknown letters use TEXT_LO.
+static func grade_color(letter: String) -> Color:
+	return GRADE_COLORS.get(letter, TEXT_LO)
 
 
 ## RGB scaled by NOTE_DIM; alpha preserved exactly.
