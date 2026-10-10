@@ -3587,11 +3587,97 @@ func sc_visual() -> void:
 	var b: Dictionary = BundledSongs.SONGS[0]
 	await goto(MENU)
 	SongSelect.run_autoplay = true
+	Gameplay.pending_intro = IntroTimeline.Mode.NONE
 	await goto(SONG_SELECT)
 	var g := await dive_from_song_select(str(b["dir"]), "expert")
 	var ok: bool = g != null and await wait_for_began(g)
 	if ok:
-		ok = await _wait_song_time(g, 6.0, 20.0)
+		await _visual_board_tiers(g)
+	if ok and is_instance_valid(g):
+		ok = await _wait_song_time(g, maxf(6.0, g.conductor.song_time()), 20.0)
 		await shot("visual_baseline", g)
 	check("visual scenario runs", ok and is_instance_valid(g) and g.state == Gameplay.State.RUNNING)
 	await goto(MENU)
+
+
+## 02.2-09: x1 and x4 board shots. "x4 rails brighter than x1" samples both outer rails at
+## d 0.3; "beat line present" looks for the faint horizontal line at a beat that
+## Highway.visible_beat_lines reports in view, in a lane column with no note there.
+func _visual_board_tiers(g: Gameplay) -> void:
+	var first := INF
+	for n in g.chart.notes:
+		first = minf(first, float(n["time"]))
+	# x1: notes approaching, no combo yet.
+	await _wait_song_time(g, first - 0.5, 20.0)
+	if not is_instance_valid(g):
+		return
+	check("x1 shot taken at multiplier 1", g.score.multiplier() == 1 and g.highway.tier == 1,
+		{"mult": g.score.multiplier(), "tier": g.highway.tier})
+	await shot("gameplay_x1", g)
+	var img1 := last_img
+	var rail1 := _rail_luma(img1)
+	var beat := _beat_line_contrast(g, img1)
+	check("beat line present", float(beat.get("diff", 0.0)) >= 0.015, beat)
+	# x4: autoplay drives the combo to 30+.
+	var got4: bool = await wait_until(func() -> bool:
+		return not is_instance_valid(g) or g.score.multiplier() >= 4, 90.0)
+	if not is_instance_valid(g):
+		return
+	await wait(0.5)  # past the 200 ms entry flash
+	if not check("multiplier reached x4", got4 and g.score.multiplier() == 4 and g.highway.tier == 4,
+			{"mult": g.score.multiplier(), "tier": g.highway.tier, "combo": g.score.combo}):
+		return
+	await shot("gameplay_x4", g)
+	var rail4 := _rail_luma(last_img)
+	check("x4 rails brighter than x1", rail4 > rail1 + 0.02, {"x1": snappedf(rail1, 0.001), "x4": snappedf(rail4, 0.001)})
+	var beat4 := _beat_line_contrast(g, last_img)
+	note("x4 beat line contrast %s" % str(beat4))
+
+
+## Mean luma of 5x5 patches on both outer rails at d 0.3.
+func _rail_luma(img: Image) -> float:
+	var l := _luma(_patch(img, Trench.point(-2.0, 0.3), 2))
+	var r := _luma(_patch(img, Trench.point(2.0, 0.3), 2))
+	return 0.5 * (l + r)
+
+
+## True when `lane` has no unhit note head or sustain body within +/- 0.08 of depth d.
+func _lane_free_at(g: Gameplay, lane: int, d: float, vt: float, approach: float) -> bool:
+	var notes: Array = g.chart.notes
+	for i in range(notes.size()):
+		var n: Dictionary = notes[i]
+		if int(n["lane"]) != lane or g.highway._state[i] == Highway.S_HIT:
+			continue
+		var d0 := Trench.depth_for(float(n["time"]), vt, approach)
+		var d1 := Trench.depth_for(float(n["time"]) + float(n["duration"]), vt, approach)
+		if d1 >= d - 0.08 and d0 <= d + 0.08:
+			return false
+	return true
+
+
+## Best beat/bar line contrast in the frame just shot: luma at the line (max over +/- 3 px)
+## minus the mean luma 10 px above and below, in a free lane column, for lines at y 450..900.
+func _beat_line_contrast(g: Gameplay, img: Image) -> Dictionary:
+	var hw := g.highway
+	var vt: float = hw._vt
+	var approach: float = hw._approach
+	var best := {"diff": 0.0, "lines": 0}
+	var lines := hw.visible_beat_lines(vt, approach)
+	best["lines"] = lines.size()
+	for l in lines:
+		var d := float(l["d"])
+		var y := Trench.point(0.0, d).y
+		if y < 450.0 or y > 900.0:
+			continue
+		for lane in range(4):
+			if not _lane_free_at(g, lane, d, vt, approach):
+				continue
+			var x := Trench.point(Trench.lane_f(lane), d).x
+			var peak := 0.0
+			for dy in range(-3, 4):
+				peak = maxf(peak, _luma(_img_px(img, Vector2(x, y + dy))))
+			var bg := 0.5 * (_luma(_patch(img, Vector2(x, y - 10.0), 1)) + _luma(_patch(img, Vector2(x, y + 10.0), 1)))
+			if peak - bg > float(best["diff"]):
+				best = {"diff": snappedf(peak - bg, 0.0001), "y": snappedf(y, 0.1), "lane": lane,
+					"bar": bool(l["bar"]), "lines": lines.size()}
+	return best

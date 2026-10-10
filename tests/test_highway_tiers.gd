@@ -186,3 +186,84 @@ func test_gameplay_wires_multiplier_to_set_tier() -> void:
 	assert_int(gp.highway.tier).is_equal(1)
 	gp.score.multiplier_changed.emit(3)
 	assert_int(gp.highway.tier).is_equal(3)
+
+
+# ---- sonar_surface CRT pass (Task 2) ------------------------------------------------------
+
+func test_surface_is_a_child_polygon_drawn_behind_the_highway() -> void:
+	var hw := _highway(_chart(120.0))
+	var surf := hw.get_node("Surface") as Polygon2D
+	assert_object(surf).is_not_null()
+	assert_bool(surf.show_behind_parent).is_true()
+	assert_int(surf.polygons.size()).is_equal(4 * (surf.polygon.size() / 8 - 1))
+	assert_int(surf.vertex_colors.size()).is_equal(surf.polygon.size())
+	var hsrc := FileAccess.get_file_as_string("res://src/ui/highway.gd")
+	var draw_body := hsrc.substr(hsrc.find("func _draw() -> void:"), 600)
+	assert_bool(draw_body.contains("_draw_surface")).is_false()
+	assert_bool(hsrc.contains("draw_polygon(_strip")).is_false()
+
+
+func test_full_effects_use_the_sonar_shader() -> void:
+	var hw := _highway(_chart(120.0))
+	hw.apply_effect_settings()
+	var mat := hw.surface.material as ShaderMaterial
+	assert_object(mat).is_not_null()
+	assert_str(mat.shader.resource_path).is_equal("res://shaders/sonar_surface.gdshader")
+	assert_bool(mat.get_shader_parameter("scanlines_on")).is_true()
+	assert_bool(mat.get_shader_parameter("sweep_on")).is_true()
+	assert_bool(hw.effect_counts()["crt"]).is_true()
+
+
+func test_low_effects_drop_the_material_and_keep_plain_strips() -> void:
+	var hw := _highway(_chart(120.0))
+	Settings.low_effects = true
+	hw.apply_effect_settings()
+	assert_object(hw.surface.material).is_null()
+	assert_bool(hw.surface.visible).is_true()
+	assert_int(hw.surface.polygon.size()).is_greater(0)
+	assert_int(hw.surface.polygons.size()).is_greater(0)
+	assert_bool(hw.effect_counts()["crt"]).is_false()
+	# The plain fill is the 90% highway base with the tier tint.
+	var mid := hw.strip_color(0, 600.0, hw.strip_tint_alpha())
+	assert_float(mid.a).is_greater(0.89)
+
+
+func test_reduce_motion_keeps_scanlines_and_stops_the_sweep() -> void:
+	var hw := _highway(_chart(120.0))
+	Settings.reduce_motion = true
+	hw.apply_effect_settings()
+	var mat := hw.surface.material as ShaderMaterial
+	assert_object(mat).is_not_null()
+	assert_bool(mat.get_shader_parameter("scanlines_on")).is_true()
+	assert_bool(mat.get_shader_parameter("sweep_on")).is_false()
+
+
+func test_shader_has_no_colour_literals() -> void:
+	var src := FileAccess.get_file_as_string("res://shaders/sonar_surface.gdshader")
+	assert_bool(src.is_empty()).is_false()
+	var re := RegEx.create_from_string("vec[34][ ]*[(][ ]*[-0-9.]")
+	assert_object(re.search(src)).is_null()
+	assert_bool(src.contains("hint_screen_texture")).is_false()
+
+
+func test_bar_phase_follows_the_meter() -> void:
+	var hw := _highway(_chart(120.0, 3, 4))
+	assert_float(hw.bar_phase(0.0)).is_equal_approx(0.0, 0.0001)
+	assert_float(hw.bar_phase(0.75)).is_equal_approx(0.5, 0.0001)
+	assert_float(hw.bar_phase(1.5)).is_equal_approx(0.0, 0.0001)
+	var hw4 := _highway(_chart(120.0))
+	assert_float(hw4.bar_phase(1.0)).is_equal_approx(0.5, 0.0001)
+
+
+func test_lit_strip_keeps_gem_contrast() -> void:
+	# The receptor light pool brightens the strip near the hit line; gems and ready rims must
+	# still clear 4.5:1 there at x4 (UI-SPEC 13 C1..C5), receptor outlines 3:1 (C8).
+	var hw: Highway = auto_free(Highway.new())
+	hw.set_tier(4)
+	for lane in range(4):
+		var strip := hw.strip_color(lane, Trench.HIT_Y, hw.strip_tint_alpha())
+		var bg := Wcag.over(strip, strip.a, Palette.ABYSS_900)
+		assert_float(Wcag.ratio(Palette.lane_color(lane), bg)).is_greater_equal(4.5)
+		assert_float(Wcag.ratio(Palette.rim_ready(lane), bg)).is_greater_equal(4.5)
+		var outline := Wcag.over(Palette.lane_color(lane), 0.75, bg)
+		assert_float(Wcag.ratio(outline, bg)).is_greater_equal(3.0)

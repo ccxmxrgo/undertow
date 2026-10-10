@@ -3,12 +3,16 @@ extends Control
 ## HighwaySurface (02.2 UI-SPEC 7.4 rows 1..8) and the board's state owner. A pure function of
 ## song_time + visual_offset + scroll speed (D-25): all geometry comes from Trench (depth is
 ## linear in time, only the projection is non-linear). Judgment uses raw song_time; only
-## drawing adds the visual offset. Draws, back to front: four filled translucent lane strips,
-## separators and teal outer rails, the hit line with lane ticks, sustains, chord bars and the
-## glass receptor pads. Gems, missed remnants and lane numbers are drawn by HighwayNotes (a
-## layer above FxLayer and Feedback) through draw_notes_into() / draw_halos_into(), from the
-## visible window this node computes once per frame in _process. Colours from Palette only.
-## The Phase 1 clock-smoothness spike readout is kept behind `show_spike_readout`.
+## drawing adds the visual offset. Back to front: the lane-strip fill in the child Polygon2D
+## "Surface" (show_behind_parent, carrying the sonar_surface CRT material in Full effects),
+## then this node's own drawing: separators and teal outer rails (tier glow, x4 pale core and
+## flowing MAX dashes), beat and bar lines from the tempo map and time signatures, the hit
+## line with lane ticks, glowing sustain tubes, chord bars and the glass receptor pads. Gems,
+## missed remnants and lane numbers are drawn by HighwayNotes (a layer above FxLayer and
+## Feedback) through draw_notes_into() / draw_halos_into(), from the visible window this node
+## computes once per frame in _process. Streak tiers follow set_tier (Gameplay connects
+## HullScore.multiplier_changed). Colours from Palette only. The Phase 1 clock-smoothness
+## spike readout is kept behind `show_spike_readout`.
 
 const LANES := 4
 const RECEPTOR_PULSE_USEC := 120000
@@ -28,6 +32,20 @@ const STRIP_END_Y := 1000.0
 ## Extra strip tint / rail glow at full intro brightness (cable_bright = 1).
 const BRIGHT_TINT := 0.06
 const BRIGHT_RAIL_GLOW := 0.35
+## Receptor light pool (lit glass): extra lane tint at the hit line, easing out by POOL_DEPTH.
+## Peak strip tint stays <= 26% at x4, which keeps every gem/rim/receptor contrast pair.
+const POOL_TINT := 0.12
+const POOL_DEPTH := 0.40
+## Surface rows (depths) for the per-vertex colour gradient; then y 950 and the strip end.
+const STRIP_ROW_D: Array[float] = [1.0, 0.7, 0.5, 0.4, 0.3, 0.22, 0.15, 0.09, 0.04, 0.0]
+## sonar_surface CRT pass (row 2).
+const SURFACE_SHADER := "res://shaders/sonar_surface.gdshader"
+const SCAN_ALPHA := 0.06
+const SWEEP_GAIN := 0.05
+const AFTERGLOW_SEC := 0.40
+const PHOSPHOR := 0.015
+const LANE_EDGE_GAIN := 0.16
+const LANE_EDGE_PX := 9.0
 ## Separators and rails (row 3).
 const SEPARATOR_W := 1.5
 const SEPARATOR_ALPHA := 0.10
@@ -73,6 +91,8 @@ const RAIL_GLOW_NEAR_ALPHA := 0.35
 const MAX_RAIL_W := 3.0
 const MAX_DASH_LEN := 24.0
 const MAX_DASH_ALPHA := 0.70
+const MAX_DASH_W := 9.0
+const MAX_DASH_GLOW_ALPHA := 0.22
 const MAX_DASH_CAP := 64
 const MAX_RECEPTOR_HALO := 0.20
 const MAX_FLASH_SEC := 0.20
@@ -111,9 +131,16 @@ var _lane_labels := PackedStringArray(["", "", "", ""])
 var _st: float = 0.0
 var _vt: float = 0.0
 var _approach: float = 1.5
-## Strip geometry cache, rebuilt only when the reveal, tint or brightness changes.
-var _strip_polys: Array[PackedVector2Array] = []
-var _strip_cols: Array[PackedColorArray] = []
+## Row 1 + 2: the lane-strip fill lives in this child Polygon2D (show_behind_parent, so it is
+## drawn before everything Highway draws itself and far below HighwayNotes). It carries the
+## sonar_surface CRT material in Full effects and the plain vertex-coloured strips in Low.
+var surface: Polygon2D
+var _surface_mat: ShaderMaterial
+var _rows := PackedFloat32Array()
+## Bar phase snapshot for the sweep (set by _update_sweep).
+var _bar_len_beats: float = 4.0
+var _bar_start_beat: float = 0.0
+## Strip geometry cache key, rebuilt only when the reveal, tint or brightness changes.
 var _strip_key := Vector3(-1.0, -1.0, -1.0)
 ## Visible beat/bar lines this frame (preallocated, filled in place by _fill_beat_lines).
 var _beat_d := PackedFloat32Array()
@@ -315,9 +342,18 @@ static func edge_x(f: float, y: float) -> float:
 	return Trench.VP.x + f * Trench.LANE_SPREAD * (Trench.FAR_SPREAD + (1.0 - Trench.FAR_SPREAD) * n)
 
 
+func _init() -> void:
+	surface = Polygon2D.new()
+	surface.name = "Surface"
+	surface.show_behind_parent = true
+	add_child(surface)
+
+
 func _ready() -> void:
 	UiKit.register_fx(self)
 	_refresh_labels()
+	_apply_surface_material()
+	_rebuild_strips()
 
 
 func setup(p_chart: ChartData, p_conductor: Conductor, p_cfg: JudgeConfig = null) -> void:
@@ -336,12 +372,15 @@ func setup(p_chart: ChartData, p_conductor: Conductor, p_cfg: JudgeConfig = null
 	_graph.resize(GRAPH_SAMPLES)
 	_graph.fill(0.0)
 	_refresh_labels()
+	_rebuild_strips()
 
 
 ## Effect contract: re-read settings (lane labels follow rebinds; strips are re-tinted).
 func apply_effect_settings() -> void:
 	_refresh_labels()
+	_apply_surface_material()
 	_strip_key = Vector3(-1.0, -1.0, -1.0)
+	_rebuild_strips()
 	queue_redraw()
 
 
@@ -352,7 +391,7 @@ func effect_counts() -> Dictionary:
 		"note_halos": not low,
 		"receptor_glow": not low,
 		"receptor_squash": not Settings.reduce_motion,
-		"crt": false,
+		"crt": surface.material != null,
 		"rail_glow": rail_glow_alpha(),
 	}
 
@@ -400,6 +439,7 @@ func on_sustain_end(lane: int, completed: bool) -> void:
 
 
 func _process(_delta: float) -> void:
+	_rebuild_strips()
 	if conductor == null:
 		return
 	if show_spike_readout:
@@ -434,13 +474,13 @@ func _update_window() -> void:
 			_vis.append(i)
 		i += 1
 	_fill_beat_lines(_vt, _approach)
+	_update_sweep()
 
 
 func _draw() -> void:
 	if chart == null or conductor == null:
 		return
 	var phase := BeatClock.phase(_st, chart.tempo_map)
-	_draw_surface()
 	_draw_rails()
 	if notes_enabled:
 		_draw_beat_lines()
@@ -454,50 +494,133 @@ func _draw() -> void:
 		_draw_spike_readout()
 
 
-# ---- Row 1: lane strips ------------------------------------------------------------------
+# ---- Row 1 + 2: lane strips (Surface Polygon2D) and the sonar CRT pass ---------------------
 
 func _strip_end_y() -> float:
 	return lerpf(Trench.VP.y, STRIP_END_Y, clampf(cable_grow, 0.0, 1.0))
 
 
+## Linear depth d at screen y on the board (inverse of the Trench projection).
+static func depth_at_y(y: float) -> float:
+	var smin := 1.0 / (1.0 + Trench.PERSPECTIVE)
+	var n := (y - Trench.VP.y) / Trench.TRAVEL
+	var s := smin + n * (1.0 - smin)
+	return (1.0 / maxf(s, 0.001) - 1.0) / Trench.PERSPECTIVE
+
+
+## Strip fill at screen y: HIGHWAY_BASE at 90% with the lane tint composited over it (tier tint,
+## plus the receptor light pool rising toward the hit line), and the bottom 50 px fade.
+func strip_color(lane: int, y: float, tint: float) -> Color:
+	var d := depth_at_y(y)
+	var pool := clampf(1.0 - d / POOL_DEPTH, 0.0, 1.0)
+	var t := clampf(tint + POOL_TINT * pool * pool, 0.0, 1.0)
+	var base_a := Palette.HIGHWAY_ALPHA
+	var a := t + base_a * (1.0 - t)
+	var col := Palette.alpha(Palette.HIGHWAY_BASE.lerp(Palette.lane_color(lane), t / maxf(a, 0.001)), a)
+	if y > STRIP_FADE_Y:
+		col.a *= clampf(1.0 - (y - STRIP_FADE_Y) / (STRIP_END_Y - STRIP_FADE_Y), 0.0, 1.0)
+	return col
+
+
+## Rebuilds the Surface polygons (4 strips x N row quads, per-vertex colours) when the reveal,
+## tint or base alpha changed. Rows follow STRIP_ROW_D so the light pool gradient is smooth.
 func _rebuild_strips() -> void:
 	var tint := strip_tint_alpha()
 	var key := Vector3(clampf(cable_grow, 0.0, 1.0), tint, Palette.HIGHWAY_ALPHA)
 	if key == _strip_key:
 		return
 	_strip_key = key
-	_strip_polys.clear()
-	_strip_cols.clear()
+	surface.visible = key.x > 0.0
 	if key.x <= 0.0:
+		surface.polygons = []
+		surface.polygon = PackedVector2Array()
+		surface.vertex_colors = PackedColorArray()
 		return
-	_add_strip(-2.0, 2.0, Palette.alpha(Palette.HIGHWAY_BASE, Palette.HIGHWAY_ALPHA))
+	var y_end := _strip_end_y()
+	_rows.clear()
+	for d in STRIP_ROW_D:
+		var y := Trench.point(0.0, d).y
+		if y >= y_end - 0.5:
+			break
+		_rows.append(y)
+	if STRIP_FADE_Y < y_end - 0.5 and STRIP_FADE_Y > _rows[_rows.size() - 1]:
+		_rows.append(STRIP_FADE_Y)
+	_rows.append(y_end)
+	var nr := _rows.size()
+	var verts := PackedVector2Array()
+	var cols := PackedColorArray()
+	var polys: Array = []
 	for lane in range(LANES):
 		var f := Trench.lane_f(lane)
-		_add_strip(f - 0.5, f + 0.5, Palette.alpha(Palette.lane_color(lane), tint))
+		var base := verts.size()
+		for r in range(nr):
+			var y := _rows[r]
+			var col := strip_color(lane, y, tint)
+			verts.append(Vector2(edge_x(f - 0.5, y), y))
+			verts.append(Vector2(edge_x(f + 0.5, y), y))
+			cols.append(col)
+			cols.append(col)
+		for r in range(nr - 1):
+			var i := base + 2 * r
+			polys.append(PackedInt32Array([i, i + 1, i + 3, i + 2]))
+	surface.polygon = verts
+	surface.vertex_colors = cols
+	surface.polygons = polys
 
 
-## One strip between lane offsets f0..f1: a solid quad to y 950, then a quad fading to 0 at 1000.
-func _add_strip(f0: float, f1: float, col: Color) -> void:
-	var y_top := Trench.VP.y
-	var y_end := _strip_end_y()
-	var y_solid := minf(y_end, STRIP_FADE_Y)
-	_strip_polys.append(PackedVector2Array([
-		Vector2(edge_x(f0, y_top), y_top), Vector2(edge_x(f1, y_top), y_top),
-		Vector2(edge_x(f1, y_solid), y_solid), Vector2(edge_x(f0, y_solid), y_solid)]))
-	_strip_cols.append(PackedColorArray([col, col, col, col]))
-	if y_end > STRIP_FADE_Y:
-		var a_end := col.a * (1.0 - (y_end - STRIP_FADE_Y) / (STRIP_END_Y - STRIP_FADE_Y))
-		var c_end := Palette.alpha(col, a_end)
-		_strip_polys.append(PackedVector2Array([
-			Vector2(edge_x(f0, STRIP_FADE_Y), STRIP_FADE_Y), Vector2(edge_x(f1, STRIP_FADE_Y), STRIP_FADE_Y),
-			Vector2(edge_x(f1, y_end), y_end), Vector2(edge_x(f0, y_end), y_end)]))
-		_strip_cols.append(PackedColorArray([col, col, c_end, c_end]))
+## Full effects: the sonar_surface material with every colour from Palette. Low effects: no
+## material (plain strips). Reduce motion: scanlines kept, sweep off.
+func _apply_surface_material() -> void:
+	if Settings.low_effects:
+		surface.material = null
+		return
+	if _surface_mat == null:
+		_surface_mat = ShaderMaterial.new()
+		_surface_mat.shader = load(SURFACE_SHADER) as Shader
+	var m := _surface_mat
+	m.set_shader_parameter("scan_color", Palette.alpha(Palette.ABYSS_900, SCAN_ALPHA))
+	m.set_shader_parameter("sweep_color", Palette.SONAR)
+	for lane in range(LANES):
+		m.set_shader_parameter("lane_color_%d" % lane, Palette.lane_color(lane))
+	m.set_shader_parameter("sweep_gain", SWEEP_GAIN)
+	m.set_shader_parameter("phosphor", PHOSPHOR)
+	m.set_shader_parameter("lane_edge_gain", LANE_EDGE_GAIN)
+	m.set_shader_parameter("lane_edge_px", LANE_EDGE_PX)
+	m.set_shader_parameter("vp_x", Trench.VP.x)
+	m.set_shader_parameter("vp_y", Trench.VP.y)
+	m.set_shader_parameter("travel", Trench.TRAVEL)
+	m.set_shader_parameter("perspective", Trench.PERSPECTIVE)
+	m.set_shader_parameter("lane_spread", Trench.LANE_SPREAD)
+	m.set_shader_parameter("far_spread", Trench.FAR_SPREAD)
+	m.set_shader_parameter("scanlines_on", true)
+	m.set_shader_parameter("sweep_on", not Settings.reduce_motion)
+	surface.material = m
 
 
-func _draw_surface() -> void:
-	_rebuild_strips()
-	for k in range(_strip_polys.size()):
-		draw_polygon(_strip_polys[k], _strip_cols[k])
+## Fraction 0..1 through the current bar at song time t, honouring time signatures (D-18).
+## Also caches the bar length (in quarter beats) for bar_seconds.
+func bar_phase(t: float) -> float:
+	var tempo: Array = chart.tempo_map if chart != null else []
+	_bar_len_beats = 4.0
+	_bar_start_beat = 0.0
+	if chart != null:
+		for ts in chart.time_sigs:
+			if float(ts.get("time", 0.0)) > t:
+				break
+			_bar_start_beat = BeatClock.beat_at(float(ts.get("time", 0.0)), tempo)
+			_bar_len_beats = float(clampi(int(ts.get("num", 4)), 1, 32)) * 4.0 / float(clampi(int(ts.get("den", 4)), 1, 32))
+	return fposmod((BeatClock.beat_at(t, tempo) - _bar_start_beat) / _bar_len_beats, 1.0)
+
+
+## Sweep: once per bar from the hit line (0) to the far end (1); the afterglow is 400 ms
+## expressed in the same units (a fraction of the bar).
+func _update_sweep() -> void:
+	if surface.material == null or Settings.reduce_motion:
+		return
+	var ph := bar_phase(_vt)
+	var bar_sec := _bar_len_beats * 60.0 / _bpm_at(_vt)
+	_surface_mat.set_shader_parameter("sweep_pos", ph)
+	_surface_mat.set_shader_parameter("afterglow", AFTERGLOW_SEC / maxf(bar_sec, 0.05))
 
 
 # ---- Row 3: separators and outer rails ---------------------------------------------------
@@ -546,11 +669,18 @@ func _draw_max_dashes(f: float, alpha: float) -> void:
 	var d := (1.0 - dash_phase(_vt)) * sp
 	var dir := (Trench.point(f, 1.0) - Trench.point(f, 0.0)).normalized()
 	var col := Palette.alpha(Palette.SONAR_PALE, MAX_DASH_ALPHA * alpha)
+	var glow := Palette.alpha(Palette.SONAR_PALE, MAX_DASH_GLOW_ALPHA * alpha)
+	var low: bool = Settings.low_effects
 	var n := 0
 	while d <= 1.0 and n < MAX_DASH_CAP:
 		var s := Trench.scale_at(d)
 		var p := Trench.point(f, d)
-		draw_line(p, p + dir * MAX_DASH_LEN * s, col, 2.0 + 3.0 * s, true)
+		var q := p + dir * MAX_DASH_LEN * s
+		# Wider than the 3 px core so the beads read as light flowing down the rail.
+		var w := MAX_DASH_W * (0.5 + 0.5 * s)
+		if not low:
+			draw_line(p, q, glow, w * 2.6, true)
+		draw_line(p, q, col, w, true)
 		d += sp
 		n += 1
 
