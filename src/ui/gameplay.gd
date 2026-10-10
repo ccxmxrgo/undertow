@@ -417,7 +417,7 @@ func _show_audio_error() -> void:
 	l.set_anchors_preset(Control.PRESET_CENTER)
 	l.custom_minimum_size = Vector2(900.0, 0.0)
 	l.position = Vector2(510.0, 500.0)
-	l.add_theme_color_override("font_color", Palette.DESTRUCTIVE)
+	l.add_theme_color_override("font_color", Palette.WARNING_RED)
 	_run_root.add_child(l)
 	get_tree().create_timer(ERROR_RETURN_SEC).timeout.connect(go_to_menu)
 

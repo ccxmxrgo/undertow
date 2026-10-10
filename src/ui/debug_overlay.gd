@@ -27,7 +27,7 @@ func _ready() -> void:
 	_graph.fill(0.0)
 	_label = Label.new()
 	_label.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
-	_label.add_theme_color_override("font_color", Palette.TEXT)
+	_label.add_theme_color_override("font_color", Palette.TEXT_MID)
 	_label.position = Vector2(Palette.SP_SM, Palette.SP_SM)
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
@@ -75,15 +75,15 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Palette.alpha(Palette.BG, 0.7))
-	draw_rect(Rect2(_graph_origin, GRAPH_SIZE), Palette.DIM, false, 1.0)
+	draw_rect(Rect2(Vector2.ZERO, size), Palette.alpha(Palette.ABYSS_900, 0.7))
+	draw_rect(Rect2(_graph_origin, GRAPH_SIZE), Palette.ABYSS_500, false, 1.0)
 	var step := GRAPH_SIZE.x / float(GRAPH_SAMPLES - 1)
 	var prev := Vector2.ZERO
 	for i in range(GRAPH_SAMPLES):
 		var y := _graph_origin.y + GRAPH_SIZE.y * (1.0 - _graph[i] / GRAPH_MAX_MS)
 		var p := Vector2(_graph_origin.x + i * step, y)
 		if i > 0:
-			draw_line(prev, p, Palette.ACCENT, 1.5)
+			draw_line(prev, p, Palette.SONAR, 1.5)
 		prev = p
 	var font := Palette.font()
 	var y0 := _graph_origin.y + GRAPH_SIZE.y + 24.0
@@ -91,6 +91,6 @@ func _draw() -> void:
 	for i in range(_errors.size()):
 		line += "%+.0f " % _errors[i]
 		if i % 5 == 4 or i == _errors.size() - 1:
-			draw_string(font, Vector2(Palette.SP_MD, y0), line, HORIZONTAL_ALIGNMENT_LEFT, size.x - 24.0, Palette.SIZE_LABEL, Palette.TEXT)
+			draw_string(font, Vector2(Palette.SP_MD, y0), line, HORIZONTAL_ALIGNMENT_LEFT, size.x - 24.0, Palette.SIZE_LABEL, Palette.TEXT_MID)
 			y0 += 24.0
 			line = ""

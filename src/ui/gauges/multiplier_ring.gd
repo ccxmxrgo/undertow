@@ -187,8 +187,11 @@ func apply_effect_settings() -> void:
 	queue_redraw()
 
 
+## glint / glow = active right now (only at x4); glint_enabled / glow_enabled = what the
+## current settings allow once x4 is reached (02.2-24, so a test can see Low below x4).
 func effect_counts() -> Dictionary:
-	return {"glint": glint_on(), "glow": glow_on(), "pop": not _reduce, "drain": not _reduce}
+	return {"glint": glint_on(), "glow": glow_on(), "glint_enabled": not _low and not _reduce,
+		"glow_enabled": not _low, "pop": not _reduce, "drain": not _reduce}
 
 
 func _process(delta: float) -> void:

@@ -85,6 +85,8 @@ var bar_widths: Array[float] = [0.0, 0.0, 0.0]
 ## "reward" on a new record (gold brackets on the grade panel), else "default".
 var grade_panel_variant: String = "default"
 var histogram: TimingHistogram
+## The screen's focus marker (UI-SPEC 4.3, one per screen; added in 02.2-24).
+var focus_marker: FocusMarker
 ## Grade, stats and timing panel groups (each holds its panel and contents; animated together).
 var panel_groups: Array[Control] = []
 
@@ -178,6 +180,9 @@ func setup(score: HullScore, autoplay_used: bool, record_info: Dictionary = {},
 	_build_timing_panel(run_info)
 	_into = _layout
 	_build_buttons()
+	focus_marker = FocusMarker.new()
+	focus_marker.name = "FocusMarker"
+	add_child(focus_marker)
 	_label("Hint", HINT, _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO, Vector2(PAD_X, 872.0))
 	if is_inside_tree():
 		_start_animation()

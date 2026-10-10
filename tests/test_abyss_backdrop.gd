@@ -2,8 +2,8 @@ extends GdUnitTestSuite
 ## AbyssBackdrop (02.2 plan 06, UI-SPEC 5 / 6 / 8 / 11): the three variants, Low effects
 ## counts (menu particles 160 -> 40), Reduce motion freezing and the effect contract.
 
-const TITLE_FULL := {"snow": 120, "specks": 40, "shafts": 5, "kelp": 9, "sub": 1}
-const TITLE_LOW := {"snow": 30, "specks": 10, "shafts": 3, "kelp": 5, "sub": 1}
+const TITLE_FULL := {"snow": 120, "frozen": false, "specks": 40, "shafts": 5, "kelp": 9, "sub": 1}
+const TITLE_LOW := {"snow": 30, "frozen": false, "specks": 10, "shafts": 3, "kelp": 5, "sub": 1}
 
 var _low := false
 var _reduce := false
@@ -139,10 +139,10 @@ func test_table_variant_has_no_sub_and_dims_layers() -> void:
 
 func test_calm_variant_counts() -> void:
 	var b := _backdrop("calm")
-	assert_dict(b.effect_counts()).is_equal({"snow": 40})
+	assert_dict(b.effect_counts()).is_equal({"snow": 40, "frozen": false})
 	Settings.low_effects = true
 	Settings.settings_changed.emit()
-	assert_dict(b.effect_counts()).is_equal({"snow": 12})
+	assert_dict(b.effect_counts()).is_equal({"snow": 12, "frozen": false})
 
 
 func test_fx_group_mouse_ignore_and_pulse_default() -> void:

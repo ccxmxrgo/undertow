@@ -3,10 +3,8 @@ extends RefCounted
 ## Single source of UI colors, spacing tokens and fonts (UI-SPEC). No other hues exist.
 ## Only file allowed to contain colour literals (VIS-01).
 
-## Per-lane identity colors (D-02), lane order. ACCENT stays for hull line, edges, HUD.
+## Per-lane identity colors (D-02), lane order.
 const LANE_COLORS: Array[Color] = [Color("22D3EE"), Color("FBBF24"), Color("F472B6"), Color("A3E635")]
-## RGB multiplier for notes outside the Good window (alpha is never reduced).
-const NOTE_DIM := 0.60
 
 ## ---- Abyssal Cockpit tokens (02.2 UI-SPEC section 3.1).
 const ABYSS_900 := Color("03060D")  # dominant base (60%)
@@ -46,15 +44,6 @@ const COVER_GRADIENTS: Array = [
 	[Color("0E3046"), Color("060D1A")],
 	[Color("1B1236"), Color("03060D")],
 ]
-## ---- Legacy aliases (pre-02.2 names), flipped to the Abyssal Cockpit tokens in plan 04.
-const BG := ABYSS_900  # legacy alias, removed in plan 24
-const PANEL := ABYSS_700  # legacy alias, removed in plan 24
-const DIM := ABYSS_500  # legacy alias, removed in plan 24
-const TEXT := TEXT_MID  # legacy alias, removed in plan 24
-const ACCENT := SONAR  # legacy alias, removed in plan 24
-const DESTRUCTIVE := WARNING_RED  # legacy alias, removed in plan 24
-const REC_TEXT := TEXT_HI  # legacy alias, removed in plan 24
-
 const PANEL_ALPHA := 0.82
 const HIGHWAY_ALPHA := 0.90
 
@@ -158,11 +147,6 @@ static func rim_far(lane: int) -> Color:
 ## Grade letter colour; unknown letters use TEXT_LO.
 static func grade_color(letter: String) -> Color:
 	return GRADE_COLORS.get(letter, TEXT_LO)
-
-
-## RGB scaled by NOTE_DIM; alpha preserved exactly.
-static func dim(c: Color) -> Color:
-	return Color(c.r * NOTE_DIM, c.g * NOTE_DIM, c.b * NOTE_DIM, c.a)
 
 
 ## Share Tech Mono, or Godot's fallback font when the file is missing (T-05-01).

@@ -1590,7 +1590,7 @@ func _paint_pips(c: CanvasItem, e: SongEntry, y: float, sel: bool) -> void:
 		var col := Palette.lane_color(i)
 		if avail.has(nm):
 			var chosen := sel and nm == _diff
-			NoteShape.draw(c, NoteShape.kind_for_lane(i), Vector2(cx, cy), 16.0, col if chosen else Palette.dim(col), 2.0)
+			NoteShape.draw(c, NoteShape.kind_for_lane(i), Vector2(cx, cy), 16.0, col if chosen else Palette.mix(col, Palette.ABYSS_900, 0.4), 2.0)
 			if chosen:
 				c.draw_line(Vector2(cx - 8.0, cy + 12.0), Vector2(cx + 8.0, cy + 12.0), col, 2.0)
 		else:
@@ -1844,7 +1844,7 @@ func _paint_tiles(c: CanvasItem, e: SongEntry) -> void:
 			c.draw_rect(Rect2(r.position.x + (TILE_W - 24.0) * 0.5, r.end.y, 24.0, 4.0), col)
 		else:
 			_chamfer(c, r, Palette.alpha(col, 0.10), Palette.alpha(col, 0.6))
-		NoteShape.draw(c, kind, glyph_c, 24.0, col if chosen else Palette.dim(col), 2.0)
+		NoteShape.draw(c, kind, glyph_c, 24.0, col if chosen else Palette.mix(col, Palette.ABYSS_900, 0.4), 2.0)
 		_txt(c, name_pos, _fit(name_up, Palette.SIZE_BODY, TILE_W - 60.0, chosen), Palette.SIZE_BODY,
 				Palette.TEXT_HI, chosen)
 		_txt(c, count_pos, _fit(st["text"], Palette.SIZE_LABEL, TILE_W - 24.0), Palette.SIZE_LABEL, Palette.TEXT_MID)

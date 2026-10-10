@@ -37,8 +37,8 @@ func test_highway_source_has_no_dimming() -> void:
 
 
 func test_core_colors_unchanged() -> void:
-	assert_that(Palette.DESTRUCTIVE).is_equal(Palette.WARNING_RED)
-	assert_that(Palette.ACCENT).is_equal(Palette.SONAR)
+	assert_that(Palette.WARNING_RED).is_equal(Color("FF4A3D"))
+	assert_that(Palette.SONAR).is_equal(Color("05D9E8"))
 
 
 func test_shape_mapping_unchanged() -> void:

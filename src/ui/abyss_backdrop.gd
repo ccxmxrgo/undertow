@@ -235,9 +235,10 @@ func apply_effect_settings() -> void:
 ## Effect contract: what is active right now.
 func effect_counts() -> Dictionary:
 	if variant == "calm":
-		return {"snow": _snow_n}
+		return {"snow": _snow_n, "frozen": _reduce}
 	return {
 		"snow": _snow_n,
+		"frozen": _reduce,
 		"specks": _speck_n,
 		"shafts": _shaft_idx.size(),
 		"kelp": _kelp_idx.size(),

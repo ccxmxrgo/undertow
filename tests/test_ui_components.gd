@@ -34,18 +34,15 @@ func test_palette_theme_and_fonts_load() -> void:
 	var focus := theme.get_stylebox("focus", "Button") as StyleBoxFlat
 	assert_int(focus.border_width_left).is_equal(Palette.EDGE_FOCUS)
 	assert_bool(focus.border_color.is_equal_approx(Palette.SONAR)).is_true()
-	assert_that(Palette.DESTRUCTIVE).is_equal(Palette.WARNING_RED)
 
 
-## Legacy aliases point at the Abyssal Cockpit tokens (plan 04 flip; removed in plan 24).
-func test_legacy_aliases_follow_new_tokens() -> void:
-	assert_that(Palette.ACCENT).is_equal(Palette.SONAR)
-	assert_that(Palette.TEXT).is_equal(Palette.TEXT_MID)
-	assert_that(Palette.PANEL).is_equal(Palette.ABYSS_700)
-	assert_that(Palette.DIM).is_equal(Palette.ABYSS_500)
-	assert_that(Palette.BG).is_equal(Palette.ABYSS_900)
-	assert_that(Palette.REC_TEXT).is_equal(Palette.TEXT_HI)
-	assert_that(Palette.DESTRUCTIVE).is_equal(Palette.WARNING_RED)
+## Legacy aliases were deleted in plan 24 (tests/test_color_literals.gd guards it); the
+## tokens they pointed at keep their UI-SPEC 3.1 values.
+func test_core_tokens_keep_their_values() -> void:
+	assert_that(Palette.SONAR).is_equal(Color("05D9E8"))
+	assert_that(Palette.WARNING_RED).is_equal(Color("FF4A3D"))
+	assert_that(Palette.ABYSS_900).is_equal(Color("03060D"))
+	assert_that(Palette.TEXT_HI).is_equal(Color("E8E6F0"))
 
 
 func _assert_chamfer(sb: StyleBoxFlat, cut: int) -> void:

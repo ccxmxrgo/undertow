@@ -148,7 +148,8 @@ func test_ring_registers_effect_contract() -> void:
 	var r := _ring()
 	var ring: MultiplierRing = r[0]
 	assert_bool(ring.is_in_group(UiKit.FX_GROUP)).is_true()
-	assert_dict(ring.effect_counts()).is_equal({"glint": false, "glow": false, "pop": true, "drain": true})
+	assert_dict(ring.effect_counts()).is_equal({"glint": false, "glow": false, "glint_enabled": true,
+		"glow_enabled": true, "pop": true, "drain": true})
 	assert_int(ring.mouse_filter).is_equal(Control.MOUSE_FILTER_IGNORE)
 
 

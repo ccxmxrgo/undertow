@@ -32,8 +32,27 @@ func _init() -> void:
 	add_child(halos)
 
 
+func _ready() -> void:
+	apply_effect_settings()
+	UiKit.register_fx(self)
+
+
 func bind(p_highway: Highway) -> void:
 	highway = p_highway
+
+
+## Effect contract (UiKit.register_fx): Low effects hides the additive Halos layer; the ready
+## gem then gets the plain halo ring from NotePainter instead (UI-SPEC 11). Glow sprites stay
+## on under Reduce motion.
+func apply_effect_settings() -> void:
+	halos.visible = not UiKit.low_effects()
+	queue_redraw()
+	halos.queue_redraw()
+
+
+func effect_counts() -> Dictionary:
+	var low := UiKit.low_effects()
+	return {"halos": halos.visible, "halo_ring": low}
 
 
 func _process(_delta: float) -> void:

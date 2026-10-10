@@ -942,17 +942,17 @@ func _draw_spike_readout() -> void:
 	var x := 1568.0
 	var y := 120.0
 	var st := conductor.song_time()
-	draw_string(font, Vector2(x, y + 20.0), "song_time %.3f" % st, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.TEXT)
-	draw_string(font, Vector2(x, y + 44.0), "raw_pos   %.3f" % conductor.raw_position(), HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.TEXT)
-	draw_string(font, Vector2(x, y + 68.0), "latency   %.1f ms  audio_valid %s" % [conductor.output_latency() * 1000.0, str(conductor.audio_valid())], HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.TEXT)
-	draw_string(font, Vector2(x, y + 92.0), "dt/frame (ms), 0-40", HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.TEXT)
+	draw_string(font, Vector2(x, y + 20.0), "song_time %.3f" % st, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.TEXT_MID)
+	draw_string(font, Vector2(x, y + 44.0), "raw_pos   %.3f" % conductor.raw_position(), HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.TEXT_MID)
+	draw_string(font, Vector2(x, y + 68.0), "latency   %.1f ms  audio_valid %s" % [conductor.output_latency() * 1000.0, str(conductor.audio_valid())], HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.TEXT_MID)
+	draw_string(font, Vector2(x, y + 92.0), "dt/frame (ms), 0-40", HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.TEXT_MID)
 	var gx := x
 	var gy := y + 104.0
 	var gw := 320.0
 	var gh := 96.0
-	draw_rect(Rect2(gx, gy, gw, gh), Palette.DIM, false, 2.0)
+	draw_rect(Rect2(gx, gy, gw, gh), Palette.ABYSS_500, false, 2.0)
 	var pts := PackedVector2Array()
 	for i in range(GRAPH_SAMPLES):
 		var v := clampf(_graph[i], 0.0, 40.0) / 40.0
 		pts.append(Vector2(gx + gw * i / (GRAPH_SAMPLES - 1), gy + gh - v * gh))
-	draw_polyline(pts, Palette.ACCENT, 2.0)
+	draw_polyline(pts, Palette.SONAR, 2.0)
