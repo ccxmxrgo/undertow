@@ -116,7 +116,7 @@ Plans:
 
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 8/25 plans executed
+**Plans:** 9/25 plans executed
 
 Plans:
 
@@ -128,7 +128,7 @@ Plans:
 - [x] 02.2-06-PLAN.md — Living title screen: AbyssBackdrop, wordmark + shimmer, icon menu layout
 - [x] 02.2-07-PLAN.md — Menu music + Preview bus + setting, last-dive card, menu evidence + visual review
 - [x] 02.2-08-PLAN.md — Board: NotePainter gems, HighwaySurface/HighwayNotes split, strips, receptors
-- [ ] 02.2-09-PLAN.md — Board: beat/bar lines (TS), sustain tubes, sonar CRT surface, streak tiers + visual review
+- [x] 02.2-09-PLAN.md — Board: beat/bar lines (TS), sustain tubes, sonar CRT surface, streak tiers + visual review
 - [ ] 02.2-10-PLAN.md — Board: FxLayer bursts/rings/crack/shake/sparks, merged chord popup, early/late + visual review
 - [ ] 02.2-11-PLAN.md — Board: trench life (AV-02), 1080p perf checkpoint, Sea Shanty 2 Full-effects autoplay + visual review
 - [ ] 02.2-12-PLAN.md — HUD: cockpit frame, multiplier ring, streak numeral, torpedo socket, milestone burst
