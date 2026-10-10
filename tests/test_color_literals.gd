@@ -147,6 +147,7 @@ const LEGACY_FREE: Array[String] = [
 	"res://src/ui/settings_screen.gd",
 	"res://src/ui/step_slider.gd",
 	"res://src/ui/rebind_cell.gd",
+	"res://src/ui/calibration_wizard.gd",
 ]
 const LEGACY_PATTERN := "Palette\\.(BG|PANEL|DIM|TEXT|ACCENT|DESTRUCTIVE|REC_TEXT)\\b"
 

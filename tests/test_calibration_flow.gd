@@ -60,7 +60,8 @@ func test_synthetic_taps_measure_37ms_and_save() -> void:
 	w.accept_audio()
 	assert_int(w.step).is_equal(CalibrationWizard.Step.VISUAL)
 	w.visual_slider.set_value(16.0)
-	assert_str(w.result_label.text).is_equal("VISUAL OFFSET +16 MS")
+	assert_str(w.result_label.text).is_equal("+16 MS")
+	assert_str(w.offset_caption_label.text).is_equal("VISUAL OFFSET")
 	w.accept_visual()
 	assert_int(w.step).is_equal(CalibrationWizard.Step.SUMMARY)
 	w.save_and_continue()
@@ -257,3 +258,80 @@ func test_buttons_are_not_window_wide() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	assert_float(w.save_button.size.x).is_between(280.0, 480.0)
+
+
+# ---- 02.2-21: calibration restyle (UI-SPEC 9.4, 14) ------------------------------------------
+
+
+func test_step_chips_states_and_geometry() -> void:
+	assert_array(CalibrationWizard.STEP_CHIPS).is_equal(["1 AUDIO", "2 VISUAL", "3 DONE"])
+	var S := CalibrationWizard.Step
+	assert_array(CalibrationWizard.chip_states(S.INTRO)).is_equal(["upcoming", "upcoming", "upcoming"])
+	assert_array(CalibrationWizard.chip_states(S.AUDIO)).is_equal(["current", "upcoming", "upcoming"])
+	assert_array(CalibrationWizard.chip_states(S.VISUAL)).is_equal(["done", "current", "upcoming"])
+	assert_array(CalibrationWizard.chip_states(S.SUMMARY)).is_equal(["done", "done", "current"])
+	for i in 3:
+		var r := CalibrationWizard.chip_rect(i)
+		assert_float(r.position.y).is_equal(64.0)
+		assert_float(r.end.y).is_equal(112.0)
+	assert_float(CalibrationWizard.chip_rect(0).position.x).is_equal(64.0)
+	assert_float(CalibrationWizard.chip_rect(1).position.x).is_greater(CalibrationWizard.chip_rect(0).end.x)
+
+
+func test_offset_value_sign_font_and_caption() -> void:
+	assert_str(CalibrationWizard.format_ms(0.051)).is_equal("+51 MS")
+	assert_str(CalibrationWizard.format_ms(-0.012)).is_equal("-12 MS")
+	assert_str(CalibrationWizard.format_ms(0.0)).is_equal("+0 MS")
+	assert_that(CalibrationWizard.CAPTION_AT).is_equal(Vector2(64.0, 384.0))
+	assert_that(CalibrationWizard.VALUE_AT).is_equal(Vector2(64.0, 476.0))
+	var w := _wizard()
+	_to_audio(w)
+	assert_str(w.offset_caption_label.text).is_equal("AUDIO OFFSET")
+	for c in w.click_times():
+		w.record_tap(float(c) + 0.051)
+	w.evaluate_audio()
+	assert_str(w.result_label.text).is_equal("+51 MS")
+	assert_int(w.result_label.get_theme_font_size("font_size")).is_equal(Palette.SIZE_DISPLAY)
+	assert_that(w.result_label.get_theme_color("font_color")).is_equal(Palette.SONAR)
+	assert_object(w.result_label.get_theme_font("font")).is_same(Palette.display_font())
+	assert_float(w.result_label.position.x).is_equal(64.0)
+	await get_tree().process_frame
+
+
+func test_stage_draws_gem_hit_line_and_perfect_ring() -> void:
+	assert_that(CalibrationWizard.STAGE_RECT).is_equal(Rect2(640.0, 440.0, 640.0, 320.0))
+	assert_that(CalibrationWizard.NOTE_CENTER).is_equal(Vector2(960.0, 560.0))
+	assert_float(CalibrationWizard.NOTE_R).is_equal(41.0)
+	assert_float(CalibrationWizard.HIT_LINE_Y).is_equal(700.0)
+	assert_that(CalibrationWizard.HIT_LINE_X).is_equal(Vector2(840.0, 1080.0))
+	var src := FileAccess.get_file_as_string("res://src/ui/calibration_wizard.gd")
+	assert_bool(src.contains("NotePainter.draw_note")).is_true()
+	# The flash is the Perfect shockwave ring (HitBurst timeline), gone after its life.
+	assert_that(CalibrationWizard.flash_ring(0.05)).is_equal(HitBurst.ring_state(HitBurst.RING_PERFECT, 0.05))
+	assert_bool(CalibrationWizard.flash_ring(HitBurst.life(HitBurst.RING_PERFECT) + 0.01).is_empty()).is_true()
+	assert_bool(CalibrationWizard.flash_ring(-0.01).is_empty()).is_true()
+	# Visual test note: reaches the hit line exactly on the click.
+	assert_float(CalibrationWizard.visual_note_y(1.0)).is_equal_approx(CalibrationWizard.HIT_LINE_Y, 0.001)
+	assert_float(CalibrationWizard.visual_note_y(0.0)).is_less(CalibrationWizard.NOTE_CENTER.y)
+
+
+func test_design_system_frame() -> void:
+	var w := _wizard()
+	assert_object(w.backdrop).is_not_null()
+	assert_str(w.backdrop.variant).is_equal("table")
+	assert_bool(w.focus_marker is FocusMarker).is_true()
+	assert_bool(w.is_in_group(UiKit.FX_GROUP)).is_true()
+	assert_that(CalibrationWizard.DEVICE_PANEL).is_equal(Rect2(64.0, 136.0, 640.0, 160.0))
+	assert_that(CalibrationWizard.INSTRUCTION_AT).is_equal(Vector2(64.0, 340.0))
+	_to_audio(w)
+	for c in w.click_times():
+		w.record_tap(float(c) + 0.03)
+	w.evaluate_audio()
+	assert_str(String(w.accept_button.get_meta(&"ui_variant", ""))).is_equal("primary")
+	assert_float(w.accept_button.custom_minimum_size.y).is_equal(48.0)
+	w.accept_audio()
+	var s := w.visual_slider
+	assert_float(s.position.x).is_equal(64.0)
+	assert_float(s.position.x + s.size.x).is_equal(1856.0)
+	assert_float(s.position.y + s.size.y * 0.5).is_equal(852.0)
+	await get_tree().process_frame
