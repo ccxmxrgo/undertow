@@ -323,10 +323,16 @@ func test_design_system_frame() -> void:
 	assert_bool(w.is_in_group(UiKit.FX_GROUP)).is_true()
 	assert_that(CalibrationWizard.DEVICE_PANEL).is_equal(Rect2(64.0, 136.0, 640.0, 160.0))
 	assert_that(CalibrationWizard.INSTRUCTION_AT).is_equal(Vector2(64.0, 340.0))
+	assert_bool(w.backdrop.visible).is_true()
 	_to_audio(w)
+	# T-02.2-41: no decorative backdrop while taps are stamped.
+	assert_bool(w.is_quiet()).is_true()
+	assert_bool(w.backdrop.visible).is_false()
 	for c in w.click_times():
 		w.record_tap(float(c) + 0.03)
 	w.evaluate_audio()
+	assert_bool(w.is_quiet()).is_false()
+	assert_bool(w.backdrop.visible).is_true()
 	assert_str(String(w.accept_button.get_meta(&"ui_variant", ""))).is_equal("primary")
 	assert_float(w.accept_button.custom_minimum_size.y).is_equal(48.0)
 	w.accept_audio()

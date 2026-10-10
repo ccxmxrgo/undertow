@@ -741,7 +741,7 @@ func sc_a() -> void:
 		"delta %.0f ms (1 + %d x 10)" % [v3 - v2, int(rep / 10.0)])
 	check("pending visual offset follows slider", is_equal_approx(w.pending_visual * 1000.0, v3),
 		"%.1f ms" % (w.pending_visual * 1000.0))
-	await shot("wizard_visual")
+	await shot("calibration_visual")
 	# Retry Test resets the slider to 0 (Right moves focus? use the button directly via focus+Enter)
 	w.retry_button.grab_focus()
 	await press_key(KEY_ENTER)
@@ -796,6 +796,11 @@ func sc_a() -> void:
 		"saved %.2f ms vs new %.2f ms" % [Settings.audio_offset * 1000.0, r2 * 1000.0])
 	_check_button_widths("rerun_result", {"accept": w.accept_button, "retry": w.retry_button})
 	await shot("wizard_rerun_previously_saved")
+	# 02.2-21: one more (unscored) audio test, captured mid-run for the restyled stage.
+	w.retry_button.grab_focus()
+	await press_key(KEY_ENTER)
+	await wait_until(func() -> bool: return w.conductor.song_time() > 5.0 * CalibrationWizard.SPB + 0.2, 8.0)
+	await shot("calibration_audio")
 	# A tap-perfect player (0 ms lag) on a calibrated (+40) profile should measure 0.
 	await press_key(KEY_ESCAPE)
 	ok = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
@@ -1288,11 +1293,11 @@ func sc_g() -> void:
 		return
 	await wait(0.3)
 	var s := cur() as SettingsScreen
-	await shot("settings")
+	await shot("settings_screen")
 	var cell: RebindCell = s.cells["lane_1:keyboard"]
 	check("initial focus on Lane 1 keyboard cell", focus_owner() == cell, focus_owner())
 	await press_key(KEY_ENTER)
-	check("Enter starts listening ('PRESS A KEY...')", cell.listening and cell.text == "PRESS A KEY...", cell.text)
+	check("Enter starts listening ('PRESS A KEY')", cell.listening and cell.text == "PRESS A KEY", cell.text)
 	await shot("rebind_listening")
 	await press_key(KEY_Q)
 	check("Lane 1 rebound to Q (no longer 1)", not cell.listening and cell.text == "Q" and _action_has_key(&"lane_1", KEY_Q) and not _action_has_key(&"lane_1", KEY_1), cell.text)
@@ -1348,6 +1353,13 @@ func sc_g() -> void:
 		"%.0f/%.0f/%.0f%%  %.2f/%.2f/%.2f dB" % [Settings.volume_master * 100, Settings.volume_music * 100, Settings.volume_sfx * 100, mdb, mudb, sdb])
 	cfg.load(TEMP_SETTINGS)
 	check("volumes persisted", is_equal_approx(float(cfg.get_value("audio", "master", 0)), 0.8) and is_equal_approx(float(cfg.get_value("audio", "music", 0)), 0.7))
+	# 02.2-21: pill toggles and row hints (Display / Audio sections) for the visual review.
+	s.low_effects_button.grab_focus()
+	await wait(0.4)
+	await shot("settings_toggles")
+	s.back_button.grab_focus()
+	await wait(0.4)
+	await shot("settings_library_calibration")
 
 	# Reset controls
 	s.reset_button.grab_focus()

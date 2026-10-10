@@ -411,11 +411,20 @@ func _hint(text: String) -> Label:
 	return l
 
 
-## A full-width hint line under rows, indented to the control column.
-func _hint_line(box: VBoxContainer, text: String) -> Label:
+## MarginContainer indenting its child to the control column (the theme's 32 px margins are
+## zeroed on the other sides).
+func _indent(bottom: int = 0) -> MarginContainer:
 	var m := MarginContainer.new()
 	m.add_theme_constant_override("margin_left", int(CONTROL_X - LABEL_X))
-	m.add_theme_constant_override("margin_bottom", Palette.SP_XS)
+	m.add_theme_constant_override("margin_right", 0)
+	m.add_theme_constant_override("margin_top", 0)
+	m.add_theme_constant_override("margin_bottom", bottom)
+	return m
+
+
+## A full-width hint line under rows, indented to the control column.
+func _hint_line(box: VBoxContainer, text: String) -> Label:
+	var m := _indent(Palette.SP_XS)
 	var l := _hint(text)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	m.add_child(l)
@@ -475,9 +484,10 @@ func _build_controls(box: VBoxContainer) -> void:
 			if _first_focus == null:
 				_first_focus = cell
 		if action == &"fire" or action == &"target_cycle":
-			row.add_child(_hint("(Not active yet)"))
-		var m := MarginContainer.new()
-		m.add_theme_constant_override("margin_left", int(CONTROL_X - LABEL_X))
+			var na := _hint("(Not active yet)")
+			na.autowrap_mode = TextServer.AUTOWRAP_OFF
+			row.add_child(na)
+		var m := _indent(Palette.SP_XS)
 		var msg := Label.new()
 		msg.theme_type_variation = &"CaptionLabel"
 		msg.add_theme_color_override("font_color", Palette.WARNING_RED)
@@ -536,14 +546,12 @@ func _build_library(box: VBoxContainer) -> void:
 			library.open_songs_folder())
 	row.add_child(open_songs_button)
 	_row(box, "Extra library folders")
-	var lm := MarginContainer.new()
-	lm.add_theme_constant_override("margin_left", int(CONTROL_X - LABEL_X))
+	var lm := _indent()
 	library_rows = VBoxContainer.new()
 	library_rows.add_theme_constant_override("separation", Palette.SP_XS)
 	lm.add_child(library_rows)
 	box.add_child(lm)
-	var mm := MarginContainer.new()
-	mm.add_theme_constant_override("margin_left", int(CONTROL_X - LABEL_X))
+	var mm := _indent()
 	library_message = Label.new()
 	library_message.theme_type_variation = &"CaptionLabel"
 	library_message.add_theme_color_override("font_color", Palette.WARNING_RED)
@@ -767,11 +775,10 @@ func _toggle_row(box: VBoxContainer, title: String, flip: Callable, hint: String
 	row.add_child(b)
 	_toggles.append(b)
 	if hint != "":
-		var gap := Control.new()
-		gap.custom_minimum_size = Vector2(Palette.SP_SM, 0.0)
-		row.add_child(gap)
+		# Fixed width up to the value column, wrapping if a translation or font runs long, so the
+		# row never widens the scroll content past x 1840.
 		var h := _hint(hint)
-		h.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.custom_minimum_size = Vector2(VALUE_RIGHT - CONTROL_X - PillToggle.SIZE.x - ROW_GAP, 0.0)
 		row.add_child(h)
 		_hints[title] = hint
 	return b
