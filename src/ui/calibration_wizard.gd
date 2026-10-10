@@ -61,6 +61,8 @@ func _ready() -> void:
 	UiLayout.fill_rect(self)
 	if theme == null:
 		theme = Palette.load_theme()
+	# Pitfall 7 / T-02.2-13: menu music would pollute the click-track measurement.
+	MenuMusic.stop(0.0)
 	pending_audio = Settings.audio_offset
 	pending_visual = Settings.visual_offset
 	conductor = Conductor.new()

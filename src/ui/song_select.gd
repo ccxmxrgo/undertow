@@ -523,6 +523,7 @@ func _dive() -> void:
 	library.last_song_id = e.id
 	library.last_difficulty = _diff
 	_stop_preview(true)
+	MenuMusic.stop(0.4)
 	if Settings.reduce_motion or not is_inside_tree():
 		_fade = 1.0
 		_go(GAMEPLAY_SCENE)
@@ -854,6 +855,8 @@ func _play_stream(stream: AudioStream, e: SongEntry) -> void:
 	var start := SongListModel.preview_start_sec(e.preview_start_ms, len if len > 0.0 else e.length_sec)
 	if len > 0.0:
 		start = minf(start, maxf(0.0, len - 1.0))
+	# D-07: the menu music fades out when the song preview takes over.
+	MenuMusic.stop(0.4)
 	_preview_player.stream = stream
 	_preview_player.volume_db = -40.0
 	_preview_player.play(start)

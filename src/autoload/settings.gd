@@ -37,6 +37,8 @@ var low_effects: bool = false
 var volume_master: float = 1.0
 var volume_music: float = 0.8
 var volume_sfx: float = 0.8
+## 02.2 D-07: a quiet bundled song preview loops on the main menu (MenuMusic). Persisted in [audio].
+var menu_music: bool = true
 ## D-06: extra library folders (absolute paths, scanned read-only). Persisted in [library].
 var library_folders: Array[String] = []
 ## Last played song id / difficulty (easy|medium|hard|expert|""). Song Select reopens on them.
@@ -68,6 +70,7 @@ func reset_defaults() -> void:
 	volume_master = 1.0
 	volume_music = 0.8
 	volume_sfx = 0.8
+	menu_music = true
 	library_folders = []
 	last_song_id = ""
 	last_difficulty = ""
@@ -184,6 +187,7 @@ func save_to(path: String = DEFAULT_PATH) -> int:
 	cfg.set_value("audio", "master", volume_master)
 	cfg.set_value("audio", "music", volume_music)
 	cfg.set_value("audio", "sfx", volume_sfx)
+	cfg.set_value("audio", "menu_music", menu_music)
 	cfg.set_value("library", "folders", PackedStringArray(library_folders))
 	cfg.set_value("library", "last_song_id", last_song_id)
 	cfg.set_value("library", "last_difficulty", last_difficulty)
@@ -229,6 +233,7 @@ func load_from(path: String = DEFAULT_PATH) -> void:
 	volume_master = _num(cfg, "audio", "master", 1.0, 0.0, 1.0)
 	volume_music = _num(cfg, "audio", "music", 0.8, 0.0, 1.0)
 	volume_sfx = _num(cfg, "audio", "sfx", 0.8, 0.0, 1.0)
+	menu_music = _bool(cfg, "audio", "menu_music", true)
 	bindings.from_config(cfg)
 	var dev: Variant = cfg.get_value("calibration", "output_device", "")
 	output_device_name = dev.left(512) if typeof(dev) == TYPE_STRING else ""

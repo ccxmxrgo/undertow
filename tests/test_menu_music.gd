@@ -32,7 +32,7 @@ func _music() -> Node:
 
 
 func _stream() -> AudioStream:
-	return AudioSynth.make_song([{"time": 0.0, "bpm": 120.0}], 4.0, 22050)
+	return AudioSynth.make_song([{"time": 0.0, "bpm": 120.0}], 40.0, 11025)
 
 
 func test_preview_bus_sends_to_music_with_spectrum_analyzer() -> void:

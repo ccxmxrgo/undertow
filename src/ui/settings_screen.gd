@@ -34,6 +34,7 @@ var no_fail_button: Button
 var reduce_motion_button: Button
 var fullscreen_button: Button
 var low_effects_button: Button
+var menu_music_button: Button
 var reset_button: Button
 var recalibrate_button: Button
 var dialog: ConfirmDialog
@@ -205,6 +206,9 @@ func _build_audio(root: VBoxContainer) -> void:
 	root.add_child(_heading("AUDIO"))
 	master_slider = _volume_row(root, "Master", "Master", Settings.volume_master, true)
 	music_slider = _volume_row(root, "Music", "Music", Settings.volume_music, false)
+	menu_music_button = _toggle_row(root, "Menu music", func() -> void:
+		Settings.menu_music = not Settings.menu_music)
+	root.add_child(_hint("Plays a quiet song preview on the main menu."))
 	sfx_slider = _volume_row(root, "SFX", "SFX", Settings.volume_sfx, true)
 
 
@@ -478,6 +482,7 @@ func _refresh_all() -> void:
 	reduce_motion_button.text = _on_off(Settings.reduce_motion)
 	fullscreen_button.text = _on_off(Settings.fullscreen)
 	low_effects_button.text = _on_off(Settings.low_effects)
+	menu_music_button.text = _on_off(Settings.menu_music)
 	_offsets_label.text = "Audio offset: %+d ms    Visual offset: %+d ms" % [
 		roundi(Settings.audio_offset * 1000.0), roundi(Settings.visual_offset * 1000.0)]
 	for c in cells.values():
