@@ -673,3 +673,144 @@ func test_drawing_every_state_runs_without_errors() -> void:
 	var empty := _screen(_lib([]))
 	await get_tree().process_frame
 	assert_bool(s.is_inside_tree() and empty.is_inside_tree()).is_true()
+
+
+# ---- 02.2-19: table backdrop, glass rows, sections ----
+
+func _screen_with_sections(lib: Node, loader: Callable) -> SongSelect:
+	var s: SongSelect = (load("res://scenes/song_select.tscn") as PackedScene).instantiate()
+	s.library = lib
+	s.section_loader = loader
+	add_child(s)
+	auto_free(s)
+	return s
+
+
+func _wait_sections(s: SongSelect, state: String) -> bool:
+	for i in 120:
+		if s.debug_state()["sections"]["state"] == state:
+			return true
+		await get_tree().process_frame
+	return s.debug_state()["sections"]["state"] == state
+
+
+func test_background_is_table_backdrop_not_arena() -> void:
+	var s := _screen(_lib(_songs(3)))
+	var bd := s.get_node_or_null("Backdrop") as AbyssBackdrop
+	assert_object(bd).is_not_null()
+	assert_str(bd.variant).is_equal("table")
+	assert_int(bd.get_index()).is_equal(0)
+	for c in s.get_children():
+		assert_bool(c is Arena).override_failure_message("menu_mode Arena still present").is_false()
+
+
+func test_sweep_off_in_low_and_reduce_on_in_full() -> void:
+	Settings.reduce_motion = false
+	Settings.low_effects = false
+	var s := _screen(_lib(_songs(1)))
+	s.apply_effect_settings()
+	assert_bool(s.effect_counts()["sweep"]).is_true()
+	Settings.low_effects = true
+	s.apply_effect_settings()
+	assert_bool(s.effect_counts()["sweep"]).is_false()
+	Settings.low_effects = false
+	Settings.reduce_motion = true
+	s.apply_effect_settings()
+	assert_bool(s.effect_counts()["sweep"]).is_false()
+
+
+func test_row_colors_use_focus_style_and_glass_rows() -> void:
+	var sel: Dictionary = SongSelect.row_colors(true, false)
+	assert_that(sel["fill"]).is_equal(Palette.alpha(Palette.ABYSS_600, 0.92))
+	assert_that(sel["edge"]).is_equal(Palette.SONAR)
+	var idle: Dictionary = SongSelect.row_colors(false, false)
+	assert_that(idle["fill"]).is_equal(Palette.alpha(Palette.ABYSS_700, 0.6))
+	assert_that(idle["edge"]).is_equal(Palette.alpha(Palette.SONAR, 0.3))
+	var hov: Dictionary = SongSelect.row_colors(false, true)
+	assert_that(hov["edge"]).is_equal(Palette.alpha(Palette.SONAR, 0.6))
+
+
+func test_section_block_geometry() -> void:
+	assert_float(SongSelect.SECTIONS_BASELINE).is_equal(688.0)
+	assert_object(SongSelect.SECTION_STRIP).is_equal(Rect2(1080.0, 700.0, 752.0, 8.0))
+	assert_float(SongSelect.SECTION_NAMES_BASELINE).is_equal(736.0)
+	assert_float(SongSelect.SECTION_NAMES_W).is_equal(752.0)
+	assert_float(SongSelect.section_tick_x(0.0, 100.0)).is_equal(1080.0)
+	assert_float(SongSelect.section_tick_x(50.0, 100.0)).is_equal(1080.0 + 376.0)
+	assert_float(SongSelect.section_tick_x(500.0, 100.0)).is_equal(1830.0)
+	assert_float(SongSelect.section_tick_x(5.0, 0.0)).is_equal(1080.0)
+
+
+func test_parse_sections_reads_chart_events() -> void:
+	var e := _entry("c", "Community")
+	e.chart_path = "res://tests/fixtures/charts/community_style.chart"
+	var secs: Array = SongSelect.parse_sections(e)
+	var names: Array = []
+	for x in secs:
+		names.append(x["name"])
+	assert_array(names).is_equal(["Intro", "Verse 1", "Chorus"])
+	assert_float(float(secs[1]["time"])).is_greater(float(secs[0]["time"]))
+	var bad := _entry("b", "Broken", [], "broken")
+	bad.chart_path = e.chart_path
+	assert_array(SongSelect.parse_sections(bad)).is_empty()
+	var missing := _entry("m", "Missing")
+	missing.chart_path = D + "/no_such.chart"
+	assert_array(SongSelect.parse_sections(missing)).is_empty()
+	assert_array(SongSelect.parse_sections(null)).is_empty()
+
+
+func test_section_names_text_joins_and_truncates_at_752() -> void:
+	var s := _screen(_lib(_songs(1)))
+	assert_str(s.section_names_text([])).is_equal("No section markers in this chart.")
+	assert_str(s.section_names_text([{"time": 0.0, "name": "Intro"}, {"time": 3.0, "name": "Verse 1"}])) \
+		.is_equal("Intro, Verse 1")
+	var many: Array = []
+	for i in 40:
+		many.append({"time": float(i), "name": "Section Number %d" % i})
+	var txt := s.section_names_text(many)
+	assert_str(txt).ends_with("...")
+	assert_float(s._w(txt, Palette.SIZE_LABEL)).is_less_equal(752.0)
+
+
+func test_sections_load_lazily_for_selected_song_and_cache_per_id() -> void:
+	var calls: Array = []
+	var loader := func(e: SongEntry) -> Array:
+		calls.append(e.id)
+		return [{"time": 1.0, "name": "Intro " + e.id}, {"time": 50.0, "name": "Outro"}]
+	var s := _screen_with_sections(_lib([_entry("a", "Aaa"), _entry("b", "Bbb"), _entry("c", "Ccc")]), loader)
+	assert_bool(await _wait_sections(s, "ready")).is_true()
+	assert_array(calls).is_equal(["a"])
+	var sec: Dictionary = s.debug_state()["sections"]
+	assert_int(sec["count"]).is_equal(2)
+	assert_array(sec["names"]).is_equal(["Intro a", "Outro"])
+	s.select_for_test("b")
+	assert_bool(await _wait_sections(s, "ready")).is_true()
+	assert_array(s.debug_state()["sections"]["names"]).is_equal(["Intro b", "Outro"])
+	s.select_for_test("a")
+	# Cached: ready at once, no second parse.
+	assert_str(s.debug_state()["sections"]["state"]).is_equal("ready")
+	assert_array(calls).is_equal(["a", "b"])
+
+
+func test_sections_not_parsed_for_unplayable_songs() -> void:
+	var calls: Array = []
+	var loader := func(e: SongEntry) -> Array:
+		calls.append(e.id)
+		return []
+	var s := _screen_with_sections(_lib([_entry("bad", "Broken one", [], "broken")]), loader)
+	await get_tree().process_frame
+	assert_str(s.debug_state()["sections"]["state"]).is_equal("none")
+	assert_array(calls).is_empty()
+
+
+func test_stale_section_result_is_dropped() -> void:
+	var loader := func(_e: SongEntry) -> Array: return []
+	var s := _screen_with_sections(_lib([_entry("a", "Aaa"), _entry("b", "Bbb")]), loader)
+	await _wait_sections(s, "ready")
+	s.select_for_test("b")
+	var req: int = s._section_request
+	# A late result for the old request (song a) must not land on song b, nor be cached for b.
+	s.sections_loaded(req - 1, "b", [{"time": 0.0, "name": "Wrong"}])
+	assert_array(s.debug_state()["sections"]["names"]).is_not_equal(["Wrong"])
+	s.sections_loaded(req, "b", [{"time": 0.0, "name": "Right"}])
+	assert_array(s.debug_state()["sections"]["names"]).is_equal(["Right"])

@@ -19,7 +19,6 @@ const ALLOW: Array[String] = [
 const PENDING_MIGRATION: Array[String] = [
 	"res://src/ui/goggles_intro.gd",
 	"res://src/ui/settings_screen.gd",
-	"res://src/ui/song_select.gd",
 ]
 
 const SCRIPT_PATTERN := "Color\\(\\s*\"|Color\\(\\s*[0-9.]|Color8\\(|Color\\.(?!TRANSPARENT\\b)[A-Z][A-Z_0-9]*\\b"
