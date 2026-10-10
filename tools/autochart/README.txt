@@ -124,33 +124,96 @@ CHART (one song, end to end)
   tests/test_autochart_songs.gd re-checks the committed chart, the report (verdict, numbers,
   chart_sha256, ini delay) and the chart stats for every id in AUTOCHART_IDS.
 
-PER-SONG GATE (Expert, game's decoded stream, D3 delta 0.1; chance levels in brackets)
--------------------------------------------------------------------------------------
-  song          stem   target  Expert n/s  median mix  mix % (chance)  stem % (chance)  tempo med/p90  live lag  delay  verdict
-  sea_shanty_2  other  3.5     3.45        +0.1 ms     99.1 (17.4)     100.0 (14.2)     0.2 / 0.3 ms   +1.33 ms  72     PASS
-  (2026-10-10, plan 02.1-05. 428 unique Expert times / 471 gems, IQR mix [-6.0, +7.7] ms, Godot decode
-   lag +0.16 ms, decoded length 127850 ms, single B 199998 at 200 BPM, direction match 0.785.
-   Full numbers: reports/sea_shanty_2.sync.json, reports/sea_shanty_2.chart_stats.json.)
-  hrt           other  3.0     2.30        -0.4 ms     91.9 (24.9)     100.0 (47.0)     4.0 / 4.0 ms   +1.33 ms  -4     PASS
-                +drums fill (bars), fill_share 0.0: "other" has onsets in every bar, so no bar was filled.
-  (2026-10-10, plan 02.1-06. 360 unique Expert times / 396 gems, IQR mix [-6.5, +9.0] ms, stems
-   other + drums unioned, Godot decode lag +0.16 ms, decoded length 161877 ms, 224 B events (per beat,
-   ~86 BPM), direction match 0.829. The tick-0 chord sits at -4 ms in song time (game preroll plays it;
-   the gate dump skips it, so the report counts 359 times). Attempt (a) passed; (b)-(d) not needed.)
-  invisible     other  2.8     2.12        +0.1 ms     80.5 (24.1)     100.0 (64.2)     1.0 / 1.0 ms   +1.33 ms  1      PASS
-                +bass fill (sections), fill_share 0.005 (one sparse section switched to bass).
-  (2026-10-10, plan 02.1-06. 400 unique Expert times / 440 gems, IQR mix [-9.5, +11.3] ms, stems
-   other + bass unioned, Godot decode lag +0.16 ms, decoded length 191635 ms, 360 B events (per beat,
-   ~114 BPM), direction match 0.823.
-   Attempts (Expert, gated with every charted stem, delay fitted until stable):
+GATE RESULTS (all 5 bundled songs; Expert, game's decoded stream, D3 delta 0.1)
+-----------------------------------------------------------------------------
+Generated from the committed reports tools/autochart/reports/<id>.sync.json and <id>.chart_stats.json
+(2026-10-10, plans 02.1-05..08). "(chance X)" = the same notes shifted by random +-60..200 ms (seed 0,
+mean of 20): a chart that ignored the music would score about the chance level. Error sign: note - onset.
+Fill: (b) = bars mode, (s) = sections mode. Stem % is measured against the union of every charted stem.
+  song              stem/fill        Expert n/s  max/1 s  median mix  mix % (chance)        stem % (chance)        tempo med/p90  live lag  delay  verdict
+  sea_shanty_2      other            3.45        7        +0.1 ms     99.1% (chance 17.4%)  100.0% (chance 14.2%)  0.2 / 0.3 ms   +1.33 ms  72     PASS
+  hrt               other+drums (b)  2.30        5        -0.4 ms     91.9% (chance 24.9%)  100.0% (chance 47.0%)  4.0 / 4.0 ms   +1.33 ms  -4     PASS
+  invisible         other+bass (s)   2.12        6        +0.1 ms     80.5% (chance 24.1%)  100.0% (chance 64.2%)  1.0 / 1.0 ms   +1.33 ms  1      PASS
+  synth_wave_april  other            2.95        6        +0.3 ms     89.7% (chance 9.8%)   100.0% (chance 33.1%)  0.0 / 0.0 ms   +1.33 ms  58     PASS
+  space_synth_wave  other            2.70        7        +0.0 ms     95.6% (chance 22.0%)  100.0% (chance 27.5%)  2.0 / 2.0 ms   +1.33 ms  164    PASS
+  ----------------  professional baseline, re-measured with the shipped metric (reports/neversoft_baseline.txt)
+  Neversoft BIF     guitar (GH3)     4.08        -        -5.9 ms     74.0% (chance 43.2%)  55.3% (chance 39.7%)   -              -         -      PASS_BASELINE
+                    (RESEARCH values for comparison: mix 73.5% (chance 43.1%), stem 54.5% (chance 37.7%),
+                     median -2.0 / +5.9 ms in RESEARCH sign = +2.0 / -5.9 ms in the gate's sign;
+                     Expert n/s = 1091 unique note times / 267.2 s; mix = song + guitar + rhythm)
+  ----------------  before: plan-authored charts (fixed 120 BPM grid, audio never analysed;
+                    reports/baseline_plan_authored.txt, Phase 2 UAT item c FAILED; mix only, no stem)
+  synth_wave_april  (old)            -           -        -3.0 ms     78.5% (chance 9.9%)   -                      -              +1.33 ms  48     PASS_BASELINE
+  space_synth_wave  (old)            -           -        -1.0 ms     55.3% (chance 30.0%)  -                      -              +1.33 ms  525    FAIL
+Every bundled song passes the fixed SPEC thresholds (no PASS_BASELINE song). Tempo maps: sea_shanty_2
+has a single B event at 200 BPM (constant tempo); hrt 224 B events (~86 BPM), invisible 360 (~114 BPM),
+April and Space per-beat maps at ~120 BPM. Raw beat_this tempo gate for comparison (med/p90 ms):
+sea_shanty_2 7.5/12.0, hrt 13.0/24.4, invisible 6.1/14.0, April 6.3/12.1, Space 6.2/16.6.
+
+Interpretation of "tracker beats" (SPEC req 2, RESEARCH Pitfall 2): the tempo gate compares chart beats
+with the REFINED beat list in build/autochart/<id>/beats.json (beat_this beats after repair, smoothing
+and phase correction onto the attacks). Raw beat_this beats sit on a 20 ms frame grid and lag the
+attacks by 7-12 ms, so they are printed for reference only (numbers above).
+
+Per-difficulty shares (chart_stats.json): n/s, max notes in any 1 s, keep share (notes kept from
+Expert), chord / sustain share, lane-step histogram (repeat, +-1, +-2, +-3 or more lanes).
+  song              diff    n/s   max  keep   chord  sust   repeat step1  step2  step3+
+  sea_shanty_2      easy    1.89  4    0.549  0.000  0.170  0.389  0.440  0.171  0.000
+  sea_shanty_2      medium  2.56  5    0.743  0.028  0.145  0.296  0.429  0.259  0.016
+  sea_shanty_2      hard    3.45  7    1.000  0.051  0.124  0.290  0.461  0.248  0.000
+  sea_shanty_2      expert  3.45  7    1.000  0.101  0.124  0.290  0.461  0.248  0.000
+  hrt               easy    0.89  2    0.386  0.000  0.007  0.268  0.370  0.362  0.000
+  hrt               medium  1.33  3    0.578  0.019  0.005  0.271  0.324  0.338  0.068
+  hrt               hard    2.30  5    1.000  0.050  0.019  0.226  0.382  0.393  0.000
+  hrt               expert  2.30  5    1.000  0.100  0.019  0.226  0.382  0.393  0.000
+  invisible         easy    0.67  2    0.315  0.000  0.008  0.344  0.328  0.328  0.000
+  invisible         medium  0.85  3    0.398  0.006  0.006  0.260  0.405  0.240  0.095
+  invisible         hard    2.12  6    1.000  0.050  0.010  0.288  0.366  0.346  0.000
+  invisible         expert  2.12  6    1.000  0.100  0.010  0.288  0.366  0.346  0.000
+  synth_wave_april  easy    1.36  3    0.460  0.000  0.063  0.341  0.439  0.220  0.000
+  synth_wave_april  medium  2.13  5    0.717  0.029  0.059  0.304  0.367  0.296  0.033
+  synth_wave_april  hard    2.95  6    1.000  0.050  0.066  0.260  0.419  0.321  0.000
+  synth_wave_april  expert  2.95  6    1.000  0.101  0.066  0.260  0.419  0.321  0.000
+  space_synth_wave  easy    1.03  3    0.381  0.000  0.035  0.321  0.393  0.286  0.000
+  space_synth_wave  medium  1.55  5    0.575  0.003  0.034  0.301  0.307  0.341  0.051
+  space_synth_wave  hard    2.70  7    1.000  0.050  0.044  0.302  0.293  0.405  0.000
+  space_synth_wave  expert  2.70  7    1.000  0.101  0.044  0.302  0.293  0.405  0.000
+Neversoft bands (UAT FLAGS below): keep hard 0.90-1.00, medium 0.65-0.75, easy 0.45-0.55; steps repeat
+0.20-0.30, +-1 0.40-0.60, +-2 0.15-0.30, +-3+ 0.00-0.05 (each +- 0.05).
+
+Direction match (share of Expert pitch moves where the lane moves the same way as the pitch; "going
+right feels like going up"): sea_shanty_2 0.785, hrt 0.829, invisible 0.823, synth_wave_april 0.811,
+space_synth_wave 0.812.
+
+DETERMINISM (D-04): the committed songs/<id>/notes.chart is the source of truth. The ML stages
+(htdemucs separation, beat_this, Basic Pitch) run once per song in `analyze` and write intermediates
+under build/autochart/<id>/. Every stage after separation (`chart`: tempo map, onsets, quantize, lanes,
+reductions, sections, render) is deterministic, so the same intermediates give a byte-identical
+notes.chart (re-verified for all five songs in plan 08: same CHART_OK sha256, byte-identical song.ini
+and chart_stats.json). Tests never re-run ML: tests/test_autochart_songs.gd checks the committed charts
+(structure, density caps, contour rules) against the committed reports (verdict, numbers,
+chart_sha256, ini delay), and the Python suite tests the post-separation stages on synthetic note lists.
+
+Per-song notes:
+  sea_shanty_2 (plan 05): 428 unique Expert times / 471 gems, IQR mix [-6.0, +7.7] ms, Godot decode
+    lag +0.16 ms, decoded length 127850 ms.
+  hrt (plan 06): 360 unique Expert times / 396 gems, IQR mix [-6.5, +9.0] ms, decoded length 161877 ms.
+    The drums fill added nothing (fill_share 0.0): "other" has onsets in every bar. The tick-0 chord
+    sits at -4 ms in song time (the game preroll plays it; the gate dump skips it, so the report
+    counts 359 times). Attempt (a) passed; (b)-(d) were not needed.
+  invisible (plan 06): 400 unique Expert times / 440 gems, IQR mix [-9.5, +11.3] ms, decoded length
+    191635 ms, fill_share 0.005 (one sparse section switched to bass).
+    Attempts (Expert, gated with every charted stem, delay fitted until stable):
      (a) other, target 3.0                       2.24 n/s  mix 79.0% (chance 23.5%)  median -0.3  PASS_BASELINE
      (b) other + bass sections, target 3.0       2.23 n/s  mix 79.4% (chance 24.0%)  median -0.0  PASS_BASELINE
      (c) other + bass sections, target 2.5       1.95 n/s  mix 82.4% (chance 22.0%)  median +0.2  PASS, but Expert
          average 1.95 n/s is below the SPEC 2..5 n/s range (test_density_caps_and_expert_average fails)
      (d) other + drums bars, target 3.0          2.24 n/s  mix 79.0% (chance 23.5%)  median -0.3  PASS_BASELINE
-         (no bar of "other" is silent, so the chart equals (a))
      shipped: (c) with target 2.8 (2.7 gave 2.06 n/s, 80.7%), the lowest target that passes both the
-     fixed gate and the density range.)
+     fixed gate and the density range.
+  synth_wave_april / space_synth_wave (plan 07): re-charted with stem "other" (picked by
+    tools/autochart/stem_rank.py). Space needed 57 beat repairs (tempo gate still 2.0 / 2.0 ms).
+    Best scores of the old charts no longer match (new fingerprints).
 
 PLAYER FLOW (STEM-02/04/05)
 ---------------------------
@@ -244,8 +307,8 @@ boundaries are not ear-checked; the vocals stem is near-silent, so its relative 
 vocal-active and the solo falls back to the densest 4-8 bar window (bars 94-99).
 hrt: GATE PASS, no PASS_BASELINE and no fallback used. The drums fill added nothing (fill_share 0.0),
 so the chart is the "other" synth line only. The RESEARCH drums-only fallback (98.9% mix, centroid
-lanes) stays available if the ear check says "other" is inaudible. Preview starts at 2789 ms (the
-loudest section by the generic sectioner is the first one); sections are generic and not ear-checked.
+lanes) stays available if the ear check says "other" is inaudible. Preview starts at 22322 ms
+(Chorus 1; moved from 2789 ms by the plan-08 pick_preview fix); sections are generic and not ear-checked.
 The tick-0 chord plays at -4 ms (inside the game's preroll).
 invisible: GATE PASS at 80.5% mix (chance 24.1%), only 0.5 points over the 80% line, at target 2.8
 (the plan's attempt (c) target 2.5 went below the 2 n/s Expert floor). Ear-check the verse density:
@@ -264,9 +327,9 @@ fallback. beat_this needed 57 beat repairs (tempo gate still 2.0 / 2.0 ms). Band
   space_synth_wave  hard        step2   0.405  0.15-0.30
   space_synth_wave  expert      step1   0.293  0.40-0.60
   space_synth_wave  expert      step2   0.405  0.15-0.30
-Preview starts at 189642 ms, 2.4 s before the end of the 192.0 s song: the generic sectioner rated
-the last section ("Section 10") loudest. Check the Song Select preview in UAT; structure.pick_preview
-was left unchanged in plan 07 (no CLI / stage changes).
+Preview starts at 80440 ms (Chorus 2). Plan 07 shipped 189642 ms (2.4 s before the end); the plan-08
+pick_preview fix skips intro (< 10 s) and tail (< 30 s before the end) sections. Check the Song Select
+preview in UAT (invisible moved too: 169864 -> 49867 ms).
 
 MODEL HASHES (SHA-256)
 ----------------------

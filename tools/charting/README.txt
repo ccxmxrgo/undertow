@@ -110,3 +110,14 @@ Sync gate (Expert, game's decoded stream, tools/autochart/note_sync.py --stem --
   space_synth_wave  other  3.5     2.70        +0.0 ms     95.6 (22.0)     100.0 (27.5)     2.0 / 2.0 ms   +1.33 ms  164    PASS
   Before (plan-authored, reports/baseline_plan_authored.txt): April 78.5% PASS_BASELINE, Space 55.3% FAIL.
   Full numbers: tools/autochart/reports/<id>.sync.json and <id>.chart_stats.json.
+
+GATE RESULTS (all 5 bundled songs; Expert, game's decoded stream; copy of the consolidated table,
+tools/autochart/README.txt "GATE RESULTS" has the baseline rows, per-difficulty shares and notes)
+  song              stem/fill        Expert n/s  median mix  mix % (chance)        stem % (chance)        tempo med/p90  delay  verdict
+  sea_shanty_2      other            3.45        +0.1 ms     99.1% (chance 17.4%)  100.0% (chance 14.2%)  0.2 / 0.3 ms   72     PASS
+  hrt               other+drums (b)  2.30        -0.4 ms     91.9% (chance 24.9%)  100.0% (chance 47.0%)  4.0 / 4.0 ms   -4     PASS
+  invisible         other+bass (s)   2.12        +0.1 ms     80.5% (chance 24.1%)  100.0% (chance 64.2%)  1.0 / 1.0 ms   1      PASS
+  synth_wave_april  other            2.95        +0.3 ms     89.7% (chance 9.8%)   100.0% (chance 33.1%)  0.0 / 0.0 ms   58     PASS
+  space_synth_wave  other            2.70        +0.0 ms     95.6% (chance 22.0%)  100.0% (chance 27.5%)  2.0 / 2.0 ms   164    PASS
+  Neversoft BIF     guitar (GH3)     4.08        -5.9 ms     74.0% (chance 43.2%)  55.3% (chance 39.7%)   -              -      PASS_BASELINE
+  Live lag (recorded vs decoded) is +1.33 ms for every bundled song.

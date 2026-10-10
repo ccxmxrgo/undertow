@@ -1,11 +1,12 @@
-UNDERTOW - early playtest build (v0.3, 2026-10-09)
+UNDERTOW - early playtest build (v0.4, 2026-10-10)
 =================================================
 
 You're a submarine sinking into a deep-sea trench. This build is still the
 single-player core: it's for checking that timing, the look and now real
 songs feel good. Torpedoes and online versus come later.
 
-v0.3 adds real songs: two bundled tracks and your own Clone Hero songs.
+v0.4 brings five bundled songs, all charted from the music itself.
+This build is for friends only: please don't share it further.
 
 
 HOW TO RUN
@@ -60,6 +61,34 @@ SELECT SONG controls:
 Highlight a song for half a second to hear a preview.
 
 
+WHAT'S NEW IN v0.4
+------------------
+- Three new bundled songs: "Sea Shanty 2", "HRT" and "INVISIBLE".
+- The two original songs ("Synth Wave April 3, 2022" and "Space Synth
+  Wave") are re-charted.
+- All five charts are now made from the audio: every note sits on a sound
+  you can hear (one instrument, usually the lead synth), and the lanes
+  follow the tune: when the melody goes up, the notes move right; when it
+  goes down, they move left. Easy, Medium and Hard are simpler versions of
+  Expert, the way Clone Hero charts do it.
+- Because the two original songs have new charts, their best scores start
+  again from zero.
+- Song previews in SELECT SONG now start in the middle of the song, not in
+  the intro or the last seconds.
+
+Bundled songs:
+  1. Sea Shanty 2 - Ian Taylor / Jagex (Old School RuneScape)
+  2. HRT - artist unknown
+  3. INVISIBLE - Duran Duran
+  4. Synth Wave April 3, 2022 - Pro Sensory
+  5. Space Synth Wave - Pro Sensory
+
+The one question we really need answered (see FEEDBACK below):
+  "Is there a sound under every note? Does going right feel like going up?"
+  Play each song on Expert and on Easy, and tell us the song, difficulty
+  and time (e.g. "INVISIBLE, Easy, 1:20") of anything that feels off.
+
+
 WHAT'S NEW IN v0.3
 ------------------
 - Real songs! Two bundled tracks with Easy, Medium, Hard and Expert charts:
@@ -111,7 +140,8 @@ Not supported (shown greyed out with the reason, so you know why):
     MP3 or WAV.
   - .mid charts (only .chart files work for now).
 
-The game does not include any copyrighted songs. Only use songs you own.
+Only add songs you own. This friends-only build bundles a few songs the
+developer owns (see MUSIC CREDITS); please don't share it further.
 
 
 MUSIC CREDITS
@@ -119,6 +149,11 @@ MUSIC CREDITS
 "Synth Wave April 3, 2022" and "Space Synth Wave" by Pro Sensory
 (Alex McCulloch), released as CC0 (public domain), via OpenGameArt.org.
 Thank you!
+"Sea Shanty 2" from the Old School RuneScape soundtrack, by Ian Taylor /
+Jagex. "INVISIBLE" by Duran Duran. "HRT", artist unknown. These three are
+NOT free music: they are in this build for friends only, so please don't
+share the build or the songs.
+All charts were generated from the audio by UNDERTOW autochart.
 
 
 WHAT'S NEW IN v0.2
@@ -163,8 +198,9 @@ FEEDBACK WE NEED (reply in Discord or on WhatsApp)
 11. Can you read the notes at your scroll speed? Which speed did you use?
 12. Does the new look feel like UNDERTOW and not like a guitar game?
 13. Did the frame rate stay smooth?
-14. Do the notes of the two bundled songs feel in time with the music?
-    Which song and difficulty did you play?
+14. For each bundled song, on Expert and on Easy: is there a sound under
+    every note? Does going right feel like going up in the music? Tell us
+    the song, difficulty and time of anything that feels off.
 15. Did your own Clone Hero songs import? Name any song that didn't, and
     what SELECT SONG said about it.
 16. Was it clear where the Songs folder is and how to add songs?
