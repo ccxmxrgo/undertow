@@ -27,8 +27,16 @@ const OPEN_RECT := Rect2(64.0, 928.0, 340.0, 48.0)
 const RESCAN_RECT := Rect2(420.0, 928.0, 264.0, 48.0)
 const SORT_RECT := Rect2(760.0, 64.0, 248.0, 48.0)
 const PATH_RECT := Rect2(1056.0, 984.0, 800.0, 32.0)
+## Difficulty tiles (UI-SPEC 4.11): 176 x 96 at y 468..564.
 const TILE_X: Array[float] = [1080.0, 1272.0, 1464.0, 1656.0]
-const TILE_Y := 488.0
+const TILE_Y := 468.0
+const TILE_W := 176.0
+const TILE_H := 96.0
+## Intensity: notes per second thresholds for 2, 3, 4 and 5 pips (fewer = 1 pip).
+const INTENSITY_NPS: Array[float] = [2.0, 3.5, 5.0, 7.0]
+const PIP_W := 24.0
+const PIP_H := 8.0
+const PIP_GAP := 4.0
 ## Detail panel top half (UI-SPEC 6): cover, title block, stats, best values.
 const COVER_RECT := Rect2(1080.0, 144.0, 256.0, 256.0)
 const INFO_X := 1360.0
@@ -794,7 +802,7 @@ func _click(p: Vector2, double: bool) -> void:
 			_dive()
 		_:
 			for i in 4:
-				if Rect2(TILE_X[i], TILE_Y, 176.0, 72.0).has_point(p):
+				if tile_rect(i).has_point(p):
 					var nm: String = SongListModel.DIFFICULTY_ORDER[i]
 					if _available(_selected()).has(nm):
 						_wanted_diff = nm
@@ -971,6 +979,7 @@ func debug_state() -> Dictionary:
 		"offset": _offset, "diving": _diving, "scan_text": _scan_text(),
 		"onboarding": _view.has(null),
 		"cover": "art" if _cover_art != null else "generated",
+		"tiles": tile_states(_selected()),
 	}
 
 
@@ -1466,27 +1475,78 @@ func _paint_stats(c: CanvasItem, e: SongEntry) -> void:
 				-1.0, Palette.SIZE_HEADING, Palette.SONAR if has else Palette.TEXT_LO)
 
 
-func _paint_tiles(c: CanvasItem, e: SongEntry) -> void:
+## Difficulty tile i (0 easy .. 3 expert) in screen coordinates; used by painter and hit-test.
+func tile_rect(i: int) -> Rect2:
+	return Rect2(TILE_X[i], TILE_Y, TILE_W, TILE_H)
+
+
+## Chart intensity 1..5 from notes per second over the song length (UI-SPEC 4.11).
+## An unknown or zero length gives 1.
+static func intensity(note_count: int, length_sec: float) -> int:
+	if length_sec <= 0.0:
+		return 1
+	var nps := float(maxi(note_count, 0)) / length_sec
+	var level := 1
+	for t in INTENSITY_NPS:
+		if nps >= t:
+			level += 1
+	return level
+
+
+## Per-tile content for the painter, tests and the harness: name, availability, the note count
+## text ("1,204 NOTES" or "-") and the intensity (0 when unavailable).
+func tile_states(e: SongEntry) -> Array:
 	var avail := _available(e)
+	var out: Array = []
 	for i in 4:
 		var nm: String = SongListModel.DIFFICULTY_ORDER[i]
-		var r := Rect2(TILE_X[i], TILE_Y, 176.0, 72.0)
+		var st := {"name": nm, "available": false, "text": "-", "intensity": 0}
+		if avail.has(nm):
+			var n := int(e.difficulty(nm).get("note_count", 0))
+			st["available"] = true
+			st["text"] = "%s NOTES" % SongListModel.fmt_count(n)
+			st["intensity"] = intensity(n, e.length_sec)
+		out.append(st)
+	return out
+
+
+## Tiles (UI-SPEC 4.11): lane glyph, name, note count and a 5-pip intensity meter.
+## Selected: full lane edge + glow_sm, fill 22%, bold name, 24 x 4 bar under the tile.
+func _paint_tiles(c: CanvasItem, e: SongEntry) -> void:
+	var states := tile_states(e)
+	for i in 4:
+		var st: Dictionary = states[i]
+		var r := tile_rect(i)
 		var col := Palette.lane_color(i)
 		var kind := NoteShape.kind_for_lane(i)
-		var name_up := nm.to_upper()
-		if not avail.has(nm):
-			NoteShape.draw_outline(c, kind, Vector2(r.position.x + 28.0, r.position.y + 36.0), 24.0, Color(C_CAP, 0.35), 2.0)
-			_txt(c, Vector2(r.position.x + 52.0, r.position.y + 46.0), name_up, Palette.SIZE_BODY, Color(C_CAP, 0.5))
+		var name_up := String(st["name"]).to_upper()
+		var glyph_c := r.position + Vector2(16.0 + 12.0, 16.0 + 12.0)
+		var name_pos := r.position + Vector2(52.0, 38.0)
+		var count_pos := r.position + Vector2(16.0, 66.0)
+		if not st["available"]:
+			NoteShape.draw_outline(c, kind, glyph_c, 24.0, Palette.alpha(Palette.TEXT_LO, 0.35), 2.0)
+			_txt(c, name_pos, _fit(name_up, Palette.SIZE_BODY, TILE_W - 60.0), Palette.SIZE_BODY,
+					Palette.alpha(Palette.TEXT_LO, 0.5))
+			_txt(c, count_pos, "-", Palette.SIZE_LABEL, Palette.alpha(Palette.TEXT_LO, 0.5))
 			continue
-		var chosen := nm == _diff
+		var chosen: bool = st["name"] == _diff
 		if chosen:
-			_box(c, r, Color(col, 0.25), col, 4.0)
-			c.draw_rect(Rect2(r.position.x + 76.0, r.end.y, 24.0, 4.0), col)
-			NoteShape.draw(c, kind, Vector2(r.position.x + 28.0, r.position.y + 36.0), 24.0, col, 2.0)
+			if not Settings.low_effects:
+				var g := Vector2(TILE_W, TILE_H) * (Palette.GLOW_SM[0] - 1.0) * 0.5
+				c.draw_texture_rect(UiKit.glow_texture(), r.grow_individual(g.x, g.y, g.x, g.y), false,
+						Palette.alpha(col, Palette.GLOW_SM[1]))
+			_box(c, r, Palette.alpha(col, 0.22), col, 2.0)
+			c.draw_rect(Rect2(r.position.x + (TILE_W - 24.0) * 0.5, r.end.y, 24.0, 4.0), col)
 		else:
-			_box(c, r, Color(col, 0.10), Palette.dim(col), 2.0)
-			NoteShape.draw(c, kind, Vector2(r.position.x + 28.0, r.position.y + 36.0), 24.0, Palette.dim(col), 2.0)
-		_txt(c, Vector2(r.position.x + 52.0, r.position.y + 46.0), name_up, Palette.SIZE_BODY, C_TEXT, chosen)
+			_box(c, r, Palette.alpha(col, 0.10), Palette.alpha(col, 0.6), 2.0)
+		NoteShape.draw(c, kind, glyph_c, 24.0, col if chosen else Palette.dim(col), 2.0)
+		_txt(c, name_pos, _fit(name_up, Palette.SIZE_BODY, TILE_W - 60.0, chosen), Palette.SIZE_BODY,
+				Palette.TEXT_HI, chosen)
+		_txt(c, count_pos, _fit(st["text"], Palette.SIZE_LABEL, TILE_W - 24.0), Palette.SIZE_LABEL, Palette.TEXT_MID)
+		var lit: int = st["intensity"]
+		for k in 5:
+			var pr := Rect2(r.position.x + 16.0 + k * (PIP_W + PIP_GAP), r.position.y + 76.0, PIP_W, PIP_H)
+			c.draw_rect(pr, col if k < lit else Palette.alpha(Palette.ABYSS_500, 0.7))
 
 
 ## Best values for the selected difficulty (UI-SPEC 6): depth REWARD_GOLD, accuracy TEXT_HI,
