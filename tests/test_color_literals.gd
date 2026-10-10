@@ -161,3 +161,33 @@ func test_restyled_overlays_use_no_legacy_aliases() -> void:
 			if not lines[i].strip_edges().begins_with("#") and re.search(lines[i]) != null:
 				bad.append("%s:%d: %s" % [p, i + 1, lines[i].strip_edges()])
 	assert_array(bad).override_failure_message("Legacy Palette aliases:\n" + "\n".join(bad)).is_empty()
+
+
+## 02.2-24: the legacy aliases, NOTE_DIM and dim() are deleted from Palette, and no script
+## under src/ or tools/ uses them any more.
+const RETIRED_DEFS := ["const BG ", "const PANEL ", "const DIM ", "const TEXT ", "const ACCENT ",
+	"const DESTRUCTIVE ", "const REC_TEXT ", "const NOTE_DIM ", "func dim("]
+const RETIRED_USE := "Palette\\.(BG|PANEL|DIM|TEXT|ACCENT|DESTRUCTIVE|REC_TEXT|NOTE_DIM)\\b|Palette\\.dim\\("
+
+
+func test_palette_has_no_legacy_aliases() -> void:
+	var src := FileAccess.get_file_as_string("res://src/ui/palette.gd")
+	var found: Array[String] = []
+	for d: String in RETIRED_DEFS:
+		if src.contains(d):
+			found.append(d)
+	assert_array(found).override_failure_message("Palette still defines: %s" % [found]).is_empty()
+
+
+func test_no_script_uses_retired_tokens() -> void:
+	var re := RegEx.create_from_string(RETIRED_USE)
+	var paths: Array[String] = []
+	_files("res://src", "gd", paths)
+	_files("res://tools", "gd", paths)
+	var bad: Array[String] = []
+	for p in paths:
+		var lines := FileAccess.get_file_as_string(p).split("\n")
+		for i in lines.size():
+			if not lines[i].strip_edges().begins_with("#") and re.search(lines[i]) != null:
+				bad.append("%s:%d: %s" % [p, i + 1, lines[i].strip_edges()])
+	assert_array(bad).override_failure_message("Retired Palette tokens:\n" + "\n".join(bad)).is_empty()
