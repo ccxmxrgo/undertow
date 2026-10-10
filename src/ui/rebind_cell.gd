@@ -1,7 +1,9 @@
 class_name RebindCell
 extends Button
-## One KEYBOARD or GAMEPAD binding cell (UI-SPEC Settings). Activating enters a listening state
-## ("PRESS A KEY..." / "PRESS A BUTTON..."). Keyboard listening takes the next key; gamepad listening
+## One KEYBOARD or GAMEPAD binding cell (UI-SPEC Settings, restyled in 02.2 UI-SPEC 9.3): a
+## compact 48 px theme button. Activating enters a listening state ("PRESS A KEY" /
+## "PRESS A BUTTON" in SONAR_PALE, edge pulsing SONAR at 1.2 Hz, static under Reduce motion).
+## A rejected bind keeps the inline message copy and shows a WARNING_RED edge until cleared. Keyboard listening takes the next key; gamepad listening
 ## takes a button or a trigger axis at |value| >= 0.5 (sticks and mouse are ignored). Esc (keyboard)
 ## or B (gamepad) cancels with no change. Results go through BindingStore (duplicates and Tab
 ## rejected); `message` reports the inline error copy and `bound` fires after a successful bind.
@@ -18,6 +20,12 @@ var action: StringName = &""
 var device: StringName = &"keyboard"
 var store: BindingStore
 var listening: bool = false
+## True after a duplicate / Tab rejection, until the next listen, bind or clear_rejected().
+var rejected: bool = false
+
+const PULSE_HZ := 1.2
+const LISTEN_TEXT_KEY := "PRESS A KEY"
+const LISTEN_TEXT_PAD := "PRESS A BUTTON"
 
 var _pulse: float = 0.0
 
@@ -33,8 +41,9 @@ func setup(p_action: StringName, p_device: StringName, p_store: BindingStore) ->
 
 
 func refresh() -> void:
+	_apply_text_colour()
 	if listening:
-		text = "PRESS A KEY..." if device == &"keyboard" else "PRESS A BUTTON..."
+		text = LISTEN_TEXT_KEY if device == &"keyboard" else LISTEN_TEXT_PAD
 		return
 	var name_text := store.display_name(action, device)
 	text = "UNBOUND" if name_text == "Unbound" else name_text
@@ -42,6 +51,7 @@ func refresh() -> void:
 
 func begin_listen() -> void:
 	listening = true
+	rejected = false
 	_pulse = 0.0
 	refresh()
 	set_process(true)
@@ -55,18 +65,51 @@ func cancel_listen() -> void:
 	queue_redraw()
 
 
+func clear_rejected() -> void:
+	if rejected:
+		rejected = false
+		queue_redraw()
+
+
+## Listening edge alpha at `t` seconds: a 1.2 Hz sine between 0.4 and 1.0, or a static 1.0
+## under Reduce motion.
+static func listen_edge_alpha(t: float, reduce: bool) -> float:
+	if reduce:
+		return 1.0
+	return 0.4 + 0.6 * (0.5 + 0.5 * sin(t * TAU * PULSE_HZ))
+
+
+## The extra edge drawn over the theme button: WARNING_RED when rejected, pulsing SONAR while
+## listening, transparent otherwise.
+func edge_color() -> Color:
+	if rejected:
+		return Palette.WARNING_RED
+	if listening:
+		return Color(Palette.SONAR, listen_edge_alpha(_pulse, UiKit.reduce_motion()))
+	return Color(Palette.SONAR, 0.0)
+
+
+func _apply_text_colour() -> void:
+	if listening:
+		for k in ["font_color", "font_focus_color", "font_hover_color", "font_pressed_color"]:
+			add_theme_color_override(k, Palette.SONAR_PALE)
+	else:
+		for k in ["font_color", "font_focus_color", "font_hover_color", "font_pressed_color"]:
+			remove_theme_color_override(k)
+
+
 func _process(delta: float) -> void:
 	_pulse += delta
 	queue_redraw()
 
 
 func _draw() -> void:
-	if listening:
-		var a := 0.5 + 0.5 * sin(_pulse * TAU * 1.5)
-		draw_rect(Rect2(Vector2.ZERO, size), Palette.alpha(Palette.ACCENT, 0.4 + 0.6 * a), false, 4.0)
-	elif has_focus():
-		draw_string(Palette.font(), Vector2(8.0, size.y * 0.5 + 8.0), "▶",
-			HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.ACCENT)
+	var col := edge_color()
+	if col.a <= 0.0:
+		return
+	var pts := UiKit.chamfer_points(Rect2(Vector2.ZERO, size).grow(-1.0), Palette.CUT_SM)
+	pts.append(pts[0])
+	draw_polyline(pts, col, Palette.EDGE, true)
 
 
 func _input(event: InputEvent) -> void:
@@ -127,9 +170,13 @@ func _apply(res: Dictionary, input_name: String) -> void:
 			message.emit(action, "%s is already used for %s. Pick a different key."
 				% [input_name, ACTION_NAMES.get(other, String(other))])
 			cancel_listen()
+			rejected = true
+			queue_redraw()
 		BindingStore.Result.RESERVED:
 			message.emit(action, "Tab can't be used. It is reserved for menus.")
 			cancel_listen()
+			rejected = true
+			queue_redraw()
 		_:
 			pass  # INVALID: keep listening
 

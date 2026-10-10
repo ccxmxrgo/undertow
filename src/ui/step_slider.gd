@@ -1,7 +1,9 @@
 class_name StepSlider
 extends Control
-## Focusable slider drawn from the Palette (UI-SPEC Settings): 24px track, 32x48 handle, standard
-## focus border. Left/Right (ui_left/ui_right) change the value by one `step`; holding past 400 ms
+## Focusable slider (02.2 UI-SPEC 9.3): 8 px ABYSS_600 track, SONAR fill, 16 x 32 chamfered
+## TEXT_HI thumb; focus adds a SONAR stroke glow (none on Low effects) and a 2 px SONAR_PALE
+## thumb edge. The track is inset PAD_X on both sides so the screen's FocusMarker bar (x+8) sits
+## left of it. Left/Right (ui_left/ui_right) change the value by one `step`; holding past 400 ms
 ## repeats at 10 Hz using `repeat_step` (defaults to `step`). Mouse click/drag sets the value.
 ## `released` fires when a key hold or mouse drag ends (used to play a sample once).
 
@@ -10,9 +12,11 @@ signal released
 
 const HOLD_DELAY := 0.4
 const REPEAT_INTERVAL := 0.1
-const TRACK_H := 24.0
-const HANDLE_W := 32.0
-const HANDLE_H := 48.0
+const TRACK_H := 8.0
+const HANDLE_W := 16.0
+const HANDLE_H := 32.0
+const HEIGHT := 48.0  # compact row height (UI-SPEC 4.2)
+const PAD_X := 24.0
 
 var min_value: float = 0.0
 var max_value: float = 1.0
@@ -28,7 +32,7 @@ var _dragging: bool = false
 
 func _init() -> void:
 	focus_mode = Control.FOCUS_ALL
-	custom_minimum_size = Vector2(320.0, HANDLE_H)
+	custom_minimum_size = Vector2(320.0, HEIGHT)
 	set_process(false)
 
 
@@ -118,29 +122,61 @@ func _process(delta: float) -> void:
 		step_by(_hold_dir, repeat_step if repeat_step > 0.0 else step)
 
 
+## Colours per focus state (UI-SPEC 9.3): track, fill, thumb, thumb_edge, glow (bool).
+static func colors(focused: bool) -> Dictionary:
+	return {
+		"track": Palette.ABYSS_600,
+		"fill": Palette.SONAR,
+		"thumb": Palette.TEXT_HI,
+		"thumb_edge": Palette.SONAR_PALE if focused else Palette.TEXT_HI,
+		"glow": focused,
+	}
+
+
+## The usable track span in local coordinates (between the PAD_X insets).
+func track_rect() -> Rect2:
+	var w := maxf(size.x - PAD_X * 2.0, 1.0)
+	return Rect2(PAD_X, (size.y - TRACK_H) * 0.5, w, TRACK_H)
+
+
+## Thumb centre x for the current value.
+func thumb_x() -> float:
+	var span := maxf(max_value - min_value, 0.0001)
+	var tr := track_rect()
+	return tr.position.x + clampf((value - min_value) / span, 0.0, 1.0) * tr.size.x
+
+
+func thumb_rect() -> Rect2:
+	return Rect2(thumb_x() - HANDLE_W * 0.5, (size.y - HANDLE_H) * 0.5, HANDLE_W, HANDLE_H)
+
+
 func _set_from_x(x: float) -> void:
-	var usable := maxf(size.x - HANDLE_W, 1.0)
-	var t := clampf((x - HANDLE_W * 0.5) / usable, 0.0, 1.0)
+	var tr := track_rect()
+	var t := clampf((x - tr.position.x) / tr.size.x, 0.0, 1.0)
 	set_value(min_value + t * (max_value - min_value))
 
 
 func _draw() -> void:
-	var track := Rect2(0.0, (size.y - TRACK_H) * 0.5, size.x, TRACK_H)
-	draw_rect(track, Palette.PANEL)
-	draw_rect(track, Palette.DIM, false, 2.0)
-	var span := maxf(max_value - min_value, 0.0001)
-	var t := (value - min_value) / span
-	var hx := t * maxf(size.x - HANDLE_W, 0.0)
-	var fill := Rect2(track.position, Vector2(hx + HANDLE_W * 0.5, TRACK_H))
-	draw_rect(fill.grow(-2.0), Palette.alpha(Palette.ACCENT, 0.35))
-	var handle := Rect2(hx, (size.y - HANDLE_H) * 0.5, HANDLE_W, HANDLE_H)
-	draw_rect(handle, Palette.PANEL)
-	draw_rect(handle, Palette.ACCENT if has_focus() else Palette.DIM, false, 4.0 if has_focus() else 2.0)
+	var col := colors(has_focus())
+	var tr := track_rect()
+	draw_rect(tr, col.track)
+	var fill := Rect2(tr.position, Vector2(thumb_x() - tr.position.x, TRACK_H))
+	if fill.size.x > 0.0:
+		draw_rect(fill, col.fill)
+	var th := thumb_rect()
+	var pts := UiKit.chamfer_points(th, Palette.CUT_SM * 0.5)
+	if col.glow and not UiKit.low_effects():
+		# Stroke glow (UI-SPEC 3.3): +8 px at 12% and +16 px at 6% around the thumb.
+		for g: Array in [[16.0, 0.06], [8.0, 0.12]]:
+			var gp := UiKit.chamfer_points(th.grow(g[0] * 0.5), Palette.CUT_SM * 0.5 + g[0] * 0.25)
+			draw_colored_polygon(gp, Color(Palette.SONAR, g[1]))
+	draw_colored_polygon(pts, col.thumb)
 	if has_focus():
-		draw_string(Palette.font(), Vector2(-28.0, size.y * 0.5 + 8.0), "▶",
-			HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL, Palette.ACCENT)
+		var closed := pts.duplicate()
+		closed.append(pts[0])
+		draw_polyline(closed, col.thumb_edge, Palette.EDGE, true)
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_FOCUS_ENTER or what == NOTIFICATION_FOCUS_EXIT:
+	if what == NOTIFICATION_FOCUS_ENTER or what == NOTIFICATION_FOCUS_EXIT or what == NOTIFICATION_RESIZED:
 		queue_redraw()

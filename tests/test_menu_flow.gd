@@ -571,8 +571,8 @@ func test_rebind_listening_and_rejected_styles() -> void:
 	# Edge pulses at 1.2 Hz; static under Reduce motion.
 	var period := 1.0 / RebindCell.PULSE_HZ
 	assert_float(RebindCell.PULSE_HZ).is_equal(1.2)
-	assert_float(RebindCell.listen_edge_alpha(0.1, false)).is_not_equal_approx(
-		RebindCell.listen_edge_alpha(0.1 + period * 0.5, false), 0.05)
+	assert_float(absf(RebindCell.listen_edge_alpha(0.1, false)
+		- RebindCell.listen_edge_alpha(0.1 + period * 0.5, false))).is_greater(0.05)
 	assert_float(RebindCell.listen_edge_alpha(0.1, false)).is_equal_approx(
 		RebindCell.listen_edge_alpha(0.1 + period, false), 0.0001)
 	assert_float(RebindCell.listen_edge_alpha(0.1, true)).is_equal(RebindCell.listen_edge_alpha(0.4, true))
