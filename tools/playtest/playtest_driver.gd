@@ -1399,7 +1399,8 @@ func sc_h() -> void:
 	check("autoplay errors are exactly 0", max_err == 0.0, max_err)
 	check("results show AUTOPLAY USED", g.results != null and g.results.flags.has("AUTOPLAY USED"), g.results.flags if g.results else null)
 	# Back to menu via results
-	await press_key(KEY_DOWN)
+	# 02.2-15: three buttons (Retry / Song Select / Back to Menu) wrap; Up from Retry = Back to Menu.
+	await press_key(KEY_UP)
 	check("results focus Back to Menu", focus_owner() == g.results.menu_button, focus_owner())
 	await press_key(KEY_ENTER)
 	ok = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
@@ -1622,8 +1623,11 @@ func _assert_overlay(label: String, root: Control, modal: Control, host: Control
 	check("%s global rect == viewport %s" % [label, vp],
 		root.get_global_rect().size.is_equal_approx(vp) and root.get_global_rect().position.is_equal_approx(Vector2.ZERO)
 		and modal.get_global_rect().size.is_equal_approx(vp), "%s / modal %s" % [entry["root_rect"], entry["modal_rect"]])
-	check("%s dim ColorRect covers the viewport, alpha >= 0.7" % label, dim != null and dim.color.a >= 0.7 - 0.0001,
-		"alpha %.3f" % float(entry["dim_alpha"]))
+	# 02.2-15: results are opaque through the calm AbyssBackdrop (+ ABYSS_900 55% shade), not a dim layer.
+	var opaque: bool = modal.has_method(&"backdrop_opaque") and bool(modal.call(&"backdrop_opaque"))
+	entry["backdrop_opaque"] = opaque
+	check("%s dim ColorRect covers the viewport, alpha >= 0.7 (or opaque backdrop)" % label,
+		opaque or (dim != null and dim.color.a >= 0.7 - 0.0001), "alpha %.3f opaque %s" % [float(entry["dim_alpha"]), opaque])
 	var blocked: bool = await _click_blocked(host)
 	entry["click_at_5_5_blocked"] = blocked
 	check("%s blocks a click at (5, 5) from reaching a control behind it" % label, blocked)
