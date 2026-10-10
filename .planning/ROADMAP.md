@@ -116,7 +116,7 @@ Plans:
 
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 16/25 plans executed
+**Plans:** 17/25 plans executed
 
 Plans:
 
@@ -136,7 +136,7 @@ Plans:
 - [x] 02.2-14-PLAN.md — HUD: progress track + section banner, keep-out test (rects + keepout_shapes), HUD shots + visual review
 - [x] 02.2-15-PLAN.md — Results: D-16 grade storage, offsets, Song Select route, grade emblem, opaque layout
 - [x] 02.2-16-PLAN.md — Results: timing histogram, skippable entrance, results evidence + visual review
-- [ ] 02.2-17-PLAN.md — Song select: album art + generated cover, zip keeps art (D-19), detail panel
+- [x] 02.2-17-PLAN.md — Song select: album art + generated cover, zip keeps art (D-19), detail panel
 - [ ] 02.2-18-PLAN.md — Song select: intensity tiles, Preview-bus visualizer
 - [ ] 02.2-19-PLAN.md — Song select: table backdrop, glass rows, sections, evidence + visual review
 - [ ] 02.2-20-PLAN.md — Pause, IMPLOSION, dialogs restyle; intro rig boot (room trimmed) + visual review

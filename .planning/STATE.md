@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 02.2-16-PLAN.md
-last_updated: "2026-10-10T19:15:07.578Z"
+last_updated: "2026-10-10T19:38:29.580Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 56
+  completed_plans: 57
   percent: 56
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 17 of 25
+Plan: 18 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [█████████░] 86%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -85,6 +85,7 @@ Progress: [█████████░] 86%
 | Phase 02.2 P14 | 35 min | 2 tasks | 14 files |
 | Phase 02.2 P15 | 60min | 2 tasks | 8 files |
 | Phase 02.2 P16 | 50 min | 2 tasks | 6 files |
+| Phase 02.2 P17 | 75 min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -153,6 +154,7 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-14: Windowed test launches open on the secondary monitor (run_all --position, tools/test_screen.gd, UNDERTOW_TEST_SCREEN override)
 - [Phase 02.2]: 02.2-15: Best grade/misses are stored only when the grade rank improves; results opacity = calm AbyssBackdrop + ABYSS_900 55% (backdrop_opaque()); the three results buttons wrap focus and Esc = Back to Menu — D-16 keeps best-of semantics without changing record ids; the calm backdrop is the UI-SPEC 8 opaque look; the closed loop keeps focus inside the results
 - [Phase 02.2]: 02.2-16: The results entrance is one Tween (0.89 s) driving apply_entrance(t); any key/pad/mouse/action press during it jumps to the final state and is consumed, so it never activates a button; histogram EARLY/LATE at baseline 292 (spec 268 collided with the TIMING caption) and window guides symmetric about x 1552 — keeps the entrance testable at any instant and skip-safe (T-02.2-31); VIS-05 complete
+- [Phase 02.2]: 02.2-17: album art is decoded from a buffer chosen by magic bytes, with PNG/JPEG header dimensions checked (<= 4096) before decoding and an 8 MB cap before reading; oversize zip images are skipped, not a zip failure; zip cache marker stores EXTRACT_VERSION 2 so old caches re-extract once; Song Select defers an uncached cover request while the library scans and caches 'no art' results — decompression-bomb guard and D-19 art for existing zips; VIS-06 art half only (tiles/visualizer in plan 18)
 
 ### Pending Todos
 
@@ -168,6 +170,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T19:15:07.551Z
+Last session: 2026-10-10T19:38:21.116Z
 Stopped at: Completed 02.2-16-PLAN.md
 Resume file: None
