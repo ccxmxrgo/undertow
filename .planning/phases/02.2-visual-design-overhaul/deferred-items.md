@@ -74,3 +74,16 @@
   passed once and failed once (88.3 ms) at the pre-plan commit edcba01 in a clean worktree, and
   failed at 109.8 ms after this plan. Same cause as the scenario d resume check from 02.2-20
   (Dummy audio driver). Re-check on the PC with WASAPI.
+
+## Found in 02.2-22
+
+- **Scenario visual "bio colonies brighter on the beat than off it" fails under xvfb with no
+  on-beat sample ("on": n 0).** It fails the same way at the pre-plan commit 91f53e3 (clean worktree
+  on 2026-10-10 under xvfb, two runs: on n 0 both times). The check needs `beat_pulse() > 0.8` both
+  before and after a screenshot; at ~20 fps with a slow `get_image()` the frame drawn is always past
+  the beat window. Environment only (software GL); re-check on the Windows PC.
+- **polish "screen transition finishes within 400 ms" is measured from the Enter press**, so under
+  xvfb (~20 fps) it includes about one frame of input delay and one frame of finish detection on top
+  of the 300 ms wipe: 349 ms in the final run, 422 ms in one earlier run before the load
+  compensation. The wipe itself (started -> finished) was 314 ms. On the PC (60-240 Hz) the
+  frame terms are 4-17 ms; re-run polish there to confirm.

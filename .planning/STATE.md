@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-21-PLAN.md
-last_updated: "2026-10-10T20:59:23.969Z"
+stopped_at: Completed 02.2-22-PLAN.md
+last_updated: "2026-10-10T21:32:28.788Z"
 last_activity: 2026-10-10
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 65
-  completed_plans: 61
+  completed_plans: 62
   percent: 56
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 22 of 25
+Plan: 23 of 25
 Status: Ready to execute
 Last activity: 2026-10-10
 
-Progress: [█████████░] 94%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -90,6 +90,7 @@ Progress: [█████████░] 94%
 | Phase 02.2 P19 | 16 min | 2 tasks | 4 files |
 | Phase 02.2 P20 | 27 min | 2 tasks | 10 files |
 | Phase 02.2 P21 | ~35min | 2 tasks | 8 files |
+| Phase 02.2 P22 | ~32min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -168,6 +169,7 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-20: intro rig-boot readout drawn above the lens mask, faint static scope rings added so the goggles cue reads; room_glow_texture kept as the rig backlight (VP_GLOW)
 - [Phase 02.2]: 02.2-21: Calibration hides the decorative backdrop while the audio test stamps taps (set_quiet) — Taps are stamped once per frame, so frame cost biases the measured offset (T-02.2-41); xvfb showed +21 ms from the table backdrop
 - [Phase 02.2]: 02.2-21: Settings toggles are PillToggle buttons whose text stays ON/OFF; Reduce screen shake renamed Reduce motion — UI-SPEC 9.3/14; tests and harness keep using .text and pressed
+- [Phase 02.2]: 02.2-22: ScreenTransition autoload is the single scene-change choke point (sonar wipe 150+150 ms, 400 ms failsafe); only the cover consumes input and a press there jumps to the end; the reveal passes input; scene load time comes out of the reveal (floor half)
 
 ### Pending Todos
 
@@ -183,6 +185,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-10T20:59:23.943Z
-Stopped at: Completed 02.2-21-PLAN.md
+Last session: 2026-10-10T21:32:23.060Z
+Stopped at: Completed 02.2-22-PLAN.md
 Resume file: None
