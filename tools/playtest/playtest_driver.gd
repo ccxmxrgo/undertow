@@ -2635,7 +2635,9 @@ func sc_songs() -> void:
 		if e.source == "bundled":
 			counts["bundled"] += 1
 	metrics["library_counts"] = counts
-	check("library: Calibration Track + 2 bundled + 30 fixtures (33 entries)", SongLibrary.entries.size() == 33,
+	var lib_expected: int = 31 + BundledSongs.SONGS.size()
+	check("library: Calibration Track + %d bundled + 30 fixtures (%d entries)" % [BundledSongs.SONGS.size(), 31 + BundledSongs.SONGS.size()],
+		SongLibrary.entries.size() == lib_expected,
 		"%d entries %s" % [SongLibrary.entries.size(), counts])
 	var opus := _entry_titled("Opus Broken Song")
 	var bare := _entry_titled("Lonely Audio")
@@ -2672,7 +2674,8 @@ func sc_songs() -> void:
 	await wait(0.6)
 	var st := ss.debug_state()
 	metrics["midlist_state"] = st
-	check("exactly 9 rows drawn with a 33-row list", (st["rows"] as Array).size() == 9 and int(st["view_size"]) == 33,
+	check("exactly 9 rows drawn with a %d-row list" % (31 + BundledSongs.SONGS.size()),
+		(st["rows"] as Array).size() == 9 and int(st["view_size"]) == 31 + BundledSongs.SONGS.size(),
 		"%d rows, view %d" % [(st["rows"] as Array).size(), st["view_size"]])
 	check("mid-list selection scrolled (offset > 0, selected row visible)", int(st["offset"]) > 0 and _sel_row(ss) >= 0,
 		"offset %d row %d" % [st["offset"], _sel_row(ss)])
@@ -2730,7 +2733,7 @@ func sc_songs() -> void:
 	check("rescan inserting 3 rows above keeps the selected row at the same screen y",
 		_sel_row(ss) == before_row and int(after["offset"]) == before_off + 3,
 		"row %d -> %d, offset %d -> %d" % [before_row, _sel_row(ss), before_off, after["offset"]])
-	check("library now 36 entries", int(after["view_size"]) == 36, after["view_size"])
+	check("library now %d entries" % (34 + BundledSongs.SONGS.size()), int(after["view_size"]) == 34 + BundledSongs.SONGS.size(), after["view_size"])
 
 	# --- (2) broken Opus and Needs-a-chart rows ---------------------------------------------------------
 	ss.select_for_test(opus.id)

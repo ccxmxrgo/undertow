@@ -152,7 +152,8 @@ func test_song_ini_metadata() -> void:
 
 
 func test_manifest_lists_both_songs_with_existing_files() -> void:
-	assert_int(BundledSongs.SONGS.size()).is_equal(2)
+	# 02.1-05: autochart songs follow the two plan-authored ones (test_autochart_songs.gd).
+	assert_int(BundledSongs.SONGS.size()).is_greater_equal(2)
 	for i in IDS.size():
 		var b: Dictionary = BundledSongs.SONGS[i]
 		assert_str(b["id"]).is_equal(IDS[i])
