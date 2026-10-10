@@ -6,6 +6,16 @@
 analyze: decode -> separate -> beats -> onsets -> pitch. Every stage writes an inspectable JSON / WAV
 intermediate under build/autochart/<id>/ (D-02). Progress: `[k/5] <stage> ...` / `[k/5] <stage> done (X.X s)`.
 Errors: `AUTOCHART_ERROR <stage>: <message>` on stderr, exit 2. Last line on success: `ANALYZE_OK <id>`.
+
+  build/autochart/venvA/Scripts/python.exe -I -B tools/autochart/autochart.py chart       --id <id> --out <song_dir> --stem <name> [--fill-stem <name>] [--target-nps 3.5]       --name <s> --artist <s> --genre <s> [--delay-ms <int>] [--song-length-ms <int>]       [--godot-wav <wav>] [--stats-dir <dir>]
+
+chart: analysis intermediates -> <song_dir>/notes.chart + song.ini + <stats-dir>/<id>.chart_stats.json.
+beats.json -> tempo map; onsets_<stem>.json (audible and loud) -> Expert notes; Expert lanes (contour,
+accent chords, sustains); Hard / Medium / Easy reduced from Expert (assign_lanes never runs on a reduced
+track); sections.json; solo + preview; write. Deterministic: the same intermediates give a byte-identical
+notes.chart (D-04). --delay-ms replaces the song.ini delay only: chart ticks stay the same and every note,
+beat and section moves by the same amount in song time, which is how the measured gate median is fitted
+(the decoded audio does not change). Last line on success: `CHART_OK <id> <sha256 of notes.chart>`.
 """
 from __future__ import annotations
 
@@ -87,6 +97,205 @@ def cmd_analyze(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- chart
+KEEP_BANDS = {"hard": (0.90, 1.00), "medium": (0.65, 0.75), "easy": (0.45, 0.55)}
+STEP_BANDS = {"repeat": (0.20, 0.30), "step1": (0.40, 0.60), "step2": (0.15, 0.30), "step3plus": (0.00, 0.05)}
+BAND_TOL = 0.05
+CHART_DIFFS = ("easy", "medium", "hard", "expert")
+CHART_STEPS = 7
+
+
+def _inside(p: Path, roots) -> bool:
+    for r in roots:
+        try:
+            p.relative_to(r)
+            return True
+        except ValueError:
+            pass
+    return False
+
+
+def _out_dir(out: str) -> Path:
+    """T-02.1-14: the song folder must resolve inside the repo songs/ or build/ (never the roots)."""
+    p = Path(out).resolve()
+    roots = [(ROOT / "songs").resolve(), (ROOT / "build").resolve()]
+    if not _inside(p, roots) or p in roots:
+        raise AutochartError("args", f"--out {p} must be a folder inside {roots[0]} or {roots[1]}")
+    return p
+
+
+def _load_json(path: Path, stage: str):
+    import json
+    if not path.is_file():
+        raise AutochartError(stage, f"{path} is missing; run analyze first")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _r4(x: float) -> float:
+    return round(float(x), 4)
+
+
+def _track_stats(notes: list, expert: list) -> dict:
+    from stages import lanes, quantize, reduce as red
+    n = len(notes)
+    times = sorted(float(x["t"]) for x in notes)
+    span = times[-1] - times[0] if n >= 2 else 0.0
+    chords = sum(1 for x in notes if len(set(x["lanes"])) >= 2)
+    hist = lanes.lane_step_hist(notes)
+    return {
+        "notes": n,
+        "gems": sum(len(set(x["lanes"])) for x in notes),
+        "notes_per_s": _r4(n / span) if span > 0 else 0.0,
+        "max_per_1s": quantize.notes_per_window_max(notes),
+        "keep_share": _r4(red.keep_share(notes, expert)),
+        "chord_count": chords,
+        "chord_share": _r4(chords / n) if n else 0.0,
+        "sustain_share": _r4(sum(1 for x in notes if int(x.get("len") or 0) > 0) / n) if n else 0.0,
+        "lane_step_hist": dict(zip(STEP_BANDS.keys(), (_r4(v) for v in hist))),
+    }
+
+
+def band_flags(per: dict) -> list:
+    """One flag per keep_share / lane-step share outside its Neversoft band +- BAND_TOL.
+    Flags are reported, never fixed by padding notes (SPEC req 6: a reduction never moves a note)."""
+    flags = []
+    for d in CHART_DIFFS:
+        s = per[d]
+        checks = []
+        if d in KEEP_BANDS:
+            checks.append(("keep_share", s["keep_share"], KEEP_BANDS[d]))
+        for m, band in STEP_BANDS.items():
+            checks.append((m, s["lane_step_hist"][m], band))
+        for metric, v, (lo, hi) in checks:
+            if v < lo - BAND_TOL - 1e-9 or v > hi + BAND_TOL + 1e-9:
+                flags.append({"difficulty": d, "metric": metric, "value": v, "band": [lo, hi],
+                              "tolerance": BAND_TOL})
+    return flags
+
+
+def cmd_chart(args) -> int:
+    import hashlib
+    import json
+
+    from stages import lanes, quantize, reduce as red, structure, write_chart
+    from stages.write_chart import render_chart, render_ini
+    from stages.tempo_map import build_tempo_map, tick_to_sec
+
+    work = work_dir(args.id)
+    out_dir = _out_dir(args.out)
+    stats_dir = Path(args.stats_dir).resolve()
+    if not _inside(stats_dir, [ROOT.resolve()]):
+        raise AutochartError("args", f"--stats-dir {stats_dir} must be inside the repo {ROOT}")
+    if args.fill_stem:
+        raise AutochartError("chart", "--fill-stem is implemented in plan 02.1-06")
+    if not 0.5 <= args.target_nps <= 8.0:
+        raise AutochartError("args", f"--target-nps {args.target_nps} must be within 0.5..8")
+    n = CHART_STEPS
+
+    def step(k: int, msg: str) -> None:
+        print(f"[{k}/{n}] {msg}", flush=True)
+
+    # 1. tempo map (optional decoder cross-check first)
+    if args.godot_wav:
+        from stages import decode
+        lag = decode.godot_lag_check(work, Path(args.godot_wav).resolve())
+        if abs(lag) > 1.0:
+            raise AutochartError("chart", f"Godot decode lag {lag:+.3f} ms > 1 ms")
+        print(f"Godot decode lag {lag:+.3f} ms", flush=True)
+    beats = _load_json(work / "beats.json", "chart")
+    dec = _load_json(work / "decode.json", "chart")
+    tm = build_tempo_map(beats["beats"], beats["downbeats"], bool(beats["constant_tempo"]))
+    n_b = sum(1 for e in tm["events"] if e[1] == "B")
+    step(1, f"tempo map: {n_b} B event(s), analysis delay {tm['delay_ms']} ms, {len(tm['bar_ticks'])} bar lines")
+
+    # 2. Expert notes from the stem's audible + loud onsets
+    ons = _load_json(work / f"onsets_{args.stem}.json", "chart")
+    recs = [o for o in ons["onsets"] if o.get("audible") and o.get("loud")]
+    expert = quantize.build_expert(recs, tm, args.target_nps)
+    if len(expert) < 32:
+        raise AutochartError("chart", f"only {len(expert)} Expert notes from stem {args.stem}")
+    step(2, f"expert: {len(expert)} notes from {len(recs)} {args.stem} onsets (target {args.target_nps} n/s)")
+
+    # 3. Expert lanes (contour, accent chords, sustains); 4. reductions from Expert only
+    #    (assign_lanes never runs on a reduced track: reduce derives chords from Expert, Easy re-contours)
+    expert = lanes.assign_lanes(expert, "expert")
+    step(3, f"lanes: direction match {lanes.direction_match(expert):.3f}")
+    tracks = {"expert": expert}
+    for d in ("hard", "medium", "easy"):
+        tracks[d] = red.reduce(expert, d, tm)
+    step(4, "reductions: " + ", ".join(f"{d} {len(tracks[d])}" for d in ("hard", "medium", "easy")))
+
+    # 5. sections
+    from stages import sections as sec_stage
+    secs = sec_stage.sections_stage(work, tm)
+    step(5, f"sections: {', '.join(secs['names'])}")
+
+    # 6. solo + preview
+    vocal = dict(zip(secs["bar_ticks"], secs["vocal_active"]))
+    vocal_active = [bool(vocal.get(t, False)) for t in tm["bar_ticks"]]
+    solo = structure.pick_solo(tracks["hard"], tracks["expert"], tm["bar_ticks"], vocal_active)
+    if solo is None:
+        raise AutochartError("chart", "no 4-8 bar window with 16 notes")
+    preview = structure.pick_preview(secs["starts_ms"], secs["energies"])
+    song_length = (args.song_length_ms if args.song_length_ms is not None
+                   else int(round(float(dec["length_s"]) * 1000.0)))
+    if not 0 < preview < song_length:
+        preview = max(1, min(song_length - 1, preview))
+    step(6, f"solo ticks {solo[0]}..{solo[1]}, preview {preview} ms")
+
+    # 7. write. Chart ticks never depend on --delay-ms; it only sets the song.ini delay.
+    delay = args.delay_ms if args.delay_ms is not None else int(tm["delay_ms"])
+    song = {"name": args.name, "artist": args.artist, "genre": args.genre}
+    chart_text = render_chart(song, tm, list(zip(secs["starts_tick"], secs["names"])), tracks, solo)
+    ini_text = render_ini({"name": args.name, "artist": args.artist, "genre": args.genre,
+                           "delay": delay, "preview_start_time": preview,
+                           "song_length": song_length, "diff_guitar": 3})
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with open(out_dir / "notes.chart", "w", encoding="utf-8", newline="\n") as f:
+        f.write(chart_text)
+    with open(out_dir / "song.ini", "w", encoding="utf-8", newline="\n") as f:
+        f.write(ini_text)
+    sha = hashlib.sha256(chart_text.encode("utf-8")).hexdigest()
+
+    # statistics in game time (the written delay)
+    tm_out = dict(tm, delay_ms=delay)
+    for d in CHART_DIFFS:
+        for x in tracks[d]:
+            x["t"] = tick_to_sec(tm_out, x["tick"])
+    per = {d: _track_stats(tracks[d], expert) for d in CHART_DIFFS}
+    flags = band_flags(per)
+    stats = {
+        "id": args.id, "stem": args.stem, "fill_stem": args.fill_stem, "target_nps": args.target_nps,
+        "difficulties": per,
+        "expert_on_grid_share": _r4(quantize.on_grid_share(expert)),
+        "direction_match": _r4(lanes.direction_match(expert)),
+        "bpm": beats.get("bpm"), "constant_tempo": bool(beats["constant_tempo"]), "b_events": n_b,
+        "delay_ms": delay, "analysis_delay_ms": int(tm["delay_ms"]), "song_length_ms": song_length,
+        "sections": [{"tick": t, "ms": m, "name": nm}
+                     for t, m, nm in zip(secs["starts_tick"], secs["starts_ms"], secs["names"])],
+        "solo_ticks": list(solo), "preview_ms": preview,
+        "band_tolerance": BAND_TOL, "band_flags": flags,
+        "chart_sha256": sha,
+    }
+    stats_dir.mkdir(parents=True, exist_ok=True)
+    with open(stats_dir / f"{args.id}.chart_stats.json", "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(stats, indent=2) + "\n")
+    for d in CHART_DIFFS:
+        s = per[d]
+        print(f"  {d:6s} {s['notes']:4d} notes {s['notes_per_s']:.2f} n/s, max {s['max_per_1s']}/s, "
+              f"keep {s['keep_share']:.2f}, chords {s['chord_count']}, sustains {s['sustain_share']:.2f}, "
+              f"steps {list(s['lane_step_hist'].values())}", flush=True)
+    for fl in flags:
+        print(f"  BAND FLAG {fl['difficulty']} {fl['metric']} {fl['value']:.3f} outside {fl['band']} "
+              f"+- {fl['tolerance']}", flush=True)
+    if not flags:
+        print("  BAND FLAGS none", flush=True)
+    step(7, f"wrote {out_dir / 'notes.chart'}, song.ini (delay {delay}, song_length {song_length}), "
+            f"{stats_dir / (args.id + '.chart_stats.json')}")
+    print(f"CHART_OK {args.id} {sha}", flush=True)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="autochart", description="UNDERTOW audio-to-chart tool")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -98,10 +307,25 @@ def main(argv=None) -> int:
     a.add_argument("--force", action="store_true")
     a.add_argument("--stems", nargs="+", default=DEFAULT_STEMS,
                    choices=DEFAULT_STEMS, help="stems for the onsets / pitch stages")
+    c = sub.add_parser("chart", help="intermediates -> notes.chart, song.ini, chart stats")
+    c.add_argument("--id", required=True)
+    c.add_argument("--out", required=True, help="song folder (inside the repo songs/ or build/)")
+    c.add_argument("--stem", required=True, choices=DEFAULT_STEMS)
+    c.add_argument("--fill-stem", choices=DEFAULT_STEMS)
+    c.add_argument("--target-nps", type=float, default=3.5)
+    c.add_argument("--name", required=True)
+    c.add_argument("--artist", required=True)
+    c.add_argument("--genre", required=True)
+    c.add_argument("--delay-ms", type=int)
+    c.add_argument("--song-length-ms", type=int)
+    c.add_argument("--godot-wav")
+    c.add_argument("--stats-dir", default=str(ROOT / "tools" / "autochart" / "reports"))
     args = ap.parse_args(argv)
     try:
         if args.cmd == "analyze":
             return cmd_analyze(args)
+        if args.cmd == "chart":
+            return cmd_chart(args)
     except AutochartError as e:
         print(f"AUTOCHART_ERROR {e.stage}: {e.message}", file=sys.stderr, flush=True)
         return 2
