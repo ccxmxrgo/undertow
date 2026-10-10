@@ -1,5 +1,6 @@
 extends GdUnitTestSuite
-## Lane palette, outline-only shapes, ready predicate and receptor pulse (Plan 01.1-02).
+## Lane palette, ready predicate, receptor pulse/squash, gem rim states and the board layer
+## split (Plan 01.1-02, restyled in 02.2-08).
 
 
 func test_lane_colors_exact_and_wrap() -> void:
@@ -14,15 +15,25 @@ func test_lane_colors_exact_and_wrap() -> void:
 	assert_that(Palette.lane_color(-1)).is_equal(Palette.LANE_COLORS[3])
 
 
-func test_dim_keeps_alpha_and_scales_rgb() -> void:
-	assert_float(Palette.NOTE_DIM).is_equal(0.60)
-	var c := Color(0.5, 0.8, 1.0, 0.7)
-	var d := Palette.dim(c)
-	assert_float(d.r).is_equal_approx(0.30, 0.0001)
-	assert_float(d.g).is_equal_approx(0.48, 0.0001)
-	assert_float(d.b).is_equal_approx(0.60, 0.0001)
-	assert_float(d.a).is_equal(c.a)
-	assert_float(Palette.dim(Palette.lane_color(0)).a).is_equal(1.0)
+## UI-SPEC 4.15: far vs ready reads through rim brightness + halo; the core is never dimmed.
+func test_far_and_ready_gems_differ_by_rim_and_halo_not_core() -> void:
+	for lane in range(4):
+		var lane_col := Palette.lane_color(lane)
+		assert_that(NotePainter.core_color(lane)).is_equal(lane_col)
+		var ready_rim := NotePainter.rim_color(lane, true)
+		var far_rim := NotePainter.rim_color(lane, false)
+		assert_that(ready_rim).is_equal(Palette.mix(lane_col, Palette.WHITE, 0.55))
+		assert_that(far_rim).is_equal(Palette.mix(lane_col, Palette.WHITE, 0.25))
+		assert_float(ready_rim.get_luminance()).is_greater(far_rim.get_luminance())
+	assert_bool(NotePainter.layers(NotePainter.NOTE_NORMAL, 0, NotePainter.STATE_READY, false).has("halo")).is_true()
+	assert_bool(NotePainter.layers(NotePainter.NOTE_NORMAL, 0, NotePainter.STATE_FAR, false).has("halo")).is_false()
+
+
+func test_highway_source_has_no_dimming() -> void:
+	var src := FileAccess.get_file_as_string("res://src/ui/highway.gd")
+	assert_bool(src.contains("NOTE_DIM")).is_false()
+	assert_bool(src.contains("Palette.dim(")).is_false()
+	assert_bool(src.contains("NotePainter.draw_note")).is_true()
 
 
 func test_core_colors_unchanged() -> void:
@@ -98,3 +109,55 @@ func test_layout_constants() -> void:
 	assert_float(h0.y).is_equal_approx(Trench.HIT_Y, 1.0)
 	assert_float(h1.x).is_equal_approx(855.0, 1.0)
 	assert_float(h1.y).is_equal_approx(Trench.HIT_Y, 1.0)
+
+
+func test_receptor_squash_on_press_and_recovery() -> void:
+	var saved: bool = Settings.reduce_motion
+	Settings.reduce_motion = false
+	var hw: Highway = auto_free(Highway.new())
+	assert_that(hw.receptor_scale(1)).is_equal(Vector2.ONE)
+	hw.on_lane_pressed(1, 0)
+	var t0: int = hw._press_ticks[1]
+	var s0 := hw.receptor_scale(1, t0)
+	assert_float(s0.x).is_equal_approx(1.12, 0.0001)
+	assert_float(s0.y).is_equal_approx(0.88, 0.0001)
+	var mid := hw.receptor_scale(1, t0 + int(Palette.DUR_FAST * 500000.0))
+	assert_bool(mid.x > 1.0 and mid.x < 1.12).is_true()
+	assert_that(hw.receptor_scale(1, t0 + int(Palette.DUR_FAST * 1000000.0))).is_equal(Vector2.ONE)
+	assert_that(hw.receptor_scale(0, t0)).is_equal(Vector2.ONE)
+	Settings.reduce_motion = true
+	assert_that(hw.receptor_scale(1, t0)).is_equal(Vector2.ONE)
+	Settings.reduce_motion = saved
+
+
+func test_strip_tint_is_tier_one_at_multiplier_one() -> void:
+	var hw: Highway = auto_free(Highway.new())
+	assert_int(hw.tier_multiplier).is_equal(1)
+	assert_float(hw.cable_bright).is_equal(0.0)
+	assert_float(hw.strip_tint_alpha()).is_equal_approx(Palette.TIER_TINT[0], 0.00001)
+	assert_float(hw.strip_tint_alpha()).is_equal_approx(0.07, 0.00001)
+
+
+func test_strip_edges_follow_the_lane_projection() -> void:
+	for f in [-2.0, -0.5, 1.0, 2.0]:
+		for d in [0.0, 0.5, 1.0]:
+			var p := Trench.point(f, d)
+			assert_float(Highway.edge_x(f, p.y)).is_equal_approx(p.x, 0.01)
+
+
+func test_highway_notes_halos_child_draws_behind_the_gems() -> void:
+	var hn: HighwayNotes = auto_free(HighwayNotes.new())
+	var halos := hn.get_node("Halos") as CanvasItem
+	assert_object(halos).is_not_null()
+	assert_bool(halos.show_behind_parent).is_true()
+	assert_object(halos.material).is_same(UiKit.additive_material())
+	assert_int(hn.mouse_filter).is_equal(Control.MOUSE_FILTER_IGNORE)
+
+
+func test_notes_layer_draws_gems_and_highway_does_not() -> void:
+	var src := FileAccess.get_file_as_string("res://src/ui/highway_notes.gd")
+	assert_bool(src.contains("highway.draw_notes_into(self)")).is_true()
+	var hsrc := FileAccess.get_file_as_string("res://src/ui/highway.gd")
+	var draw_body := hsrc.substr(hsrc.find("func _draw() -> void:"), 600)
+	assert_bool(draw_body.contains("draw_note")).is_false()
+	assert_bool(draw_body.contains("_draw_receptors()")).is_true()

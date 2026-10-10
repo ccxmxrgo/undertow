@@ -1885,6 +1885,29 @@ func _visible_pending(g: Gameplay) -> Array:
 
 
 
+## A depth near 0.5 where none of `lanes` has a visible note head or sustain (strip samples).
+func _free_strip_depth(g: Gameplay, lanes: Array) -> float:
+	var notes: Array = g.chart.notes
+	var vt := last_shot_st + Settings.visual_offset
+	var approach := Trench.approach_for(Settings.scroll_speed)
+	for cand in [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74]:
+		var busy := false
+		for i in range(notes.size()):
+			var n: Dictionary = notes[i]
+			if not lanes.has(int(n["lane"])):
+				continue
+			if i < last_shot_state.size() and last_shot_state[i] == Highway.S_HIT:
+				continue
+			var d0 := Trench.depth_for(float(n["time"]), vt, approach)
+			var d1 := Trench.depth_for(float(n["time"]) + float(n["duration"]), vt, approach)
+			if d1 >= float(cand) - 0.09 and d0 <= float(cand) + 0.09:
+				busy = true
+				break
+		if not busy:
+			return float(cand)
+	return 0.5
+
+
 func _far_note(vis: Array, lane: int = -1) -> Dictionary:
 	for v in vis:
 		if float(v["dt"]) > 0.30 and float(v["d"]) > 0.15 and (lane < 0 or int(v["lane"]) == lane):
@@ -2492,19 +2515,34 @@ func sc_immersion() -> void:
 				float(mids.min()) >= 0.0 and float(mids.max()) - float(mids.min()) <= 3.0, mids)
 			check("1x: the hit line is one level row beside every receptor (within 3 px of HIT_Y)",
 				float(rows.min()) >= Trench.HIT_Y - 3.0 and float(rows.max()) <= Trench.HIT_Y + 3.0, rows)
-			# Straight cables: lane 1 and lane 4 cable colour at d = 0.5 lies on the straight chord.
-			for li in [0, Highway.LANES - 1]:
-				var fl := Trench.lane_f(li)
-				var a0 := Trench.point(fl, 0.0)
-				var a1 := Trench.point(fl, 1.0)
-				var pm := Trench.point(fl, 0.5)
-				var on_chord := Geometry2D.get_closest_point_to_segment(pm, a0, a1)
-				var hit := _colour_near(last_img, on_chord, Palette.lane_color(li), 3.0)
-				var cm := {"model_off_chord_px": snappedf(pm.distance_to(on_chord), 0.01),
-					"cos": snappedf(float(hit["cos"]), 0.001), "offset": hit["offset"]}
-				metrics["cable_lane%d_mid" % (li + 1)] = cm
-				check("1x: lane %d cable colour within 3 px of the straight chord at d=0.5" % (li + 1),
-					pm.distance_to(on_chord) <= 1.0 and bool(hit["ok"]), cm)
+			# Filled lane strips (02.2-08): lane 1 and lane 4 strips carry their lane tint at d ~ 0.5.
+			# The tint is 7% over a 90% surface, so it is measured against the neighbouring strip:
+			# (this strip - neighbour) must point along (lane colour - neighbour lane colour).
+			for pair in [[0, 1], [Highway.LANES - 1, Highway.LANES - 2]]:
+				var li: int = pair[0]
+				var nb: int = pair[1]
+				var sd := _free_strip_depth(g, [li, nb])
+				var sa := _patch(last_img, Trench.point(Trench.lane_f(li), sd), 3)
+				var sb := _patch(last_img, Trench.point(Trench.lane_f(nb), sd), 3)
+				var diff := Vector3(sa.r - sb.r, sa.g - sb.g, sa.b - sb.b)
+				var la := Palette.lane_color(li)
+				var lb := Palette.lane_color(nb)
+				var want := Vector3(la.r - lb.r, la.g - lb.g, la.b - lb.b)
+				var cos_t := diff.normalized().dot(want.normalized()) if diff.length() > 0.0 else 0.0
+				var sm := {"d": snappedf(sd, 0.01), "max": snappedf(_chan_max(sa), 0.001), "cos": snappedf(cos_t, 0.001)}
+				metrics["strip_lane%d_mid" % (li + 1)] = sm
+				check("1x: lane %d strip tint present at d=0.5" % (li + 1), _chan_max(sa) >= 0.04 and cos_t >= 0.8, sm)
+			# Solid gems: a visible far pending note's centre is the full lane colour (never dimmed).
+			var gem := _far_note(vis)
+			if not gem.is_empty():
+				var gl: int = gem["lane"]
+				var gcol := Palette.lane_color(gl)
+				var gnear := _colour_near(last_img, gem["center"], gcol, 6.0)
+				var gpatch := _patch(last_img, gem["center"], 1)
+				var full := _chan_max(gpatch) >= 0.9 * _chan_max(gcol)
+				var gm := {"lane": gl + 1, "cos": snappedf(float(gnear["cos"]), 0.001), "max": snappedf(_chan_max(gpatch), 0.001)}
+				metrics["gem_core_far"] = gm
+				check("1x: gem core is full lane colour", bool(gnear["ok"]) and full, gm)
 		_unfreeze(g)
 	Settings.set_scroll_speed(orig_speed)
 

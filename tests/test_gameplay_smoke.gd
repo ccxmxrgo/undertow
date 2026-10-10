@@ -149,16 +149,28 @@ func test_normal_run_is_not_practice() -> void:
 func test_arena_and_streak_layering_and_restart() -> void:
 	var gp := _launch(false)
 	await get_tree().process_frame
-	var order := [gp.arena, gp.highway, gp.feedback, gp.hud, gp.streak_counter, gp.pause_menu]
+	# Board layers share BoardRoot in render order; the HUD layers stay outside it, above.
+	var board := [gp.arena, gp.highway, gp.feedback, gp.highway_notes]
+	for n in board:
+		assert_object((n as Node).get_parent()).is_same(gp.board_root)
+	for i in range(board.size() - 1):
+		assert_int((board[i] as Node).get_index()).is_less((board[i + 1] as Node).get_index())
+	assert_object(gp.board_root.get_parent()).is_same(gp._run_root)
+	assert_int(gp.board_root.mouse_filter).is_equal(Control.MOUSE_FILTER_IGNORE)
+	var order := [gp.board_root, gp.hud, gp.streak_counter, gp.pause_menu]
+	for n in order:
+		assert_object((n as Node).get_parent()).is_same(gp._run_root)
 	for i in range(order.size() - 1):
 		assert_int((order[i] as Node).get_index()).is_less((order[i + 1] as Node).get_index())
+	assert_object(gp.feedback.nudge_target).is_same(gp.board_root)
+	assert_object(gp.highway_notes.highway).is_same(gp.highway)
 	gp.score.combo_changed.emit(10)
 	assert_str(gp.streak_counter.popup_text()).is_equal("10 STREAK")
 	gp.restart(false)
 	await get_tree().process_frame
 	for cls in [Arena, StreakCounter]:
 		var n := 0
-		for ch in gp._run_root.get_children():
+		for ch in gp._run_root.get_children() + gp.board_root.get_children():
 			if is_instance_of(ch, cls):
 				n += 1
 		assert_int(n).is_equal(1)

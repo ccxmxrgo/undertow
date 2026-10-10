@@ -131,8 +131,12 @@ static func unit_shape(kind: int) -> Dictionary:
 		c + Vector2(-w, 0.06), c + Vector2(0.0, -0.10), c + Vector2(w, 0.06),
 		c + Vector2(w, 0.13), c + Vector2(0.0, -0.03), c + Vector2(-w, 0.13)])
 	# Closed outline starting mid-edge, so the polyline's unjoined seam never sits on a corner.
+	# (The circle's ring is the closed 40-gon; gems draw circles with draw_arc instead.)
 	var ring := PackedVector2Array()
-	if k != NoteShape.Kind.CIRCLE:
+	if k == NoteShape.Kind.CIRCLE:
+		ring.append_array(poly)
+		ring.append(poly[0])
+	else:
 		var mid := (poly[poly.size() - 1] + poly[0]) * 0.5
 		ring.append(mid)
 		ring.append_array(poly)
@@ -140,6 +144,11 @@ static func unit_shape(kind: int) -> Dictionary:
 	var entry := {"poly": poly, "top": top, "spec": spec, "ring": ring}
 	_cache[k] = entry
 	return entry
+
+
+## Closed unit outline of a lane kind (receptor pads scale it non-uniformly for the squash).
+static func outline_ring(kind: int) -> PackedVector2Array:
+	return unit_shape(kind)["ring"]
 
 
 ## Draw one gem. `t` is the song time (reserved for animated Phase 3 types); `fade` scales a

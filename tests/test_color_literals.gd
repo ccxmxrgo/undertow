@@ -19,7 +19,6 @@ const ALLOW: Array[String] = [
 const PENDING_MIGRATION: Array[String] = [
 	"res://src/ui/arena.gd",
 	"res://src/ui/goggles_intro.gd",
-	"res://src/ui/highway.gd",
 	"res://src/ui/hud.gd",
 	"res://src/ui/settings_screen.gd",
 	"res://src/ui/song_select.gd",

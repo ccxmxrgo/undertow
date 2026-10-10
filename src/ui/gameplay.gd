@@ -1,7 +1,7 @@
 class_name Gameplay
 extends Control
-## Solo screen controller. Wires Conductor, LaneInput, InputJudge, HullScore, Highway, Hud,
-## Feedback and SfxPool, and owns fail / results and the F4 autoplay restart (D-28).
+## Solo screen controller. Wires Conductor, LaneInput, InputJudge, HullScore, Highway,
+## HighwayNotes, Hud, Feedback and SfxPool, and owns fail / results and the F4 autoplay restart (D-28).
 ## Every run lives under one `_run_root` node that is freed on restart, so a restart is a clean
 ## rebuild with no stale signal connections.
 
@@ -33,6 +33,11 @@ var score: HullScore
 var conductor: Conductor
 var lane_input: LaneInput
 var highway: Highway
+## Gem layer above Feedback (02.2-08): gems, missed remnants, lane numbers.
+var highway_notes: HighwayNotes
+## One Control holding Arena, Highway, Feedback, HighwayNotes (in that order): the board
+## moves as one on a Miss nudge; Hud and StreakCounter stay outside it.
+var board_root: Control
 var hud: Hud
 var arena: Arena
 var streak_counter: StreakCounter
@@ -100,8 +105,13 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	_run_root.add_child(lane_input)
 	lane_input.setup(conductor, judge)
 	lane_input.enabled = false  # enabled by _begin_count_in (T-1.2-09)
-	arena = Arena.new()  # first child: the world behind the board
-	_run_root.add_child(arena)
+	board_root = Control.new()
+	board_root.name = "BoardRoot"
+	UiLayout.fill_rect(board_root)
+	board_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_run_root.add_child(board_root)
+	arena = Arena.new()  # first board child: the world behind the board
+	board_root.add_child(arena)
 	arena.bind(conductor, chart.tempo_map)
 	score.combo_changed.connect(arena.on_combo)
 	judge.judged.connect(_on_judged_arena)
@@ -109,7 +119,7 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	highway = Highway.new()
 	UiLayout.fill_rect(highway)
 	highway.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_run_root.add_child(highway)
+	board_root.add_child(highway)
 	highway.setup(chart, conductor, cfg)
 	# Hold the board's notes and beat pulse until the lead-in starts (WR-03).
 	highway.notes_enabled = false
@@ -119,9 +129,12 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	judge.stray.connect(highway.on_stray)
 	judge.sustain_end.connect(highway.on_sustain_end)
 	feedback = Feedback.new()
-	feedback.nudge_target = _run_root
-	_run_root.add_child(feedback)
+	feedback.nudge_target = board_root  # the board nudges on a Miss; the HUD stays still
+	board_root.add_child(feedback)
 	feedback.connect_judge(judge)
+	highway_notes = HighwayNotes.new()
+	board_root.add_child(highway_notes)
+	highway_notes.bind(highway)
 	hud = Hud.new()
 	_run_root.add_child(hud)
 	hud.bind(score)
@@ -306,16 +319,16 @@ func _on_failed() -> void:
 	fail_screen.menu_pressed.connect(go_to_menu)
 	fail_screen.play(FailScreen.SQUASH_SEC)
 	var pivot := Vector2(Trench.VP.x, Trench.HIT_Y)
-	for ctl in [highway, feedback]:
-		(ctl as Control).pivot_offset = pivot
+	var squashed: Array[Control] = [highway, feedback, highway_notes]
+	for ctl in squashed:
+		ctl.pivot_offset = pivot
 	var tw := create_tween().set_parallel(true)
 	_fail_tween = tw
-	if Settings.reduce_motion:
-		tw.tween_property(highway, "modulate:a", 0.0, FailScreen.SQUASH_SEC)
-		tw.tween_property(feedback, "modulate:a", 0.0, FailScreen.SQUASH_SEC)
-	else:
-		tw.tween_property(highway, "scale:y", 0.0, FailScreen.SQUASH_SEC)
-		tw.tween_property(feedback, "scale:y", 0.0, FailScreen.SQUASH_SEC)
+	for ctl in squashed:
+		if Settings.reduce_motion:
+			tw.tween_property(ctl, "modulate:a", 0.0, FailScreen.SQUASH_SEC)
+		else:
+			tw.tween_property(ctl, "scale:y", 0.0, FailScreen.SQUASH_SEC)
 
 
 func _on_retry() -> void:
