@@ -104,7 +104,7 @@ class AssignTest(unittest.TestCase):
 
     def test_sustains(self):
         notes = [_n(C4, 0, end_tick=600), _n(D4, 384, end_tick=500), _n(E4, 768, end_tick=1000),
-                 _n(F4, 1152, end_tick=1200 + 192), _n(G4, 1500, end_tick=1600)]
+                 _n(F4, 1152, end_tick=1384), _n(G4, 1500, end_tick=1600)]
         out = lanes.assign_lanes(notes, "medium")
         self.assertEqual(out[0]["len"], 384 - 48)      # cut at next note minus 1/16
         self.assertEqual(out[1]["len"], 0)             # rings <= 1 beat -> tap
