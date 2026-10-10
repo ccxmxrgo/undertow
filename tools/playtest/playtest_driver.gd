@@ -127,6 +127,9 @@ func isolate_settings(calibrated: bool) -> void:
 	if FileAccess.file_exists(TEMP_SETTINGS):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(TEMP_SETTINGS))
 	Settings.load_from(TEMP_SETTINGS)
+	# Pitfall 7: no menu music in the harness unless a scenario opts in (polish menu block).
+	Settings.menu_music = false
+	MenuMusic.stop(0.0)
 	if calibrated:
 		Settings.save_calibration(0.0, 0.0)
 		MainMenu.boot_handled = true
@@ -1945,6 +1948,78 @@ func sc_polish() -> void:
 		ly += 6.0
 	check("menu: wordmark rect (120, 168, 960 x 152) has bright pixels", logo_lum > 0.7, logo_lum)
 
+	# --- 02.2-07: last-dive card, Full / Low / Reduce shots, menu music -----------------------
+	await wait_library_idle()
+	var ld_entry := SongLibrary.find(str(BundledSongs.SONGS[BundledSongs.SONGS.size() - 1]["dir"]))
+	if ld_entry == null:
+		ld_entry = SongLibrary.find(TestCharts.HAND_CHART_ID)
+	var ld_diff := "expert"
+	var ld_fp := str(ld_entry.difficulty(ld_diff).get("fingerprint", "")) if ld_entry != null else ""
+	if ld_fp != "":
+		var ld_store := ScoreStore.new()
+		ld_store.load()
+		ld_store.submit(ld_fp, 1240.0, 94.0, 212, true, "2026-10-10")
+	Settings.set_last_played(ld_entry.id if ld_entry != null else "", ld_diff)
+	m.refresh_last_dive()
+	m.finish_entrance()
+	var card := m.last_dive_card
+	check("last-dive card visible with title", card != null and card.visible and card.title_label.text != ""
+		and card.get_global_rect().is_equal_approx(MainMenu.CARD_RECT),
+		{"title": card.title_label.text if card else "", "best": card.best_value_label.text if card else ""})
+	check("last-dive card shows the best depth in gold", card != null and card.best_value_label.visible
+		and card.best_value_label.text == "1,240 M", card.best_value_label.text if card else null)
+	var bd := m.get_child(0) as AbyssBackdrop
+	await frame()
+	await shot("menu_full")
+	var full_counts := bd.effect_counts()
+	Settings.low_effects = true
+	Settings.settings_changed.emit()
+	await wait(0.3)
+	await shot("menu_low")
+	var low_counts := bd.effect_counts()
+	var full_p := int(full_counts.get("snow", 0)) + int(full_counts.get("specks", 0))
+	var low_p := int(low_counts.get("snow", 0)) + int(low_counts.get("specks", 0))
+	metrics["menu_particles"] = {"full": full_counts, "low": low_counts}
+	check("menu Low effects: snow + specks <= 30% of Full", full_p > 0 and low_p <= 0.3 * full_p,
+		"%d -> %d" % [full_p, low_p])
+	Settings.low_effects = false
+	Settings.reduce_motion = true
+	Settings.settings_changed.emit()
+	await frame()
+	var ridge0 := bd.ridge_offset()
+	var kelp0 := bd.kelp_phase()
+	await wait(1.0)
+	check("menu Reduce motion: backdrop ridge and kelp frozen over 1 s",
+		is_equal_approx(bd.ridge_offset(), ridge0) and is_equal_approx(bd.kelp_phase(), kelp0),
+		"ridge %.2f -> %.2f, kelp %.3f -> %.3f" % [ridge0, bd.ridge_offset(), kelp0, bd.kelp_phase()])
+	await shot("menu_reduce")
+	Settings.reduce_motion = false
+	Settings.settings_changed.emit()
+
+	# Menu music: opt in (isolate_settings turns it off), check it plays on Preview.
+	Settings.menu_music = true
+	MenuMusic.start()
+	await wait_until(func() -> bool: return MenuMusic.is_playing(), 10.0)
+	await wait(1.5)
+	var pv := AudioServer.get_bus_index("Preview")
+	var peak := AudioServer.get_bus_peak_volume_left_db(pv, 0) if pv >= 0 else -200.0
+	var mp: AudioStreamPlayer = MenuMusic.active_player()
+	metrics["menu_music"] = {"state": MenuMusic.state(), "peak_db": peak, "bus": String(mp.bus) if mp else "",
+		"pulse_hz": MenuMusic.pulse_hz(), "backdrop_pulse_hz": bd.pulse_hz,
+		"stream": mp.stream.resource_path if mp and mp.stream else ""}
+	check("menu music playing on Preview bus", mp != null and String(mp.bus) == "Preview"
+		and (MenuMusic.is_playing() or peak > -60.0), metrics["menu_music"])
+	await wait(1.1)
+	check("menu backdrop pulse follows the menu music tempo", is_equal_approx(bd.pulse_hz, MenuMusic.pulse_hz()),
+		"%.3f vs %.3f" % [bd.pulse_hz, MenuMusic.pulse_hz()])
+	Settings.menu_music = false
+	Settings.settings_changed.emit()
+	await wait(0.6)
+	check("menu music stops when the setting is turned off", not MenuMusic.is_playing(), MenuMusic.state())
+	Settings.menu_music = true
+	MenuMusic.start()
+	await wait_until(func() -> bool: return MenuMusic.is_playing(), 10.0)
+
 	# --- practice entry ---------------------------------------------------------------------
 	m.start_button.grab_focus()
 	await press_key(KEY_DOWN)
@@ -1957,6 +2032,10 @@ func sc_polish() -> void:
 	check("practice run: Gameplay.practice, score.no_fail on, persisted Settings.no_fail untouched",
 		pg.practice and pg.score.no_fail and not Settings.no_fail,
 		"practice=%s score.no_fail=%s Settings.no_fail=%s" % [pg.practice, pg.score.no_fail, Settings.no_fail])
+	check("menu music stopped when the dive starts", not MenuMusic.is_playing(), MenuMusic.state())
+	# Back to the default harness state (Pitfall 7): no menu music for the rest of the scenario.
+	Settings.menu_music = false
+	MenuMusic.stop(0.0)
 	await shot("practice_hud")
 	await goto(MENU)
 	await wait(0.3)

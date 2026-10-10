@@ -80,6 +80,11 @@ const CONE_HALF_INNER := deg_to_rad(7.0)
 const CONE_ALPHA_OUTER := 0.06
 const CONE_ALPHA_INNER := 0.05
 const CONE_STEPS := 8
+## Lit pool on the far ridge where the beam lands (sub-local, along the cone axis). Full only.
+const POOL_DIST := 300.0
+const POOL_SIZE := Vector2(380.0, 96.0)
+const POOL_ALPHA := 0.16
+const POOL_CORE_ALPHA := 0.12
 const PORTHOLES: Array[Vector2] = [Vector2(-140.0, -6.0), Vector2(-80.0, -6.0), Vector2(-20.0, -6.0)]
 
 ## L6 snow / L7 specks.
@@ -490,6 +495,14 @@ func _draw_searchlight(ci: CanvasItem) -> void:
 		var pg := Vector2(30.0, 30.0)
 		for p in PORTHOLES:
 			ci.draw_texture_rect(glow, Rect2(p - pg * 0.5, pg), false, Color(Palette.SONAR_PALE, 0.35))
+		# Lit pool where the beam lands on the far ridge (02.2-07 visual review): a wide soft
+		# ellipse plus a tighter core, so the cone ends on something instead of fading out.
+		var axis := PI - CONE_ANGLE
+		var hit := CONE_APEX + Vector2(cos(axis), sin(axis)) * POOL_DIST
+		ci.draw_texture_rect(glow, Rect2(hit - POOL_SIZE * 0.5, POOL_SIZE), false,
+			Color(Palette.SONAR_PALE, POOL_ALPHA))
+		var core := POOL_SIZE * 0.45
+		ci.draw_texture_rect(glow, Rect2(hit - core * 0.5, core), false, Color(Palette.SONAR_PALE, POOL_CORE_ALPHA))
 	ci.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 

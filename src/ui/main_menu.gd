@@ -45,6 +45,12 @@ const KEY_HINT_W := 120.0
 const ENTRANCE_SLIDE := 16.0
 const PROMPT_POS := Vector2(704.0, 776.0)
 const PROMPT_W := 640.0
+## Last-dive card (UI-SPEC 5): x 1376..1856, y 840..1000.
+const CARD_RECT := Rect2(1376.0, 840.0, 480.0, 160.0)
+const CARD_ENTRANCE_DELAY := 0.24
+## Seconds between AbyssBackdrop.pulse_hz refreshes from the menu music tempo.
+const PULSE_REFRESH_SEC := 1.0
+const DIFFICULTY_LANES := {"easy": 0, "medium": 1, "hard": 2, "expert": 3}
 
 ## True once the first-launch redirect was taken or skipped this session.
 static var boot_handled: bool = false
@@ -78,6 +84,8 @@ var records_error_label: Label
 var logo: LogoWordmark
 ## One-line description of the focused item (UI-SPEC 14 copy).
 var description_label: Label
+## Last dive (song, difficulty, length, best depth); hidden without a last song.
+var last_dive_card: LastDiveCard
 
 var _prompt: Control
 var _empty_state: Control
@@ -97,6 +105,20 @@ func _ready() -> void:
 		theme = Palette.load_theme()
 	_build()
 	_route_on_boot.call_deferred()
+	# D-07: quiet menu music (no-op when disabled, already playing, or about to calibrate).
+	if not needs_first_launch_wizard():
+		_menu_music_call("start")
+	_sync_pulse()
+	if is_inside_tree():
+		var t := Timer.new()
+		t.name = "PulseTimer"
+		t.wait_time = PULSE_REFRESH_SEC
+		t.autostart = true
+		t.timeout.connect(_sync_pulse)
+		add_child(t)
+	var lib := get_node_or_null("/root/SongLibrary")
+	if lib != null and lib.has_signal("entries_added"):
+		lib.entries_added.connect(func(_b: Array) -> void: refresh_last_dive())
 
 
 ## True when this boot should open the calibration wizard instead of the menu.
@@ -143,7 +165,7 @@ func _build() -> void:
 	start_button = _item("Start Dive", "dive", "primary", func() -> void: launch(false))
 	practice_button = _item("Practice Dive (No-Fail)", "lifebuoy", "default", func() -> void: launch_practice())
 	_build_best_line(_items)
-	calibrate_button = _item("Calibrate Sonar", "sonar", "default", func() -> void: _go(CALIBRATION_SCENE))
+	calibrate_button = _item("Calibrate Sonar", "sonar", "default", func() -> void: _calibrate())
 	settings_button = _item("Settings", "sliders", "default", func() -> void: _go(SETTINGS_SCENE))
 	autoplay_button = _item("Autoplay Dive (test)", "auto", "default", func() -> void: launch(true))
 	open_folder_button = _item("Open Songs Folder", "folder", "default", func() -> void: open_songs_folder())
@@ -176,6 +198,11 @@ func _build() -> void:
 	if records_error_label != null:
 		_status.add_child(records_error_label)
 	add_child(_status)
+
+	last_dive_card = LastDiveCard.new()
+	last_dive_card.name = "LastDiveCard"
+	add_child(last_dive_card)
+	refresh_last_dive()
 
 	_prompt = _build_prompt()
 	add_child(_prompt)
@@ -356,7 +383,7 @@ func _build_prompt() -> Control:
 	box.add_child(row)
 	prompt_calibrate_button = UiKit.make_button("Calibrate Sonar", "", "primary", 48)
 	prompt_calibrate_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	prompt_calibrate_button.pressed.connect(func() -> void: _go(CALIBRATION_SCENE))
+	prompt_calibrate_button.pressed.connect(func() -> void: _calibrate())
 	row.add_child(prompt_calibrate_button)
 	prompt_skip_button = UiKit.make_button("Skip for now", "", "default", 48)
 	prompt_skip_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -390,6 +417,11 @@ func _entrance() -> void:
 			tw.tween_property(b, "position:x", final_x, Palette.DUR_BASE).set_delay(Palette.STAGGER_MENU * i) \
 				.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		_entrance_tweens.append(tw)
+	if last_dive_card != null and last_dive_card.visible:
+		last_dive_card.modulate.a = 0.0
+		var ct := create_tween()
+		ct.tween_property(last_dive_card, "modulate:a", 1.0, Palette.DUR_BASE).set_delay(CARD_ENTRANCE_DELAY)
+		_entrance_tweens.append(ct)
 
 
 ## Jump every entrance animation to its final state (tests; harness).
@@ -399,6 +431,8 @@ func finish_entrance() -> void:
 			tw.kill()
 	_entrance_tweens.clear()
 	logo.modulate.a = 1.0
+	if last_dive_card != null:
+		last_dive_card.modulate.a = 1.0
 	var items := menu_buttons()
 	for i in items.size():
 		var b: Button = items[i]
@@ -457,6 +491,155 @@ func open_songs_folder() -> void:
 		var tw := create_tween()
 		tw.tween_interval(FOLDER_MSG_SEC)
 		tw.tween_callback(func() -> void: folder_message_label.visible = false)
+
+
+func _calibrate() -> void:
+	# Pitfall 7: the click-track calibration must not hear the menu music.
+	_menu_music_call("stop", 0.4)
+	_go(CALIBRATION_SCENE)
+
+
+func _menu_music_call(method: String, arg: Variant = null) -> void:
+	var mm := get_node_or_null("/root/MenuMusic") if is_inside_tree() else null
+	if mm == null:
+		return
+	if arg == null:
+		mm.call(method)
+	else:
+		mm.call(method, arg)
+
+
+## Drives the abyss bio-speck pulse from the menu music tempo (0.5 Hz without a tempo).
+func _sync_pulse() -> void:
+	if _backdrop == null:
+		return
+	var mm := get_node_or_null("/root/MenuMusic") if is_inside_tree() else null
+	_backdrop.pulse_hz = float(mm.pulse_hz()) if mm != null else 0.5
+
+
+static func difficulty_lane(diff: String) -> int:
+	return int(DIFFICULTY_LANES.get(diff, 0))
+
+
+## Fills the last-dive card from Settings.last_song_id / last_difficulty and the record book.
+## Hidden when there is no last song or it is no longer in the library.
+func refresh_last_dive() -> void:
+	if last_dive_card == null:
+		return
+	var lib := get_node_or_null("/root/SongLibrary") if is_inside_tree() else null
+	var sid: String = Settings.last_song_id
+	var e: SongEntry = null
+	if sid != "" and lib != null:
+		e = lib.find(sid)
+	if e == null:
+		last_dive_card.visible = false
+		return
+	var diff: String = Settings.last_difficulty
+	var best := {}
+	var fp := str(e.difficulty(diff).get("fingerprint", ""))
+	if fp != "":
+		var store := ScoreStore.new()
+		store.load()
+		best = store.best(fp)
+	last_dive_card.setup(e.title, diff, e.length_sec, best)
+	last_dive_card.visible = true
+
+
+## Last-dive card (UI-SPEC 5 / 14): glass panel with brackets, "LAST DIVE" caption, title,
+## difficulty chip + length, "BEST" and the best depth in REWARD_GOLD (or "No record yet.").
+class LastDiveCard:
+	extends Control
+
+	const PAD := 24.0
+	const TITLE_W := 432.0
+	const CAPTION_BASE := 36.0
+	const TITLE_BASE := 76.0
+	const CHIP_Y := 88.0
+	const BEST_BASE := 144.0
+	const DEPTH_BASE := 148.0
+	const DEPTH_RIGHT := 456.0
+	const VALUE_W := 280.0
+	const NO_RECORD := "No record yet."
+
+	var caption_label: Label
+	var title_label: Label
+	var length_label: Label
+	var best_caption: Label
+	var best_value_label: Label
+	var empty_label: Label
+	var chip_text := ""
+	var chip_lane := 0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		focus_mode = Control.FOCUS_NONE
+		position = MainMenu.CARD_RECT.position
+		size = MainMenu.CARD_RECT.size
+		caption_label = _label("LAST DIVE", "CaptionLabel", Palette.SIZE_LABEL, Palette.SONAR, CAPTION_BASE)
+		title_label = _label("", "", Palette.SIZE_BODY, Palette.TEXT_HI, TITLE_BASE)
+		title_label.size.x = TITLE_W
+		title_label.clip_text = true
+		title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		length_label = _label("", "", Palette.SIZE_LABEL, Palette.TEXT_MID, 0.0)
+		best_caption = _label("BEST", "CaptionLabel", Palette.SIZE_LABEL, Palette.TEXT_LO, BEST_BASE)
+		best_value_label = _label("", "HeadingLabel", Palette.SIZE_HEADING, Palette.REWARD_GOLD, DEPTH_BASE,
+			Palette.display_font())
+		best_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		empty_label = _label(NO_RECORD, "", Palette.SIZE_LABEL, Palette.TEXT_LO, BEST_BASE)
+		empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		for l in [best_value_label, empty_label]:
+			l.position.x = DEPTH_RIGHT - VALUE_W
+			l.size.x = VALUE_W
+		UiKit.register_fx(self)
+
+	func _label(text: String, variation: String, fs: int, color: Color, baseline: float,
+			font: Font = null) -> Label:
+		var l := Label.new()
+		l.text = text
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if variation != "":
+			l.theme_type_variation = variation
+		l.add_theme_font_size_override("font_size", fs)
+		l.add_theme_color_override("font_color", color)
+		if font != null:
+			l.add_theme_font_override("font", font)
+		var f := font if font != null else Palette.font()
+		l.position = Vector2(PAD, baseline - f.get_ascent(fs))
+		l.size = Vector2(0.0, f.get_height(fs))
+		add_child(l)
+		return l
+
+	func setup(title: String, diff: String, length_sec: float, best: Dictionary) -> void:
+		title_label.text = title
+		chip_text = diff.to_upper()
+		chip_lane = MainMenu.difficulty_lane(diff)
+		var chip_w := UiKit.chip_width(chip_text, "difficulty") if chip_text != "" else 0.0
+		length_label.text = SongListModel.fmt_length(length_sec) if length_sec > 0.0 else ""
+		var lf := Palette.font()
+		var fs := Palette.SIZE_LABEL
+		var cy := CHIP_Y + UiKit.CHIP_H * 0.5
+		var base := cy + (lf.get_ascent(fs) - lf.get_descent(fs)) * 0.5
+		var lx := PAD + (chip_w + Palette.SP_MD if chip_w > 0.0 else 0.0)
+		length_label.position = Vector2(lx, base - lf.get_ascent(fs))
+		var has_best := not best.is_empty()
+		best_value_label.visible = has_best
+		empty_label.visible = not has_best
+		best_value_label.text = "%s M" % Palette.fmt_depth(int(float(best.get("depth", 0.0)))) if has_best else ""
+		queue_redraw()
+
+	func apply_effect_settings() -> void:
+		queue_redraw()
+
+	func effect_counts() -> Dictionary:
+		return {"glow": not UiKit.low_effects()}
+
+	func _draw() -> void:
+		var r := Rect2(Vector2.ZERO, size)
+		draw_style_box(UiKit.style_panel(), r)
+		UiKit.draw_brackets(self, r, Color(Palette.SONAR, 0.8))
+		if chip_text != "":
+			var w := UiKit.chip_width(chip_text, "difficulty")
+			UiKit.draw_chip(self, Rect2(PAD, CHIP_Y, w, UiKit.CHIP_H), chip_text, "difficulty", chip_lane)
 
 
 func _go(path: String) -> void:
