@@ -8,6 +8,11 @@ extends Control
 ## fills) pass behind the note path; colonies, fish, snow and the creature stay out of the
 ## expanded keep-out polygon (UI-SPEC 7.1). Low effects / reduce motion never change lanes.
 ## Effect contract: UiKit.register_fx, apply_effect_settings(), effect_counts().
+## 02.2-27 (gap G2): two gameplay styles, Settings > Display > Background. Living is the above.
+## Calm is a still trench: walls frozen at an even spacing, no breathing, no VP glow size pulse,
+## no creature, no miss glitch, fewer and slower snow and fish. The beat shows only as a soft,
+## low-passed brightness breathe of the depth glow and the wall colonies. Song Select (menu_mode)
+## ignores the style.
 
 const W := 1920.0
 const H := 1080.0
@@ -31,6 +36,29 @@ const RISE_TAU := 0.25
 const FALL_TAU := 0.12
 const EDGE_FADE_FROM := 880.0
 const EDGE_FADE_TO := 1000.0
+
+## Background styles (Settings.background_style; menu_mode always draws Living).
+const STYLE_LIVING := "living"
+const STYLE_CALM := "calm"
+## Calm: the frozen wall phase. Rings sit at n = k / 14 + 0.0297, so the nearest fully lit ring
+## is at the start of the edge fade (n 0.744, r 875 px), one more at 40 % and none half-hidden
+## on the far rim; the VP ring is r 104 px (just outside the depth glow core).
+const CALM_SCROLL_PHASE := 0.0297
+## Calm beat response: the beat pulse through a first-order low-pass (tau 0.25 s), scaled by
+## CALM_BEAT_GAIN (the low-passed cubic pulse peaks near 0.45 at 120 BPM) and clamped to 0..1.
+const CALM_BEAT_TAU := 0.25
+const CALM_BEAT_GAIN := 2.0
+## Depth glow alpha = 1 - CALM_BREATHE_DEPTH x (1 - b): a breathe of at most 8 %.
+const CALM_BREATHE_DEPTH := 0.08
+## Colony dots: 0.35 + 0.15 b x tier gain, clamped to 0.50; halo 0.45 + 0.15 b (fixed size).
+const CALM_COLONY_BASE := 0.35
+const CALM_COLONY_PULSE := 0.15
+const CALM_COLONY_MAX := 0.50
+const CALM_HALO_BASE := 0.45
+const CALM_HALO_PULSE := 0.15
+## Snow at 40 % fall speed with no sideways wobble; fish at 25 % drift with no bob or pulse.
+const CALM_SNOW_SPEED := 0.4
+const CALM_FISH_SPEED := 0.25
 
 ## Note-path keep-out (UI-SPEC 7.1): the board trapezoid expanded by 48 px on every side.
 const KEEP_OUT_PX := 48.0
@@ -134,6 +162,11 @@ var _beat: float = 0.0
 var _tier: int = 1
 var _low: bool = false
 var _reduce: bool = false
+## Effective style (STYLE_LIVING / STYLE_CALM; always Living in menu_mode).
+var _style: String = STYLE_LIVING
+## Calm: low-passed beat 0..1 (raw low-pass state and the scaled breathe value).
+var _beat_lp: float = 0.0
+var _breathe: float = 0.0
 var _unit_rings: Array[PackedVector2Array] = []
 var _snow_pos := PackedVector2Array()
 var _snow_z := PackedFloat32Array()
@@ -371,8 +404,15 @@ func _ready() -> void:
 func apply_effect_settings() -> void:
 	_low = Settings.low_effects
 	_reduce = Settings.reduce_motion
-	if _calm():
+	var calm_style := Settings.background_style == Settings.BACKGROUND_CALM and not menu_mode
+	_style = STYLE_CALM if calm_style else STYLE_LIVING
+	if _calm() or _still():
 		_glitch_left = 0.0
+	if _still():
+		_pulse = 0.0
+		_cr_active = false
+	_update_rings()
+	_update_colonies()
 	if _glow_layer != null:
 		_glow_layer.visible = not _low
 		_glow_layer.queue_redraw()
@@ -380,18 +420,43 @@ func apply_effect_settings() -> void:
 
 
 func effect_counts() -> Dictionary:
-	var creature_on := not (_low or _reduce or menu_mode)
+	var still := _still()
+	var creature_on := not (_low or _reduce or menu_mode or still)
 	return {
 		"rings": ring_count(_low),
 		"band_fills": band_count(_low),
 		"colonies": colony_count(_low),
 		"colony_glow": not _low,
-		"colony_radius_pulse": not _reduce,
-		"fish": 0 if menu_mode else crowd_max(_low),
-		"snow": snow_count(_low),
+		"colony_radius_pulse": not (_reduce or still),
+		"fish": 0 if menu_mode else _crowd_cap(),
+		"snow": _snow_drawn(),
 		"snow_frozen": _reduce,
 		"creature": creature_on,
+		"style": _style,
+		"wall_scroll": not still,
+		"wall_breathe": not (_reduce or still),
+		"glitch": not (_low or _reduce or menu_mode or still),
 	}
+
+
+## Effective background style (STYLE_LIVING / STYLE_CALM).
+func background_style() -> String:
+	return _style
+
+
+## True when the Calm (still) style is active (never in menu_mode).
+func _still() -> bool:
+	return _style == STYLE_CALM
+
+
+func _crowd_cap() -> int:
+	var n := crowd_max(_low)
+	return mini(n, CROWD_LOW) if _still() else n
+
+
+func _snow_drawn() -> int:
+	var n := snow_count(_low)
+	return mini(n, SNOW_LOW) if _still() else n
 
 
 func glow_layer() -> Node2D:
@@ -446,7 +511,8 @@ func motion_pulse() -> float:
 ## Number of lantern fish currently lit.
 func visible_crowd() -> int:
 	var n := 10 + int(round(16.0 * energy()))
-	return mini(n, crowd_max(Settings.low_effects))
+	var cap := crowd_max(Settings.low_effects)
+	return mini(n, mini(cap, CROWD_LOW) if _still() else cap)
 
 
 func on_combo(value: int) -> void:
@@ -457,7 +523,7 @@ func on_combo(value: int) -> void:
 
 func on_miss() -> void:
 	_energy *= 0.4
-	if not _calm() and not menu_mode:
+	if not _calm() and not menu_mode and not _still():
 		_glitch_left = GLITCH_SEC
 
 
@@ -480,7 +546,9 @@ func _process(delta: float) -> void:
 func advance(delta: float) -> void:
 	_t += delta
 	var rm := Settings.reduce_motion
-	_scroll += delta * WALL_SCROLL * (0.25 if (rm or menu_mode) else 1.0)
+	var still := _still()
+	if not still:  # Calm: the walls hold at CALM_SCROLL_PHASE (_wall_phase)
+		_scroll += delta * WALL_SCROLL * (0.25 if (rm or menu_mode) else 1.0)
 	var tau := RISE_TAU if _target > _energy else FALL_TAU
 	_energy = clampf(_energy + (_target - _energy) * (1.0 - exp(-delta / tau)), 0.0, 1.0)
 	if _glitch_left > 0.0:
@@ -489,13 +557,17 @@ func advance(delta: float) -> void:
 		_dim = maxf(_dim - delta / FAIL_DIM_SEC * 0.5, 0.5)
 	_song_t = _conductor.song_time() if _conductor != null else _t
 	_beat = BeatClock.pulse(BeatClock.phase(_song_t, _tempo_map)) if beat_live else 0.0
+	_beat_lp += (_beat - _beat_lp) * (1.0 - exp(-delta / CALM_BEAT_TAU))
+	_breathe = clampf(_beat_lp * CALM_BEAT_GAIN, 0.0, 1.0)
 	if not rm:
-		_pulse = _beat
+		_pulse = 0.0 if still else _beat
+		var fall := CALM_SNOW_SPEED if still else 1.0
+		var sway := 0.0 if still else 12.0
 		for i in SNOW_FULL:
 			var z := _snow_z[i]
 			var p := _snow_pos[i]
-			p.y += (30.0 + 60.0 * z) * delta
-			p.x += 12.0 * sin(_t + 10.0 * z) * delta
+			p.y += (30.0 + 60.0 * z) * fall * delta
+			p.x += sway * sin(_t + 10.0 * z) * delta
 			if p.y > H:
 				p.y -= H
 			if p.x < 32.0:
@@ -521,13 +593,50 @@ func set_scroll(s: float) -> void:
 
 func _update_rings() -> void:
 	var count := ring_count(_low)
+	var phase := scroll_phase()
 	for k in count:
-		var d := 1.0 - fposmod(float(k) / float(count) + _scroll, 1.0)
+		var d := 1.0 - fposmod(float(k) / float(count) + phase, 1.0)
 		var n := 1.0 - d
-		var r := (72.0 + 1080.0 * n) * (1.0 + 0.035 * _pulse)
+		var r := (72.0 + 1080.0 * n) * (1.0 + 0.035 * _pulse)  # _pulse is 0 under Calm
 		_ring_r[k] = r
 		_ring_n[k] = n
 		_ring_fade[k] = clampf((EDGE_FADE_TO - r) / (EDGE_FADE_TO - EDGE_FADE_FROM), 0.0, 1.0)
+
+
+## Test hooks (02.2-27): ring radii of the drawn rings, the wall phase, depth glow size and alpha,
+## the colony dot alpha this frame, and the fish size factor.
+func ring_radii() -> PackedFloat32Array:
+	return _ring_r.slice(0, ring_count(_low))
+
+
+## The wall phase actually drawn (Calm holds CALM_SCROLL_PHASE; Living scrolls).
+func scroll_phase() -> float:
+	return CALM_SCROLL_PHASE if _still() else _scroll
+
+
+func depth_glow_radius() -> float:
+	return GLOW_BASE_R if _still() else GLOW_BASE_R + GLOW_PULSE_R * _pulse
+
+
+## Depth glow brightness (Living 1.0; Calm breathes by at most CALM_BREATHE_DEPTH).
+func depth_glow_alpha() -> float:
+	return 1.0 - CALM_BREATHE_DEPTH * (1.0 - _breathe) if _still() else 1.0
+
+
+func colony_alpha_now() -> float:
+	if _still():
+		return minf(CALM_COLONY_BASE + CALM_COLONY_PULSE * _breathe * tier_gain(), CALM_COLONY_MAX)
+	return colony_alpha(_beat, _tier)
+
+
+func _colony_radius_now() -> float:
+	return COLONY_R_BASE if _still() else colony_radius(_beat, _reduce)
+
+
+## Fish size factor from the beat (1.0 = no pulse; Calm and Low never pulse).
+func fish_scale_pulse() -> float:
+	var pulse := 0.0 if (_low or _still()) else _pulse
+	return 1.0 + 0.35 * pulse * (1.0 + 0.5 * energy())
 
 
 func _ring_point(k: int, i: int) -> Vector2:
@@ -647,7 +756,7 @@ func _creature_pos(e: Dictionary, t: float) -> Vector2:
 
 func _update_creature(t: float) -> void:
 	_cr_active = false
-	if _low or _reduce or menu_mode:
+	if _low or _reduce or menu_mode or _still():
 		return
 	var e := _creature_at(t)
 	if e.is_empty():
@@ -680,9 +789,9 @@ func _draw() -> void:
 	var glitch := clampf(_glitch_left / GLITCH_SEC, 0.0, 1.0)
 	draw_rect(Rect2(0.0, 0.0, W, H), _a(Palette.ABYSS_900, 1.0))
 	# Depth glow at the vanishing point.
-	var gr := (GLOW_BASE_R + GLOW_PULSE_R * _pulse) * (1.0 - 0.1 * glitch)
+	var gr := depth_glow_radius() * (1.0 - 0.1 * glitch)
 	draw_texture_rect(_glow_tex, Rect2(Trench.VP.x - gr, Trench.VP.y - gr, gr * 2.0, gr * 2.0), false,
-		Color(Palette.WHITE, reveal * _dim))
+		Color(Palette.WHITE, reveal * _dim * depth_glow_alpha()))
 	if _cr_active:
 		_draw_creature()
 	if not low:
@@ -691,7 +800,7 @@ func _draw() -> void:
 	_draw_colonies()
 	if not menu_mode:
 		_draw_fish(low)
-	_draw_snow(snow_count(low))
+	_draw_snow(_snow_drawn())
 	if glitch > 0.0:
 		for x in [0.0, W - 24.0]:
 			draw_rect(Rect2(x, 0.0, 24.0, H), _a(Palette.WARNING_RED, 0.35 * glitch))
@@ -778,8 +887,8 @@ func band_polygons() -> Array[PackedVector2Array]:
 
 
 func _draw_colonies() -> void:
-	var alpha := colony_alpha(_beat, _tier)
-	var rad := colony_radius(_beat, _reduce)
+	var alpha := colony_alpha_now()
+	var rad := _colony_radius_now()
 	for c in COLONIES_FULL:
 		var vis := _colony_vis[c]
 		if vis <= 0.0:
@@ -797,7 +906,7 @@ func _draw_colonies() -> void:
 ## logic). Lane-1 / lane-3 hues (cyan, pink) at alpha <= 0.65 (UI-SPEC 3.1 decoration exception).
 func _draw_fish(low: bool) -> void:
 	var lit := visible_crowd()
-	var pulse := 0.0 if low else _pulse
+	var pulse := 0.0 if (low or _still()) else _pulse
 	var e := energy()
 	var energy_alpha := 0.6 + 0.4 * e
 	for i in CROWD_FULL:
@@ -809,7 +918,7 @@ func _draw_fish(low: bool) -> void:
 			continue
 		var face := _fish_face(i)
 		var size := _fish_size(i)
-		var sc := size * (1.0 + 0.35 * pulse * (1.0 + 0.5 * e))
+		var sc := size * fish_scale_pulse()
 		var col := _fish_color(i)
 		var alpha := minf((0.3 + pulse * 0.5 * (float(i % 3) / 2.0 + 0.3)) * energy_alpha, FISH_ALPHA_MAX) * edge
 		draw_set_transform(pos, 0.0, Vector2(FISH_RX * sc * face, FISH_RY * sc))
@@ -840,7 +949,11 @@ func _fish_pos(i: int) -> Vector2:
 	if _reduce:
 		return Vector2(x0, y)
 	var speed := 6.0 + 10.0 * fposmod(float(i) * 0.7548777, 1.0)
+	if _still():
+		speed *= CALM_FISH_SPEED
 	var x := FISH_X0 + fposmod(x0 - FISH_X0 + _fish_face(i) * speed * _t, span)
+	if _still():
+		return Vector2(x, y)
 	return Vector2(x, y + 5.0 * sin(0.8 * _t + 2.1 * i))
 
 
@@ -891,7 +1004,9 @@ func _draw_creature() -> void:
 ## Full effects only (the layer is hidden in Low).
 func _draw_glow() -> void:
 	var gl := _glow_layer
-	var alpha := colony_alpha(_beat, _tier)
+	var still := _still()
+	var alpha := colony_alpha_now()
+	var halo := CALM_HALO_BASE + CALM_HALO_PULSE * _breathe if still else maxf(alpha, HALO_FLOOR)
 	var glow_a: float = Palette.GLOW_SM[1]
 	for c in COLONIES_FULL:
 		var vis := _colony_vis[c]
@@ -900,7 +1015,7 @@ func _draw_glow() -> void:
 		var col := Palette.SONAR if c % 2 == 0 else Palette.BIO_VIOLET
 		var sz := COLONY_SPREAD * COLONY_GLOW_MUL * _colony_scale[c] * (1.0 + 0.25 * _pulse)
 		gl.draw_texture_rect(_dot_tex, Rect2(_colony_center[c] - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false,
-			_a(col, glow_a * maxf(alpha, HALO_FLOOR) * vis))
+			_a(col, glow_a * halo * vis))
 	if _cr_active and _cr_kind == LEVIATHAN:
 		for i in LEVIATHAN_LIGHTS:
 			var lp := _leviathan_light(i)

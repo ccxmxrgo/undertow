@@ -49,6 +49,9 @@ const HINT_REDUCE_MOTION := "Turns off screen shake, parallax and big movement. 
 const HINT_LOW_EFFECTS := "Fewer particles, no glow or CRT effect, simpler backgrounds. Notes and lanes stay fully bright."
 const HINT_MENU_MUSIC := "Plays a quiet song preview on the main menu."
 const HINT_FULLSCREEN := "F11 toggles fullscreen at any time."
+const HINT_BACKGROUND := "Calm: still trench walls, soft glow on the beat. Living: walls move and pulse with the music."
+## Background value button width (fits "LIVING" in the button font with padding).
+const BACKGROUND_BUTTON_W := 200.0
 
 
 ## Pill toggle (UI-SPEC 9.3): 160 x 40, CUT_SM chamfer. ON = SONAR 22% fill, SONAR edge, "ON"
@@ -166,6 +169,8 @@ var no_fail_button: Button
 var reduce_motion_button: Button
 var fullscreen_button: Button
 var low_effects_button: Button
+## 02.2-27 (gap G2): Display > Background value button (CALM / LIVING).
+var background_button: Button
 var menu_music_button: Button
 var reset_button: Button
 var recalibrate_button: Button
@@ -521,6 +526,38 @@ func _build_display(box: VBoxContainer) -> void:
 		Settings.set_fullscreen(not Settings.fullscreen), HINT_FULLSCREEN)
 	low_effects_button = _toggle_row(box, "Low effects", func() -> void:
 		Settings.low_effects = not Settings.low_effects, HINT_LOW_EFFECTS)
+	_build_background_row(box)
+
+
+## Display > Background: a value button showing CALM / LIVING. Press (click / ui_accept) or
+## ui_left / ui_right while focused switches it (two values, so every step flips).
+func _build_background_row(box: VBoxContainer) -> void:
+	var title := "Background"
+	var row := _row(box, title)
+	background_button = _compact_button(background_label(Settings.background_style), BACKGROUND_BUTTON_W)
+	background_button.name = "BackgroundButton"
+	background_button.pressed.connect(cycle_background)
+	background_button.gui_input.connect(func(ev: InputEvent) -> void:
+		if ev.is_action_pressed(&"ui_left") or ev.is_action_pressed(&"ui_right"):
+			cycle_background()
+			background_button.accept_event())
+	row.add_child(background_button)
+	var h := _hint(HINT_BACKGROUND)
+	h.custom_minimum_size = Vector2(VALUE_RIGHT - CONTROL_X - BACKGROUND_BUTTON_W - ROW_GAP, 0.0)
+	row.add_child(h)
+	_hints[title] = HINT_BACKGROUND
+
+
+static func background_label(style: String) -> String:
+	return "LIVING" if style == Settings.BACKGROUND_LIVING else "CALM"
+
+
+## Flip Living <-> Calm; Settings persists and emits settings_changed (the arena re-reads it).
+func cycle_background() -> void:
+	var next := Settings.BACKGROUND_CALM if Settings.background_style == Settings.BACKGROUND_LIVING \
+		else Settings.BACKGROUND_LIVING
+	Settings.set_background_style(next)
+	_refresh_all()
 
 
 func _build_audio(box: VBoxContainer) -> void:
@@ -804,6 +841,7 @@ func _refresh_all(animate: bool = true) -> void:
 	(reduce_motion_button as PillToggle).set_on(Settings.reduce_motion, animate)
 	(fullscreen_button as PillToggle).set_on(Settings.fullscreen, animate)
 	(low_effects_button as PillToggle).set_on(Settings.low_effects, animate)
+	background_button.text = background_label(Settings.background_style)
 	(menu_music_button as PillToggle).set_on(Settings.menu_music, animate)
 	_offsets_label.text = "Audio offset: %+d ms    Visual offset: %+d ms" % [
 		roundi(Settings.audio_offset * 1000.0), roundi(Settings.visual_offset * 1000.0)]

@@ -14,6 +14,11 @@ const WINDOWED_SIZE := Vector2i(1600, 900)
 const MAX_LIBRARY_FOLDERS := 8
 const MAX_PATH_LEN := 1024
 const DIFFICULTIES: Array[String] = ["easy", "medium", "hard", "expert"]
+## 02.2-27 (gap G2): gameplay background style. Living = moving, beat-pulsing trench (02.2-11);
+## Calm = still trench with a soft brightness breathe on the beat.
+const BACKGROUND_LIVING := "living"
+const BACKGROUND_CALM := "calm"
+const BACKGROUND_STYLES: Array[String] = [BACKGROUND_LIVING, BACKGROUND_CALM]
 
 ## Seconds. Positive audio_offset = player taps late, song_time is reduced by it.
 var audio_offset: float = 0.0
@@ -33,6 +38,9 @@ var reduce_motion: bool = false
 var fullscreen: bool = true
 ## Plan 03 consumes this: turns off vignette, scanlines and edge readouts.
 var low_effects: bool = false
+## Gameplay background (Settings > Display > Background). Persisted in [display] background.
+## Calm is the default in this build so testers see it first (G2).
+var background_style: String = BACKGROUND_CALM
 ## Linear 0-1 volumes for the Master/Music/SFX buses.
 var volume_master: float = 1.0
 var volume_music: float = 0.8
@@ -67,6 +75,7 @@ func reset_defaults() -> void:
 	reduce_motion = false
 	fullscreen = true
 	low_effects = false
+	background_style = BACKGROUND_CALM
 	volume_master = 1.0
 	volume_music = 0.8
 	volume_sfx = 0.8
@@ -129,6 +138,20 @@ func apply_window() -> void:
 	DisplayServer.window_set_position(pos + (sz - WINDOWED_SIZE) / 2)
 
 
+## Validates (unknown -> Calm), persists to save_path and notifies (effect contract re-reads it).
+func set_background_style(v: Variant) -> void:
+	background_style = _background(v)
+	save_to(save_path)
+	settings_changed.emit()
+
+
+## T-02.2-51: the stored value is untrusted; only the exact strings "living" / "calm" are accepted.
+static func _background(v: Variant) -> String:
+	if typeof(v) == TYPE_STRING and BACKGROUND_STYLES.has(v):
+		return v
+	return BACKGROUND_CALM
+
+
 func set_scroll_speed(v: float) -> void:
 	scroll_speed = _snap_scroll(v)
 	save_to(save_path)
@@ -184,6 +207,7 @@ func save_to(path: String = DEFAULT_PATH) -> int:
 	cfg.set_value("gameplay", "reduce_motion", reduce_motion)
 	cfg.set_value("display", "fullscreen", fullscreen)
 	cfg.set_value("display", "low_effects", low_effects)
+	cfg.set_value("display", "background", background_style)
 	cfg.set_value("audio", "master", volume_master)
 	cfg.set_value("audio", "music", volume_music)
 	cfg.set_value("audio", "sfx", volume_sfx)
@@ -230,6 +254,7 @@ func load_from(path: String = DEFAULT_PATH) -> void:
 	reduce_motion = _bool(cfg, "gameplay", "reduce_motion", false)
 	fullscreen = _bool(cfg, "display", "fullscreen", true)
 	low_effects = _bool(cfg, "display", "low_effects", false)
+	background_style = _background(cfg.get_value("display", "background", BACKGROUND_CALM))
 	volume_master = _num(cfg, "audio", "master", 1.0, 0.0, 1.0)
 	volume_music = _num(cfg, "audio", "music", 0.8, 0.0, 1.0)
 	volume_sfx = _num(cfg, "audio", "sfx", 0.8, 0.0, 1.0)
