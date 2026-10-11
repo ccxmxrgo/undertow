@@ -571,3 +571,18 @@ func test_menu_mode_ignores_background_style() -> void:
 		c.erase("style")
 		out.append([radii, alphas, c, Array(a._snow_pos), a.depth_glow_radius(), a.depth_glow_alpha()])
 	assert_array(out[0]).is_equal(out[1])
+
+
+func test_calm_band_polygons_triangulate_and_colonies_stay_clear() -> void:
+	var a := _calm_arena()
+	var polys := a.band_polygons()
+	assert_int(polys.size()).is_greater_equal(10)
+	for poly in polys:
+		assert_bool(Geometry2D.triangulate_polygon(poly).is_empty()).is_false()
+	var keep := Arena.note_path_polygon()
+	var dots := a.colony_dots()
+	assert_int(dots.size()).is_greater_equal(36)
+	for p in dots:
+		assert_bool(Geometry2D.is_point_in_polygon(p, keep)).is_false()
+		assert_float(minf(minf(p.x, Arena.W - p.x), minf(p.y, Arena.H - p.y))).is_greater_equal(40.0)
+		assert_bool(p.y > 600.0 and (p.x < 400.0 or p.x > 1520.0)).is_false()

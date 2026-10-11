@@ -50,15 +50,22 @@ const CALM_BEAT_TAU := 0.25
 const CALM_BEAT_GAIN := 2.0
 ## Depth glow alpha = 1 - CALM_BREATHE_DEPTH x (1 - b): a breathe of at most 8 %.
 const CALM_BREATHE_DEPTH := 0.08
-## Colony dots: 0.35 + 0.15 b x tier gain, clamped to 0.50; halo 0.45 + 0.15 b (fixed size).
+## Colony dots: 0.35 + 0.15 b x tier gain, clamped to 0.50; halo 0.6 + 0.2 b (fixed size; Living's
+## halo floor is 0.5, so Calm's walls glow steadily instead of flashing).
 const CALM_COLONY_BASE := 0.35
 const CALM_COLONY_PULSE := 0.15
 const CALM_COLONY_MAX := 0.50
-const CALM_HALO_BASE := 0.45
-const CALM_HALO_PULSE := 0.15
+const CALM_HALO_BASE := 0.6
+const CALM_HALO_PULSE := 0.2
 ## Snow at 40 % fall speed with no sideways wobble; fish at 25 % drift with no bob or pulse.
 const CALM_SNOW_SPEED := 0.4
 const CALM_FISH_SPEED := 0.25
+## Calm visual review (02.2-27): frozen, Living's jagged contour (8 % / 5 % wobble) read as nervous
+## scribbles over the whole screen. Calm walls use a smoother rock contour (same frequencies at
+## 45 % amplitude), slightly softer lines and a steadier, brighter halo so the walls still glow.
+const CALM_WOBBLE := 0.45
+const CALM_WALL_ALPHA := 0.75
+const CALM_COLONY_R := 2.5
 
 ## Note-path keep-out (UI-SPEC 7.1): the board trapezoid expanded by 48 px on every side.
 const KEEP_OUT_PX := 48.0
@@ -168,6 +175,7 @@ var _style: String = STYLE_LIVING
 var _beat_lp: float = 0.0
 var _breathe: float = 0.0
 var _unit_rings: Array[PackedVector2Array] = []
+var _calm_rings: Array[PackedVector2Array] = []
 var _snow_pos := PackedVector2Array()
 var _snow_z := PackedFloat32Array()
 var _glow_tex: GradientTexture2D
@@ -288,11 +296,15 @@ func _init() -> void:
 	for k in RINGS_FULL:
 		var pts := PackedVector2Array()
 		pts.resize(RING_PTS + 1)
+		var calm := PackedVector2Array()
+		calm.resize(RING_PTS + 1)
 		for i in RING_PTS + 1:
 			var a := TAU * float(i) / float(RING_PTS)
-			var j := 1.0 + 0.08 * sin(7.0 * a + 1.7 * k) + 0.05 * sin(13.0 * a + k)
-			pts[i] = Vector2(cos(a), sin(a)) * j
+			var w := 0.08 * sin(7.0 * a + 1.7 * k) + 0.05 * sin(13.0 * a + k)
+			pts[i] = Vector2(cos(a), sin(a)) * (1.0 + w)
+			calm[i] = Vector2(cos(a), sin(a)) * (1.0 + CALM_WOBBLE * w)
 		_unit_rings.append(pts)
+		_calm_rings.append(calm)
 	_ring_r.resize(RINGS_FULL)
 	_ring_n.resize(RINGS_FULL)
 	_ring_fade.resize(RINGS_FULL)
@@ -603,6 +615,11 @@ func _update_rings() -> void:
 		_ring_fade[k] = clampf((EDGE_FADE_TO - r) / (EDGE_FADE_TO - EDGE_FADE_FROM), 0.0, 1.0)
 
 
+## Unit wall contours for the active style (Calm: smoother, CALM_WOBBLE).
+func _rings() -> Array[PackedVector2Array]:
+	return _calm_rings if _still() else _unit_rings
+
+
 ## Test hooks (02.2-27): ring radii of the drawn rings, the wall phase, depth glow size and alpha,
 ## the colony dot alpha this frame, and the fish size factor.
 func ring_radii() -> PackedFloat32Array:
@@ -630,7 +647,7 @@ func colony_alpha_now() -> float:
 
 
 func _colony_radius_now() -> float:
-	return COLONY_R_BASE if _still() else colony_radius(_beat, _reduce)
+	return CALM_COLONY_R if _still() else colony_radius(_beat, _reduce)
 
 
 ## Fish size factor from the beat (1.0 = no pulse; Calm and Low never pulse).
@@ -640,7 +657,7 @@ func fish_scale_pulse() -> float:
 
 
 func _ring_point(k: int, i: int) -> Vector2:
-	var u := _unit_rings[k][i]
+	var u := _rings()[k][i]
 	var r := _ring_r[k]
 	return Trench.VP + Vector2(u.x * r, u.y * r * WALL_SQUASH)
 
@@ -811,6 +828,7 @@ func _draw() -> void:
 
 
 func _draw_walls(count: int) -> void:
+	var rings := _rings()
 	for k in count:
 		var fade := _ring_fade[k]
 		if fade <= 0.0:
@@ -819,11 +837,11 @@ func _draw_walls(count: int) -> void:
 		var r := _ring_r[k]
 		var lw := 1.2 + 3.6 * n
 		var col := Palette.WALL_TEAL if k % 2 == 0 else Palette.WALL_VIOLET
-		var line_a := (0.08 + 0.35 * n) * fade
+		var line_a := (0.08 + 0.35 * n) * fade * (CALM_WALL_ALPHA if _still() else 1.0)
 		draw_set_transform(Trench.VP, 0.0, Vector2(r, r * WALL_SQUASH))
 		if not _low and not menu_mode:  # Song Select keeps its 01.2 walls (outer band stays dark)
-			draw_polyline(_unit_rings[k], _a(col, line_a * WALL_GLOW_A), (lw + WALL_GLOW_W * (0.4 + n)) / r, false)
-		draw_polyline(_unit_rings[k], _a(col, line_a), lw / r, false)
+			draw_polyline(rings[k], _a(col, line_a * WALL_GLOW_A), (lw + WALL_GLOW_W * (0.4 + n)) / r, false)
+		draw_polyline(rings[k], _a(col, line_a), lw / r, false)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -858,12 +876,13 @@ static func band_alpha(n: float) -> float:
 ## along the same ray, so the polygon stays simple (star-shaped from the VP) and triangulates.
 func _fill_band(k: int, j: int, half: int) -> void:
 	var i0 := half * HALF_PTS
+	var rings := _rings()
 	var rk := _ring_r[k]
 	var rj := _ring_r[j]
 	var sq := Vector2(1.0, WALL_SQUASH)
 	for i in HALF_PTS + 1:
-		var uk := _unit_rings[k][i0 + i]
-		var uj := _unit_rings[j][i0 + i]
+		var uk := rings[k][i0 + i]
+		var uj := rings[j][i0 + i]
 		var outer_len := rj * uj.length()
 		var inner_len := minf(rk * uk.length(), outer_len - BAND_MIN_PX)
 		var dir := uk.normalized()
