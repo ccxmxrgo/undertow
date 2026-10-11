@@ -1,12 +1,14 @@
-UNDERTOW - early playtest build (v0.5, 2026-10-10)
-=================================================
+UNDERTOW - early playtest build (v0.5.1, 2026-10-11)
+===================================================
 
 You're a submarine sinking into a deep-sea trench. This build is still the
 single-player core: it's for checking that timing, the look and now real
 songs feel good. Torpedoes and online versus come later.
 
 v0.5 gives every screen a new look: a deep-sea submarine cockpit looking
-through a neon sonar into the abyss. Timing is exactly the same as v0.4.
+through a neon sonar into the abyss. v0.5.1 makes the hit windows wider
+(easier to get PERFECT and GOOD), adds a calmer background and makes the
+controller work in every menu (see WHAT'S NEW IN v0.5.1).
 This build is for friends only: please don't share it further.
 
 Want to help test? Open TESTER-CHECKLIST.txt (next to this file). It is a
@@ -34,6 +36,17 @@ CONTROLS
   Fullscreen ....... F11            (switches fullscreen / window)
   Debug overlay .... F3             (shows timing numbers)
   Autoplay ......... F4             (watch the bot play the song perfectly)
+
+Menus with a gamepad (every screen: menu, song select, results, pause,
+Settings, calibration, dialogs):
+  Move ............. D-pad or left stick
+  Confirm .......... A
+  Back ............. B
+  Pause ............ Start
+  In SELECT SONG also: LB / RB jump a page, Left / Right change the
+  difficulty, Y = sort, X = rescan library.
+  Settings > Controls has a GAMEPAD column: rebind the lanes to any
+  controller button or trigger there.
 
 Space skips the intro straight to a short 3-2-1 count-in. Retry and the F4
 autoplay restart play a quick version of the intro, so getting back in is
@@ -63,6 +76,26 @@ SELECT SONG controls:
   Open Songs Folder  F6
   Back ............. Esc
 Highlight a song for half a second to hear a preview.
+
+
+WHAT'S NEW IN v0.5.1
+--------------------
+- Wider hit windows: PERFECT is now +-50 ms (was 35), GOOD is +-100 ms
+  (was 70), and a press up to 130 ms early counts as a miss (was 100).
+  Notes are drawn exactly on the hit line at the on-time moment (the
+  triangle note sat 2 pixels too high, that is fixed).
+- A new "Calm" background, on by default: still trench walls and a soft
+  glow on the beat. Settings > Display > Background switches between Calm
+  and Living (the v0.5 moving, pulsing trench). Please tell us which one
+  you prefer.
+- The controller now works in every menu: D-pad or left stick to move,
+  A to confirm, B to go back, Start to pause (see CONTROLS). You can also
+  rebind the lanes to controller buttons in Settings > Controls.
+
+Running the game from the source code (not this zip)? After pulling new
+code, run "godot --headless --path . --import" once (or open the project
+in the Godot editor) before starting the game, otherwise new screens can
+fail to open.
 
 
 WHAT'S NEW IN v0.5

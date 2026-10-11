@@ -1,7 +1,7 @@
 # Builds the friend playtest zip (D-10 / D-12): debug export -> fresh staging folder -> .zip.
 # Usage: powershell -NoProfile -File tools/dist.ps1   (Windows)
 #        pwsh -NoProfile -File tools/dist.ps1         (PowerShell 7, Windows or Linux; GODOT_BIN must be set)
-# Output: build/dist/UNDERTOW-playtest-v0.5.zip (zip only; no other archive formats are produced).
+# Output: build/dist/UNDERTOW-playtest-v0.5.1.zip (zip only; no other archive formats are produced).
 # Only the exe(s), the pck, the README and the tester checklist are staged (T-1.1-16, T-02-28, T-02.2-46).
 # The bundled songs live inside the pck (export include_filter adds *.chart,*.ini). Older version
 # folders/zips are left alone.
@@ -9,7 +9,7 @@
 # of the file name.
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$version = "v0.5"
+$version = "v0.5.1"
 $name = "UNDERTOW-playtest-$version"
 $distDir = Join-Path $root "build/dist"
 $stage = Join-Path $distDir $name

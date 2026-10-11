@@ -1,5 +1,5 @@
-UNDERTOW v0.5 - tester checklist
-================================
+UNDERTOW v0.5.1 - tester checklist
+==================================
 
 Thanks for testing! Tick the boxes as you go ([x]) and write a few words
 next to anything that feels off. You don't have to do everything: even
@@ -7,7 +7,8 @@ half of this list helps a lot. Send this file back (or just your notes)
 on Discord or WhatsApp.
 
 Controls in short: lanes 1 2 3 4, Esc = pause / back, Enter = confirm,
-F11 = fullscreen / window. The README has the full list.
+F11 = fullscreen / window; gamepad: D-pad/stick move, A confirm, B back,
+Start pause. The README has the full list.
 
 
 1. SETUP
@@ -56,10 +57,15 @@ Play each song once on Expert and once on Easy (Enter starts the dive).
 For each one:
 [ ] Are the notes in sync with the music? (on the beat / early / late?)
 [ ] Does the timing feel fair? (PERFECT / GOOD / MISS)
+[ ] Do the hit windows feel fair now (not too easy, not too strict)?
+    (v0.5.1 made them wider.)
 [ ] Can you tell the 4 note shapes apart quickly?
 [ ] Hit explosions, the multiplier ring and the hull arc react to your
     play; section names show up at the top during the song.
 Write down anything odd as: song, difficulty, time (e.g. "HRT, Easy, 1:20").
+[ ] Settings > Display > Background: play one song on Calm and one on
+    Living. Which do you prefer, and what bothers you in the other?
+    I prefer: Calm / Living   ____________________________________
 
 
 5. RESULTS SCREEN
@@ -84,6 +90,18 @@ Open Settings (from the pause menu or the main menu):
     blips). Menu music can be turned off.
 [ ] Gameplay > Scroll speed: try a slow and a fast speed. Still readable?
 [ ] Controls: rebind a lane key, play a bit, then Reset Controls.
+[ ] With a controller: rebind a lane in the GAMEPAD column, play a bit,
+    then Reset Controls.
+
+
+6b. CONTROLLER IN MENUS (if you have a gamepad)
+-----------------------------------------------
+[ ] With only a controller: start the game, pick a song, pause, open
+    Settings, change something, go back, and return to the main menu.
+    Note any screen where a button did nothing.
+[ ] Also with only the controller: the results screen buttons, and
+    Settings > Calibration > Re-run Calibration and back.
+    My controller: Xbox / PlayStation / other ______________
 
 
 7. CALIBRATION AND PRACTICE
