@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-29-PLAN.md (gap G3 part 2); gap plan 02.2-30 remains
-last_updated: "2026-10-11T01:51:22.144Z"
+stopped_at: Completed 02.2-30-PLAN.md (gap round close, v0.5.1); awaiting 02.2-25 re-test
+last_updated: "2026-10-11T03:22:56.236Z"
 last_activity: 2026-10-11
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 70
-  completed_plans: 69
+  completed_plans: 70
   percent: 56
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 29 of 30 (gap closure)
-Status: 02.2-29 (gap G3 part 2) complete: settings rows, rebind cells (pad B cancels a keyboard cell), sliders and Background row (stick latch), calibration wizard focus and fail-screen B are pad-operable; 19 new pad tests; harness scenario pad walks the whole flow with pad events only. 02.2-25 human checkpoint still pending. Next: 02.2-30. Phase NOT complete.
+Plan: 30 of 30 (gap closure)
+Status: 02.2-30 (gap round close) complete: v0.5.1 friend zip (BUNDLED_OK 20, SHA-256 0997e0ea...), README/TESTER-CHECKLIST describe G1-G3 fixes, 02.2-HUMAN-UAT.md reset to pending (G1-G3 fixed-pending-retest, Living vs Calm question). Next: user re-test of v0.5.1 (02.2-25 human checkpoint). Phase NOT complete.
 Last activity: 2026-10-11
 
-Progress: [██████████] 99%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -98,6 +98,7 @@ Progress: [██████████] 99%
 | Phase 02.2 P27 | 25min | 2 tasks | 12 files |
 | Phase 02.2 P28 | 20min | 2 tasks | 8 files |
 | Phase 02.2 P29 | ~25 min | 2 tasks | 9 files |
+| Phase 02.2 P30 | 90min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -190,6 +191,7 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-25: the v0.5 zip ships TESTER-CHECKLIST.txt (user request); dist.ps1 runs under Windows PowerShell and pwsh
 - [Phase 02.2]: 02.2-29: Settings rows use explicit row-by-row focus neighbours; a listening keyboard rebind cell swallows pad input except B (cancel)
 - [Phase 02.2]: 02.2-29: Stick pushes are latched (one step / flip per push) on StepSlider and the Background row; fail screen B/Esc = Back to Menu
+- [Phase 02.2]: 02.2-30: v0.5.1 friend zip built and self-tested (BUNDLED_OK 20); UAT sheet back to pending with G1-G3 fixed-pending-retest; 02.2-25 and the phase stay open until the user re-tests
 
 ### Pending Todos
 
@@ -209,6 +211,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-10-11T01:51:17.090Z
-Stopped at: Completed 02.2-29-PLAN.md (gap G3 part 2); next 02.2-30
-Resume file: .planning/phases/02.2-visual-design-overhaul/02.2-30-PLAN.md
+Last session: 2026-10-11T03:22:38.196Z
+Stopped at: Completed 02.2-30-PLAN.md (gap round close, v0.5.1); awaiting 02.2-25 re-test
+Resume file: .planning/phases/02.2-visual-design-overhaul/02.2-HUMAN-UAT.md
