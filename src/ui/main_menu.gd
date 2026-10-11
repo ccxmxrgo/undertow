@@ -391,6 +391,18 @@ func _build_prompt() -> Control:
 		_prompt.visible = false
 		start_button.grab_focus())
 	row.add_child(prompt_skip_button)
+	# G3: the prompt is modal for focus. Left / Right (D-pad, stick, arrows) and Tab swap between
+	# its two buttons; Up / Down stay put instead of leaking to the menu items behind the panel.
+	for pair: Array in [[prompt_calibrate_button, prompt_skip_button], [prompt_skip_button, prompt_calibrate_button]]:
+		var b: Button = pair[0]
+		var other := b.get_path_to(pair[1])
+		var own := b.get_path_to(b)
+		b.focus_neighbor_left = other
+		b.focus_neighbor_right = other
+		b.focus_next = other
+		b.focus_previous = other
+		b.focus_neighbor_top = own
+		b.focus_neighbor_bottom = own
 	return panel
 
 
