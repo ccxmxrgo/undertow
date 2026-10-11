@@ -42,12 +42,16 @@ const REDUCE := {
 
 var _low := false
 var _reduce := false
+var _style := ""
 var _old_scores_path := ""
 
 
 func before_test() -> void:
 	_low = Settings.low_effects
 	_reduce = Settings.reduce_motion
+	_style = Settings.background_style
+	# 02.2-27: Calm is the default background; these checks assert Living behaviour.
+	Settings.background_style = Settings.BACKGROUND_LIVING
 	Settings.low_effects = false
 	Settings.reduce_motion = false
 	Settings.settings_changed.emit()
@@ -58,6 +62,7 @@ func before_test() -> void:
 func after_test() -> void:
 	Settings.low_effects = _low
 	Settings.reduce_motion = _reduce
+	Settings.background_style = _style
 	Settings.settings_changed.emit()
 	ScoreStore.default_path = _old_scores_path
 	for p in [SCORES_TMP, SCORES_TMP + ".tmp", SCORES_TMP + ".bak"]:
@@ -286,3 +291,37 @@ func test_results_screen_has_one_focus_marker() -> void:
 	await get_tree().process_frame
 	assert_int(r.find_children("*", "FocusMarker", true, false).size()).is_equal(1)
 	assert_object(r.focus_marker).is_not_null()
+
+
+# 02.2-27 (gap G2): the Background style switches the running dive's arena through the effect
+# contract; Low effects / Reduce motion still apply on top of Calm; the board is untouched.
+func test_gameplay_background_style_switches_live() -> void:
+	var gp := _gameplay()
+	await get_tree().process_frame
+	var arena := _find(gp, "Arena")
+	var notes := _find(gp, "HighwayNotes")
+	var highway := _find(gp, "Highway")
+	assert_object(arena).is_not_null()
+	var board_living := [notes.effect_counts().duplicate(true), highway.effect_counts().duplicate(true)]
+	assert_str(arena.effect_counts()["style"]).is_equal("living")
+	assert_bool(arena.effect_counts()["creature"]).is_true()
+	Settings.background_style = Settings.BACKGROUND_CALM
+	Settings.settings_changed.emit()
+	var c: Dictionary = arena.effect_counts()
+	assert_str(c["style"]).is_equal("calm")
+	assert_bool(c["creature"]).is_false()
+	assert_bool(c["wall_scroll"]).is_false()
+	assert_bool(c["glitch"]).is_false()
+	assert_int(int(c["snow"])).is_equal(24)
+	assert_array([notes.effect_counts(), highway.effect_counts()]).is_equal(board_living)
+	_apply(true, false)
+	c = arena.effect_counts()
+	assert_int(int(c["rings"])).is_equal(6)
+	assert_bool(c["colony_glow"]).is_false()
+	_apply(false, true)
+	assert_bool(arena.effect_counts()["snow_frozen"]).is_true()
+	_apply(false, false)
+	Settings.background_style = Settings.BACKGROUND_LIVING
+	Settings.settings_changed.emit()
+	assert_str(arena.effect_counts()["style"]).is_equal("living")
+	assert_int(int(arena.effect_counts()["snow"])).is_equal(80)

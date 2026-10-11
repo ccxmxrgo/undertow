@@ -272,3 +272,61 @@ func test_project_creates_window_windowed_1600x900() -> void:
 	assert_int(int(ProjectSettings.get_setting("display/window/size/mode", -1))).is_equal(DisplayServer.WINDOW_MODE_WINDOWED)
 	assert_int(int(ProjectSettings.get_setting("display/window/size/window_width_override", 0))).is_equal(1600)
 	assert_int(int(ProjectSettings.get_setting("display/window/size/window_height_override", 0))).is_equal(900)
+
+
+# ---- 02.2-27: background style (gap G2, T-02.2-51) ----------------------------------------
+
+func test_background_defaults_to_calm() -> void:
+	var s := _settings()
+	assert_str(s.background_style).is_equal("calm")
+	assert_str(s.BACKGROUND_CALM).is_equal("calm")
+	assert_str(s.BACKGROUND_LIVING).is_equal("living")
+	s.background_style = "living"
+	s.reset_defaults()
+	assert_str(s.background_style).is_equal("calm")
+
+
+func test_background_missing_key_in_existing_file_is_calm() -> void:
+	_write("[display]\nfullscreen=false\nlow_effects=true\n")
+	var s := _settings()
+	s.background_style = "living"
+	s.load_from(PATH)
+	assert_str(s.background_style).is_equal("calm")
+	assert_bool(s.low_effects).is_true()
+
+
+func test_background_round_trips_in_display_section() -> void:
+	var s := _settings()
+	s.background_style = "living"
+	s.save_to(PATH)
+	var cfg := ConfigFile.new()
+	assert_int(cfg.load(PATH)).is_equal(OK)
+	assert_str(String(cfg.get_value("display", "background", ""))).is_equal("living")
+	var s2 := _settings()
+	s2.load_from(PATH)
+	assert_str(s2.background_style).is_equal("living")
+
+
+func test_background_invalid_values_fall_back_to_calm() -> void:
+	for bad in ["background=5", "background=\"neon\"", "background=true", "background=[\"living\"]",
+			"background=\"LIVING\""]:
+		_write("[display]\n%s\n" % bad)
+		var s := _settings()
+		s.background_style = "living"
+		s.load_from(PATH)
+		assert_str(s.background_style).override_failure_message(bad).is_equal("calm")
+
+
+func test_set_background_style_validates_persists_and_emits() -> void:
+	var s := _settings()
+	var count := [0]
+	s.settings_changed.connect(func() -> void: count[0] += 1)
+	s.set_background_style("living")
+	assert_str(s.background_style).is_equal("living")
+	assert_int(count[0]).is_equal(1)
+	var s2 := _settings()
+	s2.load_from(PATH)
+	assert_str(s2.background_style).is_equal("living")
+	s.set_background_style("disco")
+	assert_str(s.background_style).is_equal("calm")
+	assert_int(count[0]).is_equal(2)

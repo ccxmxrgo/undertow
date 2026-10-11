@@ -611,3 +611,42 @@ func test_overlay_mode_has_opaque_shade_and_no_backdrop() -> void:
 	assert_object(s.shade).is_not_null()
 	assert_that(s.shade.color).is_equal(Color(Palette.ABYSS_900, 0.85))
 	assert_int(s.find_children("*", "AbyssBackdrop", true, false).size()).is_equal(0)
+
+
+# ---- 02.2-27: Display > Background (gap G2) -----------------------------------------------
+
+
+func _ui(action: StringName) -> InputEventAction:
+	var e := InputEventAction.new()
+	e.action = action
+	e.pressed = true
+	return e
+
+
+func test_background_row_after_low_effects_cycles_and_persists() -> void:
+	var s := _screen()
+	await get_tree().process_frame
+	var titles := s.row_titles()
+	assert_int(titles.find("Background")).is_equal(titles.find("Low effects") + 1)
+	assert_str(s.hint_for("Background")).is_equal(
+		"Calm: still trench walls, soft glow on the beat. Living: walls move and pulse with the music.")
+	var b: Button = s.background_button
+	assert_str(b.text).is_equal("CALM")
+	assert_int(b.focus_mode).is_equal(Control.FOCUS_ALL)
+	b.pressed.emit()
+	assert_str(Settings.background_style).is_equal("living")
+	assert_str(b.text).is_equal("LIVING")
+	var cfg := ConfigFile.new()
+	assert_int(cfg.load(TEST_PATH)).is_equal(OK)
+	assert_str(String(cfg.get_value("display", "background", ""))).is_equal("living")
+	b.grab_focus()
+	b.gui_input.emit(_ui(&"ui_right"))
+	assert_str(Settings.background_style).is_equal("calm")
+	assert_str(b.text).is_equal("CALM")
+	assert_object(get_viewport().gui_get_focus_owner()).is_same(b)
+	b.gui_input.emit(_ui(&"ui_left"))
+	assert_str(Settings.background_style).is_equal("living")
+	assert_str(b.text).is_equal("LIVING")
+	# Reachable by keyboard focus from the Low effects toggle.
+	var down := s.low_effects_button.find_valid_focus_neighbor(SIDE_BOTTOM)
+	assert_object(down).is_same(b)

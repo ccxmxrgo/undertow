@@ -3,18 +3,23 @@ extends GdUnitTestSuite
 
 var _low: bool
 var _rm: bool
+var _style: String
 
 
 func before_test() -> void:
 	_low = Settings.low_effects
 	_rm = Settings.reduce_motion
+	_style = Settings.background_style
 	Settings.low_effects = false
 	Settings.reduce_motion = false
+	# 02.2-27: Calm is the default background; the tests below assert Living behaviour.
+	Settings.background_style = Settings.BACKGROUND_LIVING
 
 
 func after_test() -> void:
 	Settings.low_effects = _low
 	Settings.reduce_motion = _rm
+	Settings.background_style = _style
 
 
 func test_energy_tiers() -> void:
@@ -353,3 +358,216 @@ func test_colonies_stay_out_of_the_console_corners() -> void:
 		for p in a.colony_dots():
 			var in_console := p.y > 600.0 and (p.x < 400.0 or p.x > 1520.0)
 			assert_bool(in_console).override_failure_message("colony dot %s in a console corner" % p).is_false()
+
+
+# ---- 02.2-27: Calm background (gap G2) ---------------------------------------------------
+
+func _calm_arena() -> Arena:
+	Settings.background_style = Settings.BACKGROUND_CALM
+	var a: Arena = auto_free(Arena.new())
+	a.bind(null, [], "sea_shanty_2")  # empty tempo map = 120 BPM
+	a.apply_effect_settings()
+	return a
+
+
+## First scheduled creature crossing midpoint (song time) for this arena's key.
+func _creature_mid(a: Arena) -> float:
+	var t := 0.0
+	while t < 400.0:
+		if a.creature_rect(t).has_area():
+			return t + 2.0
+		t += 0.25
+	return -1.0
+
+
+func test_calm_walls_and_glow_radius_are_still() -> void:
+	var a := _calm_arena()
+	assert_str(a.background_style()).is_equal(Arena.STYLE_CALM)
+	var r0 := a.ring_radii()
+	var s0 := a.scroll_phase()
+	var g0 := a.depth_glow_radius()
+	for i in 240:  # 4 s at 60 fps, 120 BPM
+		a.advance(1.0 / 60.0)
+		assert_array(Array(a.ring_radii())).is_equal(Array(r0))
+		assert_float(a.scroll_phase()).is_equal(s0)
+		assert_float(a.depth_glow_radius()).is_equal(g0)
+
+
+func test_living_walls_move_for_contrast() -> void:
+	Settings.background_style = Settings.BACKGROUND_LIVING
+	var a: Arena = auto_free(Arena.new())
+	a.apply_effect_settings()
+	var r0 := a.ring_radii()
+	a.advance(0.5)
+	assert_array(Array(a.ring_radii())).is_not_equal(Array(r0))
+
+
+func test_calm_has_no_creature_or_miss_glitch() -> void:
+	var a := _calm_arena()
+	var mid := _creature_mid(a)
+	assert_float(mid).is_greater(0.0)
+	a._update_creature(mid)
+	assert_bool(a.creature_active()).is_false()
+	a.on_miss()
+	assert_bool(a.glitch_active()).is_false()
+	var c := a.effect_counts()
+	assert_bool(c["creature"]).is_false()
+	assert_bool(c["glitch"]).is_false()
+	assert_bool(c["wall_scroll"]).is_false()
+	assert_bool(c["wall_breathe"]).is_false()
+	assert_str(c["style"]).is_equal("calm")
+
+
+func test_calm_snow_fewer_slower_and_straight() -> void:
+	var a := _calm_arena()
+	assert_int(a.effect_counts()["snow"]).is_equal(Arena.SNOW_LOW)
+	Settings.background_style = Settings.BACKGROUND_LIVING
+	var b: Arena = auto_free(Arena.new())
+	b.apply_effect_settings()
+	var pa: PackedVector2Array = a._snow_pos.duplicate()
+	var pb: PackedVector2Array = b._snow_pos.duplicate()
+	a.advance(0.1)
+	b.advance(0.1)
+	var fast_a := 0.0
+	var fast_b := 0.0
+	for i in Arena.SNOW_LOW:
+		var da: Vector2 = a._snow_pos[i] - pa[i]
+		var db: Vector2 = b._snow_pos[i] - pb[i]
+		assert_float(da.x).is_equal(0.0)  # no sideways wobble
+		fast_a = maxf(fast_a, da.y)
+		fast_b = maxf(fast_b, db.y)
+	assert_float(fast_a).is_greater(0.0)
+	assert_float(fast_a).is_less_equal(0.4 * fast_b + 0.0001)
+
+
+func test_calm_fish_fewer_slower_and_no_pulse() -> void:
+	var a := _calm_arena()
+	assert_int(a.effect_counts()["fish"]).is_less_equal(Arena.CROWD_LOW)
+	a.set_tier(4)
+	assert_int(a.visible_crowd()).is_less_equal(Arena.CROWD_LOW)
+	Settings.background_style = Settings.BACKGROUND_LIVING
+	var b: Arena = auto_free(Arena.new())
+	b.apply_effect_settings()
+	Settings.background_style = Settings.BACKGROUND_CALM
+	for i in [1, 2, 4, 5]:
+		var a0 := a._fish_pos(i)
+		var b0 := b._fish_pos(i)
+		a._t += 1.0
+		b._t += 1.0
+		var da := absf(a._fish_pos(i).x - a0.x)
+		var db := absf(b._fish_pos(i).x - b0.x)
+		a._t -= 1.0
+		b._t -= 1.0
+		assert_float(da).is_less_equal(0.25 * db + 0.0001)
+	for i in 30:
+		a.advance(1.0 / 30.0)
+		assert_float(a.fish_scale_pulse()).is_equal(1.0)
+
+
+func test_calm_colonies_and_glow_breathe_gently() -> void:
+	var a := _calm_arena()
+	a.set_tier(4)
+	var lo := 1.0
+	var hi := 0.0
+	var glo := 1.0
+	var ghi := 0.0
+	var prev := a.depth_glow_alpha()
+	var max_step := 0.0
+	for i in 240:
+		a.advance(1.0 / 60.0)
+		var ca := a.colony_alpha_now()
+		lo = minf(lo, ca)
+		hi = maxf(hi, ca)
+		var ga := a.depth_glow_alpha()
+		glo = minf(glo, ga)
+		ghi = maxf(ghi, ga)
+		max_step = maxf(max_step, absf(ga - prev))
+		prev = ga
+	assert_float(lo).is_greater_equal(0.35)
+	assert_float(hi).is_less_equal(0.50)
+	assert_float(hi - lo).is_greater(0.02)  # it does breathe
+	assert_float(ghi - glo).is_less_equal(0.08)
+	assert_float(ghi - glo).is_greater(0.0)
+	assert_float(max_step).is_less_equal(0.02)
+	assert_bool(a.effect_counts()["colony_radius_pulse"]).is_false()
+
+
+func test_living_colony_alpha_spans_the_spec_range() -> void:
+	Settings.background_style = Settings.BACKGROUND_LIVING
+	var a: Arena = auto_free(Arena.new())
+	a.apply_effect_settings()
+	var lo := 1.0
+	var hi := 0.0
+	for i in 120:
+		a.advance(1.0 / 60.0)
+		lo = minf(lo, a.colony_alpha_now())
+		hi = maxf(hi, a.colony_alpha_now())
+	assert_float(lo).is_less_equal(0.26)
+	assert_float(hi).is_greater_equal(0.75)
+
+
+func test_calm_with_low_effects_uses_low_counts() -> void:
+	Settings.low_effects = true
+	var a := _calm_arena()
+	var c := a.effect_counts()
+	assert_int(c["rings"]).is_equal(6)
+	assert_int(c["colonies"]).is_equal(12)
+	assert_bool(c["colony_glow"]).is_false()
+	assert_int(c["snow"]).is_equal(Arena.SNOW_LOW)
+	assert_int(c["fish"]).is_less_equal(Arena.CROWD_LOW)
+	assert_bool(a.glow_layer().visible).is_false()
+
+
+func test_calm_with_reduce_motion_freezes_snow_and_fish_but_breathes() -> void:
+	Settings.reduce_motion = true
+	var a := _calm_arena()
+	var snow: PackedVector2Array = a._snow_pos.duplicate()
+	var f0 := a._fish_pos(3)
+	var lo := 1.0
+	var hi := 0.0
+	for i in 120:
+		a.advance(1.0 / 60.0)
+		lo = minf(lo, a.colony_alpha_now())
+		hi = maxf(hi, a.colony_alpha_now())
+	assert_array(Array(a._snow_pos)).is_equal(Array(snow))
+	assert_that(a._fish_pos(3)).is_equal(f0)
+	assert_float(hi - lo).is_greater(0.0)
+	assert_bool(a.effect_counts()["snow_frozen"]).is_true()
+
+
+func test_style_switches_live_through_the_effect_contract() -> void:
+	Settings.background_style = Settings.BACKGROUND_LIVING
+	var a: Arena = auto_free(Arena.new())
+	add_child(a)
+	assert_str(a.effect_counts()["style"]).is_equal("living")
+	assert_bool(a.effect_counts()["creature"]).is_true()
+	Settings.background_style = Settings.BACKGROUND_CALM
+	Settings.settings_changed.emit()
+	assert_str(a.effect_counts()["style"]).is_equal("calm")
+	assert_bool(a.effect_counts()["creature"]).is_false()
+	var r0 := a.ring_radii()
+	a.advance(0.5)
+	assert_array(Array(a.ring_radii())).is_equal(Array(r0))
+	Settings.background_style = Settings.BACKGROUND_LIVING
+	Settings.settings_changed.emit()
+	assert_str(a.effect_counts()["style"]).is_equal("living")
+	remove_child(a)
+
+
+func test_menu_mode_ignores_background_style() -> void:
+	var out := []
+	for style in [Settings.BACKGROUND_LIVING, Settings.BACKGROUND_CALM]:
+		Settings.background_style = style
+		var a: Arena = auto_free(Arena.new())
+		a.menu_mode = true
+		a.apply_effect_settings()
+		var radii := []
+		var alphas := []
+		for i in 60:
+			a.advance(1.0 / 30.0)
+			radii.append(Array(a.ring_radii()))
+			alphas.append(a.colony_alpha_now())
+		var c := a.effect_counts()
+		c.erase("style")
+		out.append([radii, alphas, c, Array(a._snow_pos), a.depth_glow_radius(), a.depth_glow_alpha()])
+	assert_array(out[0]).is_equal(out[1])
