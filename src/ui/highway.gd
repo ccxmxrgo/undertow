@@ -833,7 +833,7 @@ func _draw_receptors() -> void:
 	for lane in range(LANES):
 		var col := Palette.lane_color(lane)
 		var kind := NoteShape.kind_for_lane(lane)
-		var center := Trench.hit_point(lane)
+		var center := receptor_center(lane)
 		var tick := _press_ticks[lane]
 		var age := now - tick if tick >= 0 else RECEPTOR_PULSE_USEC
 		var pressed := age >= 0 and age < RECEPTOR_PULSE_USEC
@@ -873,6 +873,27 @@ func _pad_outline(kind: int, center: Vector2, kx: float, ky: float, width: float
 	draw_polyline(_ring, col, width, true)
 
 
+# ---- Shared positions (02.2-26, G1): drawing and tests use these, so they cannot drift ------
+
+## Depth of a gem this frame from the visual time snapshot (missed remnants are pinned just
+## past the line at d = -0.06; pending gems keep moving).
+func gem_depth(note_index: int) -> float:
+	var d := Trench.depth_for(float(chart.notes[note_index]["time"]), _vt, _approach)
+	if _state[note_index] == S_MISSED:
+		d = maxf(d, -0.06)
+	return d
+
+
+## The exact centre draw_notes_into / draw_halos_into pass to NotePainter for this note.
+func gem_center(note_index: int) -> Vector2:
+	return Trench.point(Trench.lane_f(int(chart.notes[note_index]["lane"])), gem_depth(note_index))
+
+
+## Un-squashed receptor pad centre (on the hit line); _draw_receptors and the lane numbers use it.
+func receptor_center(lane: int) -> Vector2:
+	return Trench.hit_point(lane)
+
+
 # ---- HighwayNotes layer (rows 9..11) -----------------------------------------------------
 
 ## Gems far to near, missed remnants and lane numbers, drawn into the HighwayNotes layer.
@@ -888,7 +909,6 @@ func draw_notes_into(ci: CanvasItem) -> void:
 				continue
 			var n: Dictionary = notes[idx]
 			var lane: int = n["lane"]
-			var d := Trench.depth_for(float(n["time"]), _vt, _approach)
 			var paint := NotePainter.STATE_FAR
 			var fade := 1.0
 			if state == S_MISSED:
@@ -896,11 +916,11 @@ func draw_notes_into(ci: CanvasItem) -> void:
 				fade = 1.0 - clampf(past / GHOST_FADE_SEC, 0.0, 1.0)
 				if fade <= 0.0:
 					continue
-				d = maxf(d, -0.06)
 				paint = NotePainter.STATE_MISSED
 			elif note_is_ready(float(n["time"]) - _st, _good_window):
 				paint = NotePainter.STATE_READY
-			var c := Trench.point(Trench.lane_f(lane), d)
+			var d := gem_depth(idx)
+			var c := gem_center(idx)
 			var r := Trench.note_radius(Trench.scale_at(d))
 			NotePainter.draw_note(ci, int(n.get("type", NotePainter.NOTE_NORMAL)), lane, c, r, paint, _st, fade)
 	_draw_lane_numbers(ci)
@@ -919,8 +939,8 @@ func draw_halos_into(ci: CanvasItem) -> void:
 		if not note_is_ready(float(n["time"]) - _st, _good_window):
 			continue
 		var lane: int = n["lane"]
-		var d := Trench.depth_for(float(n["time"]), _vt, _approach)
-		NotePainter.draw_halo(ci, lane, Trench.point(Trench.lane_f(lane), d), Trench.note_radius(Trench.scale_at(d)))
+		var d := gem_depth(idx)
+		NotePainter.draw_halo(ci, lane, gem_center(idx), Trench.note_radius(Trench.scale_at(d)))
 
 
 ## Bound key under each receptor (Label 20, lane colour 90%), cached per settings change.
@@ -930,7 +950,7 @@ func _draw_lane_numbers(ci: CanvasItem) -> void:
 		return
 	var font := Palette.font()
 	for lane in range(LANES):
-		var center := Trench.hit_point(lane)
+		var center := receptor_center(lane)
 		ci.draw_string(font, Vector2(center.x - 50.0, center.y + 60.0), _lane_labels[lane], HORIZONTAL_ALIGNMENT_CENTER,
 			100.0, Palette.SIZE_LABEL, Palette.alpha(Palette.lane_color(lane), LANE_LABEL_ALPHA * ra))
 

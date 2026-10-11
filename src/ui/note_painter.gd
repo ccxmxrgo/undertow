@@ -121,11 +121,17 @@ static func unit_shape(kind: int) -> Dictionary:
 			poly[i] = Vector2(cos(a), sin(a))
 	else:
 		poly = NoteShape._polygon(k, Vector2.ZERO, 1.0)
+	# Recentre on the bounding box (02.2-26, G1): the triangle spans y -1..0.9, so its visual
+	# centre sat 0.05 r (2 px at the hit line) above the anchor that the judge's on-time moment
+	# puts on the hit line. The specular moves with the shape and the shared pad ring is built
+	# from this poly, so gem and pad stay identical; the top-light is clipped at centre - 0.2 r.
+	var shift := -_bbox_center(poly)
+	poly = _translated(poly, shift)
 	var clip := PackedVector2Array([Vector2(-2.0, -2.0), Vector2(2.0, -2.0), Vector2(2.0, TOPLIGHT_CLIP), Vector2(-2.0, TOPLIGHT_CLIP)])
 	var parts := Geometry2D.intersect_polygons(poly, clip)
 	var top: PackedVector2Array = parts[0] if not parts.is_empty() else PackedVector2Array()
 	# Chevron "^" 0.35 wide: outer edge, apex, outer edge, then the inner edge back.
-	var c := _SPEC_CENTRE[k]
+	var c := _SPEC_CENTRE[k] + shift
 	var w := SPEC_W * 0.5
 	var spec := PackedVector2Array([
 		c + Vector2(-w, 0.06), c + Vector2(0.0, -0.10), c + Vector2(w, 0.06),
@@ -144,6 +150,21 @@ static func unit_shape(kind: int) -> Dictionary:
 	var entry := {"poly": poly, "top": top, "spec": spec, "ring": ring}
 	_cache[k] = entry
 	return entry
+
+
+static func _bbox_center(poly: PackedVector2Array) -> Vector2:
+	var r := Rect2(poly[0], Vector2.ZERO)
+	for p in poly:
+		r = r.expand(p)
+	return r.get_center()
+
+
+static func _translated(poly: PackedVector2Array, by: Vector2) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	out.resize(poly.size())
+	for i in range(poly.size()):
+		out[i] = poly[i] + by
+	return out
 
 
 ## Closed unit outline of a lane kind (receptor pads scale it non-uniformly for the squash).
