@@ -50,8 +50,6 @@ const HINT_LOW_EFFECTS := "Fewer particles, no glow or CRT effect, simpler backg
 const HINT_MENU_MUSIC := "Plays a quiet song preview on the main menu."
 const HINT_FULLSCREEN := "F11 toggles fullscreen at any time."
 const HINT_BACKGROUND := "Calm: still trench walls, soft glow on the beat. Living: walls move and pulse with the music."
-## Background value button width (fits "LIVING" in the button font with padding).
-const BACKGROUND_BUTTON_W := 200.0
 
 
 ## Pill toggle (UI-SPEC 9.3): 160 x 40, CUT_SM chamfer. ON = SONAR 22% fill, SONAR edge, "ON"
@@ -534,7 +532,11 @@ func _build_display(box: VBoxContainer) -> void:
 func _build_background_row(box: VBoxContainer) -> void:
 	var title := "Background"
 	var row := _row(box, title)
-	background_button = _compact_button(background_label(Settings.background_style), BACKGROUND_BUTTON_W)
+	# Same footprint and chip text as the pill toggles above it, so the hint column lines up.
+	background_button = _compact_button(background_label(Settings.background_style), PillToggle.SIZE.x)
+	background_button.custom_minimum_size = PillToggle.SIZE
+	background_button.add_theme_font_override("font", UiKit.chip_font())
+	background_button.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
 	background_button.name = "BackgroundButton"
 	background_button.pressed.connect(cycle_background)
 	background_button.gui_input.connect(func(ev: InputEvent) -> void:
@@ -543,7 +545,7 @@ func _build_background_row(box: VBoxContainer) -> void:
 			background_button.accept_event())
 	row.add_child(background_button)
 	var h := _hint(HINT_BACKGROUND)
-	h.custom_minimum_size = Vector2(VALUE_RIGHT - CONTROL_X - BACKGROUND_BUTTON_W - ROW_GAP, 0.0)
+	h.custom_minimum_size = Vector2(VALUE_RIGHT - CONTROL_X - PillToggle.SIZE.x - ROW_GAP, 0.0)
 	row.add_child(h)
 	_hints[title] = HINT_BACKGROUND
 
