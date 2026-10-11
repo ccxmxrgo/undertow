@@ -29,11 +29,16 @@ static func tap(target: Object, index: int) -> void:
 	await (Engine.get_main_loop() as SceneTree).process_frame
 
 
-## Pushes a stick deflection then a return to centre and awaits one process frame.
-static func flick(target: Object, axis: int, value: float) -> void:
-	_send(target, motion(axis, value))
-	_send(target, motion(axis, 0.0))
-	await (Engine.get_main_loop() as SceneTree).process_frame
+## Sends a stick deflection, then a return to centre, one frame apart, and awaits a frame.
+## Always goes through Input.parse_input_event: Godot's GUI moves focus on a JoypadMotion only
+## when Input also reports the action as just pressed, which a bare Viewport.push_input skips.
+## `target` is kept for symmetry with tap() and is unused.
+static func flick(_target: Object, axis: int, value: float) -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	Input.parse_input_event(motion(axis, value))
+	await tree.process_frame
+	Input.parse_input_event(motion(axis, 0.0))
+	await tree.process_frame
 
 
 static func _send(target: Object, ev: InputEvent) -> void:
