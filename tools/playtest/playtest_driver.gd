@@ -2032,12 +2032,16 @@ func _pending_dt_within(g: Gameplay, lo: float, hi: float) -> bool:
 static func fake_offsets(perfect: int, good: int, bias_ms: float, seed_v: int) -> PackedFloat32Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_v
+	# Bands follow JudgeConfig (02.2-26): Perfect inside pw - 1 ms, Good from pw + 3 to gw - 4 ms.
+	var cfg := JudgeConfig.new()
+	var pw_ms := cfg.perfect_window * 1000.0
+	var gw_ms := cfg.good_window * 1000.0
 	var out := PackedFloat32Array()
 	for i in perfect:
-		out.append(clampf(rng.randfn(bias_ms, 11.0), -34.0, 34.0) / 1000.0)
+		out.append(clampf(rng.randfn(bias_ms, 11.0), -(pw_ms - 1.0), pw_ms - 1.0) / 1000.0)
 	for i in good:
 		var side := -1.0 if i % 3 == 0 else 1.0
-		out.append(side * rng.randf_range(38.0, 66.0) / 1000.0)
+		out.append(side * rng.randf_range(pw_ms + 3.0, gw_ms - 4.0) / 1000.0)
 	return out
 
 
