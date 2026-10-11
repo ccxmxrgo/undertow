@@ -151,6 +151,16 @@ Plans:
 - [x] 02.2-29-PLAN.md — Gap G3 part 2: pad tests and fixes for settings, rebind cells, sliders, calibration; pad-only harness walk
 - [x] 02.2-30-PLAN.md — Gap round close: v0.5.1 zip, README/checklist, UAT sheet reset for re-test
 
+### Phase 02.2.1: MIDI chart import (INSERTED)
+
+**Goal:** Players can drop Clone Hero / Guitar Hero songs that ship `notes.mid` (e.g. a GH3 Legends of Rock pack) into the Songs folder and play them exactly like `.chart` songs. The importer reads PART GUITAR (falling back to other guitar tracks when absent), all four difficulties (Easy 60-64, Medium 72-76, Hard 84-88, Expert 96-100) mapped to the game's lanes the same way `.chart` files are, the tempo map and time signatures, EVENTS section names, solo markers (note 103), sustains, and song.ini metadata/delay. The "MIDI charts not supported yet" error goes away. Ends with a v0.5.2 friend zip. (User request 2026-10-11.)
+**Requirements**: CONT-01 (moved from v2 into this phase), SONG-07 (.mid solo markers)
+**Depends on:** Phase 02.2
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.2.1 to break down)
+
 ### Phase 02.1: Instrument Extraction Tool (INSERTED)
 
 **Goal:** Players can turn a song they own into a playable chart by extracting its instruments. Research comes first: study how to separate stems and how to turn a stem into notes, then build the tool.

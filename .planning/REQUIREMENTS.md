@@ -132,7 +132,7 @@
 
 ### Content
 
-- **CONT-01**: Import Clone Hero `.mid` charts
+- **CONT-01**: Import Clone Hero `.mid` charts (moved into Phase 02.2.1 on 2026-10-11 at the user's request)
 - **CONT-02**: Auto-generate charts from the full mix (rejected by the user: charts come from extracted instruments instead, see STEM-*)
 
 ### Modes

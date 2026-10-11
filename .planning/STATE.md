@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
+status: completed
 stopped_at: Completed 02.2-30-PLAN.md (gap round close, v0.5.1); awaiting 02.2-25 re-test
-last_updated: "2026-10-11T03:22:56.236Z"
+last_updated: "2026-10-11T03:39:12.646Z"
 last_activity: 2026-10-11
 progress:
-  total_phases: 9
-  completed_phases: 5
+  total_phases: 10
+  completed_phases: 6
   total_plans: 70
   completed_plans: 70
-  percent: 56
+  percent: 60
 ---
 
 # Project State
@@ -101,6 +101,10 @@ Progress: [██████████] 100%
 | Phase 02.2 P30 | 90min | 2 tasks | 5 files |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 02.2.1 inserted after Phase 02.2: MIDI chart import (CONT-01 pulled forward; friend's GH3 pack uses notes.mid) (URGENT)
 
 ### Decisions
 
