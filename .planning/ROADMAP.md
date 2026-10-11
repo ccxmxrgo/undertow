@@ -116,7 +116,7 @@ Plans:
 
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 28/30 plans executed
+**Plans:** 29/30 plans executed
 
 Plans:
 
@@ -148,7 +148,7 @@ Plans:
 - [x] 02.2-26-PLAN.md — Gap G1: prove gem-at-hit-line sync, widen JudgeConfig to 50/100/130 ms (user-approved), re-baseline timing gate, update histogram/tests/harness
 - [x] 02.2-27-PLAN.md — Gap G2: Calm gameplay background next to Living, Settings > Display > Background (default Calm), same-moment screenshots
 - [x] 02.2-28-PLAN.md — Gap G3 part 1: A/B on ui_accept/ui_cancel; pad tests and fixes for menu, song select, results/fail, pause, dialogs, intro
-- [ ] 02.2-29-PLAN.md — Gap G3 part 2: pad tests and fixes for settings, rebind cells, sliders, calibration; pad-only harness walk
+- [x] 02.2-29-PLAN.md — Gap G3 part 2: pad tests and fixes for settings, rebind cells, sliders, calibration; pad-only harness walk
 - [ ] 02.2-30-PLAN.md — Gap round close: v0.5.1 zip, README/checklist, UAT sheet reset for re-test
 
 ### Phase 02.1: Instrument Extraction Tool (INSERTED)

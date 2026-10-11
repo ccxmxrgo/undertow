@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02.2-28-PLAN.md (gap G3 part 1); gap plans 02.2-29, 02.2-30 remain
-last_updated: "2026-10-11T01:28:39.368Z"
+stopped_at: Completed 02.2-29-PLAN.md (gap G3 part 2); gap plan 02.2-30 remains
+last_updated: "2026-10-11T01:51:22.144Z"
 last_activity: 2026-10-11
 progress:
   total_phases: 9
   completed_phases: 5
   total_plans: 70
-  completed_plans: 68
+  completed_plans: 69
   percent: 56
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 28 of 30 (gap closure)
-Status: 02.2-28 (gap G3 part 1) complete: ui_accept/ui_cancel carry pad A/B (keyboard defaults kept), device prompt focus fixed, 25 pad-only tests (menu, prompt, song select, results, fail, pause, dialogs, intro, unpaused dive). 02.2-25 human checkpoint still pending. Next: 02.2-29 (G3 part 2: settings, rebind, sliders, calibration), 02.2-30. Phase NOT complete.
+Plan: 29 of 30 (gap closure)
+Status: 02.2-29 (gap G3 part 2) complete: settings rows, rebind cells (pad B cancels a keyboard cell), sliders and Background row (stick latch), calibration wizard focus and fail-screen B are pad-operable; 19 new pad tests; harness scenario pad walks the whole flow with pad events only. 02.2-25 human checkpoint still pending. Next: 02.2-30. Phase NOT complete.
 Last activity: 2026-10-11
 
-Progress: [██████████] 97%
+Progress: [██████████] 99%
 
 ## Performance Metrics
 
@@ -97,6 +97,7 @@ Progress: [██████████] 97%
 | Phase 02.2 P26 | 40 min | 3 tasks | 13 files |
 | Phase 02.2 P27 | 25min | 2 tasks | 12 files |
 | Phase 02.2 P28 | 20min | 2 tasks | 8 files |
+| Phase 02.2 P29 | ~25 min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -187,6 +188,8 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-24: cloud perf capture (xvfb llvmpipe) logged as NOT representative; no cut steps; plan 24 (final) perf row pending the user's PC
 - [Phase 02.2]: 02.2-25: perf gate unmeasured (not failed) in the cloud, so the UAT has no perf decision row; the PENDING PERF.md row stays for the Windows PC
 - [Phase 02.2]: 02.2-25: the v0.5 zip ships TESTER-CHECKLIST.txt (user request); dist.ps1 runs under Windows PowerShell and pwsh
+- [Phase 02.2]: 02.2-29: Settings rows use explicit row-by-row focus neighbours; a listening keyboard rebind cell swallows pad input except B (cancel)
+- [Phase 02.2]: 02.2-29: Stick pushes are latched (one step / flip per push) on StepSlider and the Background row; fail screen B/Esc = Back to Menu
 
 ### Pending Todos
 
@@ -206,6 +209,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-10-11T01:28:39.346Z
-Stopped at: Completed 02.2-28-PLAN.md (gap G3 part 1); next 02.2-29
-Resume file: .planning/phases/02.2-visual-design-overhaul/02.2-29-PLAN.md
+Last session: 2026-10-11T01:51:17.090Z
+Stopped at: Completed 02.2-29-PLAN.md (gap G3 part 2); next 02.2-30
+Resume file: .planning/phases/02.2-visual-design-overhaul/02.2-30-PLAN.md

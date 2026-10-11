@@ -128,3 +128,13 @@
 - **The pck contains `export_presets.cfg`** because the export include_filter has `*.cfg`. It holds
   no secrets (no keys or passwords; checked 2026-10-10) and was the same in v0.4. Possible cleanup:
   add `export_presets.cfg` to the exclude_filter.
+
+## Found in 02.2-29
+
+- **The gdUnit CLI stops a suite after its first failing test case.** With
+  `tools/run_tests.ps1 -Path res://tests/test_gamepad_settings.gd`, only the first failing test ran
+  ("Executed test cases: (1/1)"), and the rest of the suite was skipped. When all tests pass, all of
+  them run, so green results are complete. Red runs, however, show only the first failure per suite.
+  Possible cause: a gdUnit 6 setting or behaviour. Not investigated; tooling only.
+- **Scenario polish "screen transition finishes within 400 ms" failed once (406 ms at 23 fps;
+  wipe 374 ms)** under xvfb software GL. On re-run it passed 107 / 107. This is frame-time noise.
