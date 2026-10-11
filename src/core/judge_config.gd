@@ -3,9 +3,9 @@ extends Resource
 ## All judgment, hull, score and clock tunables (D-08). Seconds unless noted.
 ## Windows and tuning live here only; the judge contains no magic numbers.
 
-@export var perfect_window: float = 0.035
-@export var good_window: float = 0.070
-@export var early_miss_window: float = 0.100
+@export var perfect_window: float = 0.050
+@export var good_window: float = 0.100
+@export var early_miss_window: float = 0.130
 @export var release_forgive_window: float = 0.100
 @export var sustain_tick_interval: float = 0.1
 ## Hull damage for a stray press (D-10): default 0, revisit in Phase 3.
