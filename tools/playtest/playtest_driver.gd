@@ -43,7 +43,8 @@ const EMPTY_SONGS := LIB_ROOT + "/empty_songs"
 const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
 	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0, "immersion": 240.0,
-	"songs": 360.0, "align": 150.0, "perf": 470.0, "visual": 420.0, "autoplay5": 1500.0}
+	"songs": 360.0, "align": 150.0, "perf": 470.0, "visual": 420.0, "autoplay5": 1500.0,
+	"background": 300.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note (miss). Values stay >= 5 ms
 ## from the JudgeConfig window edges (Perfect 50 / Good 100 / early-miss 130 ms since 02.2-26, G1)
 ## so frame jitter cannot flip the expected judgment: Perfect 0..+-40, Good +-60/75/90, late
@@ -116,6 +117,7 @@ func _run() -> void:
 		"perf": await sc_perf()
 		"visual": await sc_visual()
 		"autoplay5": await sc_autoplay5()
+		"background": await sc_background()
 		_: check("known scenario", false, scenario)
 	_finish()
 
@@ -132,6 +134,9 @@ func isolate_settings(calibrated: bool) -> void:
 	if FileAccess.file_exists(TEMP_SETTINGS):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(TEMP_SETTINGS))
 	Settings.load_from(TEMP_SETTINGS)
+	# 02.2-27: Calm is the default background; every scenario asserts Living behaviour (wall
+	# motion, creature, miss glitch, beat-driven colonies) unless it opts in (scenario background).
+	Settings.background_style = Settings.BACKGROUND_LIVING
 	# Pitfall 7: no menu music in the harness unless a scenario opts in (polish menu block).
 	Settings.menu_music = false
 	MenuMusic.stop(0.0)
@@ -4014,6 +4019,86 @@ func _restore_window(saved: Dictionary) -> void:
 func _wait_song_time(g: Gameplay, t: float, timeout: float) -> bool:
 	return await wait_until(func() -> bool:
 		return is_instance_valid(g) and g.conductor != null and g.conductor.song_time() >= t, timeout)
+
+
+## 02.2-27 (gap G2): Living vs Calm gameplay background at the same song moment. Each variant
+## dives BundledSongs.SONGS[0] on Expert (autoplay), shoots at song time >= BG_SHOT_T and again
+## 0.5 s later, and the mean per-pixel luma change between the two shots is measured over two
+## background rectangles clear of the board keep-out and the HUD consoles.
+const BG_SHOT_T := 20.0
+const BG_GAP := 0.5
+const BG_RECTS: Array[Rect2] = [Rect2(64.0, 120.0, 496.0, 440.0), Rect2(1360.0, 120.0, 496.0, 440.0)]
+
+
+func sc_background() -> void:
+	isolate_settings(true)
+	await wait_library_idle(60.0)
+	var before := Settings.background_style
+	# The stillness rectangles must stay off the note path and above the console corners.
+	var rects_ok := true
+	for r in BG_RECTS:
+		for c in [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]:
+			rects_ok = rects_ok and Arena.path_clearance(c) > 0.0 and c.y < Arena.CONSOLE_TOP
+	check("stillness rectangles clear of the board keep-out and the consoles", rects_ok, BG_RECTS)
+	var b: Dictionary = BundledSongs.SONGS[0]
+	var times := {}
+	var diffs := {}
+	var calm_running := false
+	for style in [Settings.BACKGROUND_LIVING, Settings.BACKGROUND_CALM]:
+		Settings.set_background_style(style)  # saves to the isolated settings file
+		await goto(MENU)
+		SongSelect.run_autoplay = true
+		Gameplay.pending_intro = IntroTimeline.Mode.NONE
+		await goto(SONG_SELECT)
+		var g := await dive_from_song_select(str(b["dir"]), "expert")
+		var ok: bool = g != null and await wait_for_began(g) and await _wait_song_time(g, BG_SHOT_T, 40.0)
+		if not check("background %s dive reached %.0f s" % [style, BG_SHOT_T], ok and is_instance_valid(g)):
+			continue
+		await shot("background_%s" % style, g)
+		var img1 := last_img
+		var t1 := last_shot_st
+		ok = await _wait_song_time(g, t1 + BG_GAP, 10.0)
+		await shot("background_%s_t2" % style, g)
+		var img2 := last_img
+		var t2 := last_shot_st
+		times[style] = [t1, t2]
+		diffs[style] = _bg_diff(img1, img2)
+		if style == Settings.BACKGROUND_CALM and is_instance_valid(g):
+			calm_running = g.state == Gameplay.State.RUNNING and g.highway.notes_enabled \
+				and g.arena.background_style() == Arena.STYLE_CALM
+	metrics["background_shot_song_times"] = times
+	metrics["background_luma_diff"] = diffs
+	var have := times.has("living") and times.has("calm")
+	var dt := absf(float(times["living"][0]) - float(times["calm"][0])) if have else INF
+	metrics["background_shot_dt_s"] = dt
+	check("background living and calm shots taken at the same song time (+-0.1 s)", have and dt <= 0.1,
+		"%s" % [times])
+	var living_d: float = diffs.get("living", 0.0)
+	var calm_d: float = diffs.get("calm", INF)
+	check("calm background changes less than half as much as living over 0.5 s",
+		have and calm_d < 0.5 * living_d, "calm %.5f vs living %.5f" % [calm_d, living_d])
+	check("calm dive runs with the board visible", calm_running)
+	await goto(MENU)
+	Settings.set_background_style(before)
+	check("Settings.background_style restored after the scenario", Settings.background_style == before,
+		Settings.background_style)
+
+
+## Mean absolute luma difference over BG_RECTS (sampled every 2 design px).
+func _bg_diff(a: Image, b: Image) -> float:
+	var total := 0.0
+	var n := 0
+	for r in BG_RECTS:
+		var y := r.position.y
+		while y < r.end.y:
+			var x := r.position.x
+			while x < r.end.x:
+				var p := Vector2(x, y)
+				total += absf(_luma(_img_px(a, p)) - _luma(_img_px(b, p)))
+				n += 1
+				x += 2.0
+			y += 2.0
+	return total / float(maxi(n, 1))
 
 
 ## D-17 frame-time capture: uncapped p95 over the densest 30 s of a bundled Expert chart, Full and

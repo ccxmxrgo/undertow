@@ -28,6 +28,7 @@ const NAMES: Array[String] = [
 	"pause_panel", "implosion", "confirm_dialog", "settings_screen", "calibration_audio",
 	"results_first_record", "results_new_record", "results_practice_not_recorded",
 	"immersion_01_intro_rig_boot",
+	"background_living", "background_calm",
 ]
 
 ## Scenario to prefer when a shot exists in more than one scenario.
