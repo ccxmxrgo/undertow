@@ -44,7 +44,7 @@ const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
 	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0, "immersion": 240.0,
 	"songs": 360.0, "align": 150.0, "perf": 470.0, "visual": 420.0, "autoplay5": 1500.0,
-	"background": 300.0}
+	"background": 300.0, "pad": 300.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note (miss). Values stay >= 5 ms
 ## from the JudgeConfig window edges (Perfect 50 / Good 100 / early-miss 130 ms since 02.2-26, G1)
 ## so frame jitter cannot flip the expected judgment: Perfect 0..+-40, Good +-60/75/90, late
@@ -118,6 +118,7 @@ func _run() -> void:
 		"visual": await sc_visual()
 		"autoplay5": await sc_autoplay5()
 		"background": await sc_background()
+		"pad": await sc_pad()
 		_: check("known scenario", false, scenario)
 	_finish()
 
@@ -4830,3 +4831,192 @@ func _beat_line_contrast(g: Gameplay, img: Image) -> Dictionary:
 				best = {"diff": snappedf(peak - bg, 0.0001), "y": snappedf(y, 0.1), "lane": lane,
 					"bar": bool(l["bar"]), "lines": lines.size()}
 	return best
+
+
+# ------------------------------------------------------------------------------------------------
+# scenario pad (G3, 02.2-29): the whole menu flow with gamepad events only
+# ------------------------------------------------------------------------------------------------
+
+
+## Counts every keyboard event the viewport sees while the pad walk runs (must stay 0).
+class KeyWatch extends Node:
+	var keys := 0
+
+	func _input(event: InputEvent) -> void:
+		if event is InputEventKey:
+			keys += 1
+
+
+## One pad button press + release through Input (like a real controller), then two frames.
+func pad_tap(idx: int) -> void:
+	pad_button(idx, true)
+	await frame()
+	pad_button(idx, false)
+	await frame()
+	await frame()
+
+
+## One stick flick on `axis` (deflect, then back to centre), through Input.
+func pad_flick(axis: int, v: float) -> void:
+	pad_axis(axis, v)
+	await frame()
+	pad_axis(axis, 0.0)
+	await frame()
+	await frame()
+
+
+## D-pad Down (or Up) until `target` has focus; false after `max_steps`.
+func pad_focus(target: Control, down: bool = true, max_steps: int = 40) -> bool:
+	var n := 0
+	while focus_owner() != target and n < max_steps:
+		await pad_tap(JOY_BUTTON_DPAD_DOWN if down else JOY_BUTTON_DPAD_UP)
+		n += 1
+	return focus_owner() == target
+
+
+func _focus_name() -> String:
+	var f := focus_owner()
+	if f == null:
+		return "<none>"
+	return "%s '%s'" % [f.name, (f as Button).text] if f is Button else String(f.name)
+
+
+func sc_pad() -> void:
+	isolate_settings(true)
+	SongSelect.run_autoplay = false
+	SongSelect.run_practice = false
+	var style_at_start := Settings.background_style
+	var watch := KeyWatch.new()
+	watch.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(watch)
+	await wait_library_idle(60.0)
+
+	# 1. Main menu: focus on Start Dive; stick down then D-pad up returns; A -> Song Select.
+	await goto(MENU)
+	await wait(0.8)
+	var m := cur() as MainMenu
+	var ok := m != null and focus_owner() == m.start_button
+	await pad_flick(JOY_AXIS_LEFT_Y, 1.0)
+	var moved := m != null and focus_owner() == m.practice_button
+	await pad_tap(JOY_BUTTON_DPAD_UP)
+	ok = ok and moved and focus_owner() == m.start_button
+	await shot("pad_menu")
+	await pad_tap(JOY_BUTTON_A)
+	var to_ss: bool = await wait_until(func() -> bool: return cur() is SongSelect, 5.0)
+	check("pad: main menu (focus Start Dive, stick down + D-pad up, A -> Song Select)", ok and to_ss,
+		{"stick_moved": moved, "focus": _focus_name(), "scene": cur()})
+	if not to_ss:
+		return
+
+	# 2. Song select: D-pad down twice, D-pad right changes the difficulty, A -> exactly one dive.
+	var ss := cur() as SongSelect
+	await wait_library_idle()
+	await wait(0.5)
+	var sel0: String = ss.debug_state()["selected"]
+	await pad_tap(JOY_BUTTON_DPAD_DOWN)
+	await pad_tap(JOY_BUTTON_DPAD_DOWN)
+	var sel1: String = ss.debug_state()["selected"]
+	var d0: String = ss.debug_state()["difficulty"]
+	await pad_tap(JOY_BUTTON_DPAD_RIGHT)
+	var d1: String = ss.debug_state()["difficulty"]
+	if d1 == d0:
+		await pad_tap(JOY_BUTTON_DPAD_LEFT)  # already on the hardest: step the other way
+		d1 = ss.debug_state()["difficulty"]
+	await shot("pad_song_select")
+	await pad_tap(JOY_BUTTON_A)
+	var to_gp: bool = await wait_until(func() -> bool: return cur() is Gameplay, 8.0)
+	var g := cur() as Gameplay
+	var began: bool = to_gp and await wait_for_began(g, 10.0)
+	await wait(0.5)
+	var one_dive := to_gp and get_tree().root.find_children("*", "Gameplay", true, false).size() == 1
+	check("pad: song select (D-pad moves, D-pad changes difficulty, A -> one dive began)",
+		sel1 != sel0 and d1 != d0 and began and one_dive,
+		{"selected": [sel0, sel1], "difficulty": [d0, d1], "began": began, "one_dive": one_dive})
+	if not began:
+		return
+
+	# 3. Start -> pause (focus Resume); Settings overlay; Background row flips; B closes the
+	#    overlay only (focus Settings); Start resumes after the countdown.
+	var pm := g.pause_menu
+	await pad_tap(JOY_BUTTON_START)
+	var paused := pm.is_open() and focus_owner() == pm.resume_button
+	await shot("pad_pause")
+	var to_settings := await pad_focus(pm.settings_button)
+	await pad_tap(JOY_BUTTON_A)
+	await wait(0.4)
+	var overlay_open := pm.has_settings_overlay()
+	var so: SettingsScreen = null
+	for n in get_tree().root.find_children("*", "SettingsScreen", true, false):
+		so = n as SettingsScreen
+	var bg_focus := so != null and await pad_focus(so.background_button)
+	var style0 := Settings.background_style
+	await pad_tap(JOY_BUTTON_DPAD_RIGHT)
+	var flipped := Settings.background_style != style0
+	await shot("pad_settings_background")
+	await pad_tap(JOY_BUTTON_B)
+	await wait(0.2)
+	var closed := not pm.has_settings_overlay() and pm.is_open() and focus_owner() == pm.settings_button
+	await pad_tap(JOY_BUTTON_START)
+	var counting := pm.is_counting_down()
+	var resumed: bool = await wait_until(func() -> bool:
+		return not pm.is_open() and not pm.is_counting_down(), 8.0)
+	check("pad: pause + settings overlay (Start, D-pad, A, Background flips, B closes overlay, Start resumes)",
+		paused and to_settings and overlay_open and bg_focus and flipped and closed and counting and resumed,
+		{"paused": paused, "to_settings": to_settings, "overlay": overlay_open, "bg_focus": bg_focus,
+			"style": [style0, Settings.background_style], "closed_focus": _focus_name(),
+			"countdown": counting, "resumed": resumed})
+
+	# 4. Start -> pause; D-pad to Back to Menu, A -> confirm dialog, D-pad to Leave Dive, A -> menu.
+	await pad_tap(JOY_BUTTON_START)
+	var paused2 := pm.is_open()
+	var to_quit := await pad_focus(pm.menu_button)
+	await pad_tap(JOY_BUTTON_A)
+	var dlg: ConfirmDialog = null
+	for n in pm.find_children("*", "ConfirmDialog", true, false):
+		dlg = n as ConfirmDialog
+	var safe_first := dlg != null and focus_owner() == dlg.safe_button
+	await pad_tap(JOY_BUTTON_DPAD_LEFT)
+	var on_confirm := dlg != null and focus_owner() == dlg.confirm_button
+	await shot("pad_confirm")
+	await pad_tap(JOY_BUTTON_A)
+	var to_menu: bool = await wait_until(func() -> bool: return cur() is MainMenu, 8.0)
+	check("pad: quit confirm (Start, D-pad to Back to Menu, A, D-pad to Leave Dive, A -> main menu)",
+		paused2 and to_quit and safe_first and on_confirm and to_menu,
+		{"paused": paused2, "to_quit": to_quit, "safe_first": safe_first, "on_confirm": on_confirm,
+			"scene": cur()})
+	if not to_menu:
+		return
+
+	# 5. Main menu: D-pad to Settings, A -> settings scene; B -> main menu.
+	await wait(0.8)
+	m = cur() as MainMenu
+	var to_set_btn := await pad_focus(m.settings_button)
+	await pad_tap(JOY_BUTTON_A)
+	var in_settings: bool = await wait_until(func() -> bool: return cur() is SettingsScreen, 5.0)
+	await wait(0.5)
+	await pad_tap(JOY_BUTTON_B)
+	var back_menu: bool = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
+	check("pad: menu -> settings (D-pad, A) -> B back to the menu", to_set_btn and in_settings and back_menu,
+		{"focus_settings": to_set_btn, "settings": in_settings, "back": back_menu})
+	if not back_menu:
+		return
+
+	# 6. Main menu: D-pad to Calibrate Sonar, A -> calibration wizard; B skips back to the menu.
+	await wait(0.8)
+	m = cur() as MainMenu
+	var to_cal_btn := await pad_focus(m.calibrate_button)
+	await pad_tap(JOY_BUTTON_A)
+	var in_cal: bool = await wait_until(func() -> bool: return cur() is CalibrationWizard, 5.0)
+	await wait(0.5)
+	var w := cur() as CalibrationWizard
+	var begin_focus := w != null and focus_owner() == w.begin_button
+	await shot("pad_calibration")
+	await pad_tap(JOY_BUTTON_B)
+	var skipped: bool = await wait_until(func() -> bool: return cur() is MainMenu, 5.0)
+	check("pad: menu -> calibration (D-pad, A, focus Begin) -> B skips to the menu",
+		to_cal_btn and in_cal and begin_focus and skipped,
+		{"focus_calibrate": to_cal_btn, "calibration": in_cal, "begin_focus": begin_focus, "skipped": skipped})
+
+	check("no keyboard event sent by the pad scenario", watch.keys == 0, watch.keys)
+	watch.queue_free()
+	Settings.set_background_style(style_at_start)
