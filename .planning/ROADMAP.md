@@ -116,7 +116,7 @@ Plans:
 
 **UI hint**: yes
 **Depends on:** Phase 02.1
-**Plans:** 24/25 plans executed
+**Plans:** 24/29 plans executed
 
 Plans:
 
@@ -145,6 +145,10 @@ Plans:
 - [x] 02.2-23-PLAN.md — UI navigation blips (muted in gameplay and calibration), chip pop
 - [x] 02.2-24-PLAN.md — Low/Reduce enumeration test, final 1080p perf gate (FAILED-gate path), 5-song autoplay, cleanup, final visual review
 - [ ] 02.2-25-PLAN.md — Final verification, v0.5 build, UAT sheet with screenshots (+ perf decision row if needed), human checkpoint
+- [ ] 02.2-26-PLAN.md — Gap G1: prove gem-at-hit-line sync, widen JudgeConfig to 50/100/130 ms (user-approved), re-baseline timing gate, update histogram/tests/harness
+- [ ] 02.2-27-PLAN.md — Gap G2: Calm gameplay background next to Living, Settings > Display > Background (default Calm), same-moment screenshots
+- [ ] 02.2-28-PLAN.md — Gap G3: gamepad in every menu (A/B on ui_accept/ui_cancel, per-screen pad tests and fixes, pad-only harness walk)
+- [ ] 02.2-29-PLAN.md — Gap round close: v0.5.1 zip, README/checklist, UAT sheet reset for re-test
 
 ### Phase 02.1: Instrument Extraction Tool (INSERTED)
 
