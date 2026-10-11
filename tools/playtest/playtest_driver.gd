@@ -44,10 +44,12 @@ const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
 	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0, "immersion": 240.0,
 	"songs": 360.0, "align": 150.0, "perf": 470.0, "visual": 420.0, "autoplay5": 1500.0}
-## Scenario b offsets (seconds) per note, cycled. null = skip the note. Values stay >= 5 ms
-## from window edges (35 / 70 / 100 ms) so frame jitter cannot flip the expected judgment.
+## Scenario b offsets (seconds) per note, cycled. null = skip the note (miss). Values stay >= 5 ms
+## from the JudgeConfig window edges (Perfect 50 / Good 100 / early-miss 130 ms since 02.2-26, G1)
+## so frame jitter cannot flip the expected judgment: Perfect 0..+-40, Good +-60/75/90, late
+## strays +115/+120 (the note expires as a miss, the press is a stray), early miss -115.
 const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
-	0.050, -0.050, 0.0, 0.060, -0.060, 0.0, 0.005, -0.005, 0.090, 0.0, -0.090, 0.015, null]
+	0.060, -0.060, 0.0, 0.075, -0.075, 0.0, 0.115, 0.090, -0.090, 0.0, -0.115, 0.120, 0.005, null]
 
 var scenario: String = "a"
 var checks: Array = []
@@ -969,16 +971,17 @@ func sc_b() -> void:
 	check("every note judged exactly once", judged.size() == notes.size(), "%d / %d" % [judged.size(), notes.size()])
 	check("bot hit intended offsets (max |actual - intended| < 2 ms)",
 		float(stats(timing_dev).get("max_abs", 99.0)) < 2.0, stats(timing_dev))
-	check("all judgments match JudgeConfig windows (35/70/100 ms)", mismatches.is_empty(), mismatches.slice(0, 8))
+	check("all judgments match JudgeConfig windows (50/100/130 ms)", mismatches.is_empty(), mismatches.slice(0, 8))
 	var late_miss := 0
 	var early_miss := 0
 	for k in range(notes.size()):
 		var off: Variant = B_CYCLE[k % B_CYCLE.size()]
-		if off != null and float(off) > 0.07:
+		if off != null and float(off) > cfg.good_window:
 			late_miss += 1
-		elif off != null and float(off) < -0.07:
+		elif off != null and float(off) < -cfg.good_window:
 			early_miss += 1
-	check("late presses beyond window (+90 ms) produce strays", strays[0] == late_miss, "strays %d, +90 presses %d" % [strays[0], late_miss])
+	check("late presses beyond window (+115/+120 ms) produce strays", strays[0] == late_miss,
+		"strays %d, +115/+120 presses %d" % [strays[0], late_miss])
 	var chords := 0
 	var chord_ok := true
 	var times := {}
@@ -990,7 +993,7 @@ func sc_b() -> void:
 			chords += 1
 			for k in times[t]:
 				var off: Variant = B_CYCLE[int(k) % B_CYCLE.size()]
-				if off != null and absf(float(off)) <= 0.035 and int(judged.get(k, [9])[0]) != InputJudge.Judgment.PERFECT:
+				if off != null and absf(float(off)) <= cfg.perfect_window and int(judged.get(k, [9])[0]) != InputJudge.Judgment.PERFECT:
 					chord_ok = false
 	metrics["chords"] = chords
 	check("chords present and each chord note judged independently", chords > 0 and chord_ok, "%d chords" % chords)

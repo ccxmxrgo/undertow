@@ -34,7 +34,7 @@ func test_chord_lanes_are_independent() -> void:
 	var j := _make([[0, 2.0], [1, 2.0], [2, 2.0]])
 	j.press(0, 2.0)
 	assert_int(_judged.size()).is_equal(1)
-	j.tick(2.0701)
+	j.tick(2.0 + JudgeConfig.new().good_window + 0.0001)  # just past the Good window
 	assert_int(_judged.size()).is_equal(3)
 	assert_int(_judgment_for_lane(0)).is_equal(InputJudge.Judgment.PERFECT)
 	assert_int(_judgment_for_lane(1)).is_equal(InputJudge.Judgment.MISS)
@@ -93,7 +93,7 @@ func test_release_within_forgive_window_counts_full() -> void:
 
 func test_missed_sustain_head_gives_miss_and_no_ticks() -> void:
 	var j := _make([[0, 1.0, 1.0]])
-	j.tick(1.0701)
+	j.tick(1.0 + JudgeConfig.new().good_window + 0.0001)  # just past the Good window
 	assert_int(_judged.size()).is_equal(1)
 	assert_int(_judged[0][2]).is_equal(InputJudge.Judgment.MISS)
 	j.tick(3.0)
@@ -121,7 +121,7 @@ func test_unreleased_hold_auto_completes_after_tail() -> void:
 	j.press(0, 1.0)
 	j.tick(1.5)
 	assert_bool(j.is_finished()).is_false()
-	j.tick(1.5701)
+	j.tick(1.5 + JudgeConfig.new().good_window + 0.0001)  # just past tail + Good window
 	assert_array(_ends).is_equal([[0, true]])
 	assert_int(_ticks.size()).is_equal(5)
 	assert_bool(j.is_finished()).is_true()

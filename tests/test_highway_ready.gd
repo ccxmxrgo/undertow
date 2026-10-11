@@ -49,7 +49,7 @@ func test_shape_mapping_unchanged() -> void:
 
 
 func test_note_is_ready_boundaries() -> void:
-	var gw := 0.070
+	var gw := JudgeConfig.new().good_window
 	assert_bool(Highway.note_is_ready(0.0, gw)).is_true()
 	assert_bool(Highway.note_is_ready(gw, gw)).is_true()
 	assert_bool(Highway.note_is_ready(-gw, gw)).is_true()

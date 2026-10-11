@@ -3,7 +3,10 @@ extends GdUnitTestSuite
 ## results entrance. A fake run with known offsets must produce the expected bins, colours,
 ## summary and geometry; any input during the entrance jumps to the final state and is consumed.
 
-const FAKE: Array[float] = [-0.068, -0.012, -0.011, 0.0, 0.004, 0.033, 0.070, 0.2]
+## 02.2-26: 40 bins of 5 ms over -100..+100 ms (the range follows the G1 Good window).
+const FAKE: Array[float] = [-0.098, -0.012, -0.011, 0.0, 0.004, 0.048, 0.100, 0.2]
+const N := 40
+const PW := 0.050
 
 var _saved_rm: bool
 var _saved_low: bool
@@ -25,7 +28,7 @@ func _offsets(values: Array[float] = FAKE) -> PackedFloat32Array:
 	return PackedFloat32Array(values)
 
 
-func _hist(values: Array[float] = FAKE, pw: float = 0.035) -> TimingHistogram:
+func _hist(values: Array[float] = FAKE, pw: float = PW) -> TimingHistogram:
 	var host := Control.new()
 	add_child(host)
 	auto_free(host)
@@ -62,30 +65,36 @@ func _frames(n: int) -> void:
 func test_fake_run_bins_match_expected() -> void:
 	var h := _hist()
 	var expect := PackedInt32Array()
-	expect.resize(28)
+	expect.resize(N)
 	expect.fill(0)
 	expect[0] = 1
-	expect[11] = 2
-	expect[14] = 2
-	expect[20] = 1
-	expect[27] = 2
+	expect[17] = 2
+	expect[20] = 2
+	expect[29] = 1
+	expect[39] = 2
 	assert_array(Array(h.bins)).is_equal(Array(expect))
 	assert_array(Array(h.bins)).is_equal(Array(RunStats.histogram(_offsets())))
 	# Heights: count / max * 300 (max = 2).
-	for i in 28:
+	for i in N:
 		assert_float(h.bar_height(i)).override_failure_message("bin %d" % i) \
 			.is_equal_approx(float(expect[i]) / 2.0 * 300.0, 0.001)
 
 
 func test_bar_geometry_and_centre_line() -> void:
 	var h := _hist()
-	for i in 28:
+	assert_int(RunStats.BIN_COUNT).is_equal(N)
+	assert_float(TimingHistogram.PITCH).is_equal_approx(11.9, 0.0001)
+	assert_float(TimingHistogram.BAR_W).is_equal_approx(8.9, 0.0001)
+	for i in N:
 		var hh := h.bar_height(i)
-		assert_object(h.bar_rect(i)).override_failure_message("bin %d" % i) \
-			.is_equal(Rect2(1314.0 + 17.0 * i, 600.0 - hh, 13.0, hh))
+		var r := h.bar_rect(i)
+		var want := Rect2(1314.0 + 11.9 * i, 600.0 - hh, 8.9, hh)
+		assert_bool(r.position.is_equal_approx(want.position) and r.size.is_equal_approx(want.size)) \
+			.override_failure_message("bin %d: %s vs %s" % [i, r, want]).is_true()
 	assert_float(TimingHistogram.CENTER_X).is_equal(1552.0)
+	assert_float(TimingHistogram.x_of_ms(0.0)).is_equal_approx(1552.0, 0.001)
 	assert_float(TimingHistogram.BASELINE_Y).is_equal(600.0)
-	assert_float(TimingHistogram.CHART_X + 28 * 17.0).is_equal(TimingHistogram.CHART_RIGHT)
+	assert_float(TimingHistogram.CHART_X + N * TimingHistogram.PITCH).is_equal_approx(TimingHistogram.CHART_RIGHT, 0.001)
 	assert_float(TimingHistogram.CHART_RIGHT).is_equal(1790.0)
 	# Placed in the timing panel at the 1920x1080 layout.
 	assert_object(h.get_global_rect()).is_equal(Rect2(1280, 208, 544, 480))
@@ -93,8 +102,8 @@ func test_bar_geometry_and_centre_line() -> void:
 
 func test_colour_split_reads_perfect_window() -> void:
 	var h := _hist()
-	for i in 28:
-		var inside := i >= 7 and i <= 20  # bins fully inside -35..+35 ms
+	for i in N:
+		var inside := i >= 10 and i <= 29  # bins fully inside -50..+50 ms
 		var want := Palette.SONAR_PALE if inside else Palette.TEXT_MID
 		assert_bool(h.bar_color(i).is_equal_approx(want)).override_failure_message("bin %d" % i).is_true()
 	var g := h.guide_xs()
@@ -104,8 +113,8 @@ func test_colour_split_reads_perfect_window() -> void:
 	assert_float(1552.0 - g[0]).is_equal_approx(g[1] - 1552.0, 0.001)
 	# A different window moves both the colour split and the guides (never hard-coded).
 	var narrow := _hist(FAKE, 0.020)
-	for i in 28:
-		var inside := i >= 10 and i <= 17
+	for i in N:
+		var inside := i >= 16 and i <= 23
 		var want := Palette.SONAR_PALE if inside else Palette.TEXT_MID
 		assert_bool(narrow.bar_color(i).is_equal_approx(want)).override_failure_message("narrow bin %d" % i).is_true()
 	assert_float(narrow.guide_xs()[1]).is_less(g[1])
@@ -119,15 +128,15 @@ func test_colour_split_reads_perfect_window() -> void:
 func test_axis_labels_and_summary() -> void:
 	var h := _hist()
 	var t := _label_texts(h)
-	for s in ["-70", "0", "+70", "EARLY", "LATE"]:
+	for s in ["-100", "0", "+100", "EARLY", "LATE"]:
 		assert_bool(t.has(s)).override_failure_message("missing " + s).is_true()
 	var want := RunStats.summary_text(RunStats.mean_offset_ms(_offsets()))
 	assert_str(h.summary).is_equal(want)
 	assert_bool(t.has(want)).is_true()
 	assert_bool(t.has(TimingHistogram.EMPTY_TEXT)).is_false()
-	# Axis anchors: "-70" left at 1314, "+70" right-aligned at 1790, "0" centred at 1552.
-	var lo := _find_label(h, "-70").get_global_rect()
-	var hi := _find_label(h, "+70").get_global_rect()
+	# Axis anchors: "-100" left at 1314, "+100" right-aligned at 1790, "0" centred at 1552.
+	var lo := _find_label(h, "-100").get_global_rect()
+	var hi := _find_label(h, "+100").get_global_rect()
 	var zero := _find_label(h, "0").get_global_rect()
 	assert_float(lo.position.x).is_equal_approx(1314.0, 0.5)
 	assert_float(hi.end.x).is_equal_approx(1790.0, 1.0)
@@ -140,7 +149,7 @@ func test_empty_state() -> void:
 	var t := _label_texts(h)
 	assert_bool(t.has("No hits to chart.")).is_true()
 	assert_str(TimingHistogram.EMPTY_TEXT).is_equal("No hits to chart.")
-	for i in 28:
+	for i in N:
 		assert_float(h.bar_height(i)).is_equal(0.0)
 	assert_str(h.summary).is_equal("")
 	var e := _find_label(h, "No hits to chart.").get_global_rect()
@@ -151,14 +160,15 @@ func test_empty_state() -> void:
 func test_grow_staggers_left_to_right() -> void:
 	var h := _hist()
 	h.grow(0.0)
-	for i in 28:
+	for i in N:
 		assert_float(h.bar_rect(i).size.y).is_equal(0.0)
 	h.grow(0.5)
-	assert_float(h.bar_factor(0)).is_greater(h.bar_factor(27))
+	assert_float(h.bar_factor(0)).is_greater(h.bar_factor(N - 1))
 	h.grow(1.0)
-	for i in 28:
+	for i in N:
 		assert_float(h.bar_rect(i).size.y).is_equal_approx(h.bar_height(i), 0.001)
-	assert_float(TimingHistogram.GROW_SEC).is_equal_approx(Palette.DUR_SLOW + 27 * 0.01, 0.0001)
+	# The total stagger stays 0.27 s (10 ms per bar at the original 28 bins).
+	assert_float(TimingHistogram.GROW_SEC).is_equal_approx(Palette.DUR_SLOW + 0.27, 0.0001)
 	assert_bool(h.is_in_group(UiKit.FX_GROUP)).is_true()
 
 
@@ -169,7 +179,7 @@ func test_reduce_motion_grows_by_fade_only() -> void:
 	h.grow(0.5)
 	# No height growth or stagger: every bar is at full height, the chart fades in.
 	assert_float(h.bar_factor(0)).is_equal(1.0)
-	assert_float(h.bar_factor(27)).is_equal(1.0)
+	assert_float(h.bar_factor(N - 1)).is_equal(1.0)
 	assert_float(h.modulate.a).is_equal_approx(0.5, 0.001)
 	assert_bool(h.effect_counts()["stagger"]).is_false()
 
@@ -187,6 +197,7 @@ func _score(p: int, gd: int, m: int) -> HullScore:
 	return s
 
 
+## pw 0.035: a record stored before 02.2-26 keeps drawing its guides at its own 35 ms window.
 func _results(offsets: PackedFloat32Array, pw: float = 0.035) -> ResultsScreen:
 	var host := Control.new()
 	UiLayout.fill_rect(host)
@@ -230,14 +241,14 @@ func test_entrance_timeline_and_total() -> void:
 		assert_float(gp.position.y).is_equal(0.0)
 	for i in 3:
 		assert_float(r.bar_fill(i)).is_equal_approx(r.bar_widths[i], 0.001)
-	assert_float(r.histogram.bar_factor(27)).is_equal(1.0)
+	assert_float(r.histogram.bar_factor(N - 1)).is_equal(1.0)
 
 
 func test_entrance_finishes_by_itself() -> void:
 	var r := _results(_offsets())
 	await get_tree().create_timer(ResultsScreen.ENTRANCE_SEC + 0.2).timeout
 	assert_bool(r.entrance_running()).is_false()
-	assert_float(r.histogram.bar_factor(27)).is_equal(1.0)
+	assert_float(r.histogram.bar_factor(N - 1)).is_equal(1.0)
 	assert_float(r.panel_groups[2].position.y).is_equal(0.0)
 
 

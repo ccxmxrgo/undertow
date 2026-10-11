@@ -57,26 +57,29 @@ func _bin_of(offset_s: float) -> int:
 func test_histogram_shape_and_edges() -> void:
 	var h := RunStats.histogram(PackedFloat32Array())
 	assert_int(h.size()).is_equal(RunStats.BIN_COUNT)
-	assert_int(RunStats.BIN_COUNT).is_equal(28)
+	# 02.2-26: the range follows the Good window (100 ms), 40 bins of 5 ms.
+	assert_int(RunStats.BIN_COUNT).is_equal(40)
+	assert_int(RunStats.RANGE_MS).is_equal(100)
+	assert_int(RunStats.RANGE_MS).is_equal(roundi(JudgeConfig.new().good_window * 1000.0))
 	for c in h:
 		assert_int(c).is_equal(0)
-	assert_int(_bin_of(-0.070)).is_equal(0)
-	assert_int(_bin_of(0.070)).is_equal(27)
-	assert_int(_bin_of(-0.0651)).is_equal(0)
-	assert_int(_bin_of(-0.065)).is_equal(1)
-	assert_int(_bin_of(0.0)).is_equal(14)
+	assert_int(_bin_of(-0.100)).is_equal(0)
+	assert_int(_bin_of(0.100)).is_equal(39)
+	assert_int(_bin_of(-0.0951)).is_equal(0)
+	assert_int(_bin_of(-0.095)).is_equal(1)
+	assert_int(_bin_of(0.0)).is_equal(20)
 	assert_int(_bin_of(-0.2)).is_equal(0)
-	assert_int(_bin_of(0.2)).is_equal(27)
-	assert_int(_bin_of(0.004999)).is_equal(14)
-	assert_int(_bin_of(0.005)).is_equal(15)
+	assert_int(_bin_of(0.2)).is_equal(39)
+	assert_int(_bin_of(0.004999)).is_equal(20)
+	assert_int(_bin_of(0.005)).is_equal(21)
 
 
 func test_histogram_counts_known_run() -> void:
 	var h := RunStats.histogram(PackedFloat32Array([-0.010, -0.010, 0.0, 0.002, 0.040, 0.3]))
-	assert_int(h[12]).is_equal(2)
-	assert_int(h[14]).is_equal(2)
-	assert_int(h[22]).is_equal(1)
-	assert_int(h[27]).is_equal(1)
+	assert_int(h[18]).is_equal(2)
+	assert_int(h[20]).is_equal(2)
+	assert_int(h[28]).is_equal(1)
+	assert_int(h[39]).is_equal(1)
 	var total := 0
 	for c in h:
 		total += c

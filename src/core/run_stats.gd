@@ -3,10 +3,11 @@ extends RefCounted
 ## Pure run statistics for the HUD and results (D-08, D-09). Outside the timing core.
 ## Not ScoreStore.accuracy (that one is a hit rate); this is the weighted D-08 accuracy.
 
-## Histogram bin width, count and half-range in ms: 28 bins of 5 ms covering -70..+70.
+## Histogram bin width, count and half-range in ms: 40 bins of 5 ms covering -100..+100. The range
+## follows the Good window (D-09, adapted in 02.2-26 to the user-approved G1 windows 50/100 ms).
 const BIN_MS := 5
-const BIN_COUNT := 28
-const RANGE_MS := 70
+const BIN_COUNT := 40
+const RANGE_MS := 100
 ## |mean| below this many ms reads as "Right on time".
 const ON_TIME_MS := 3
 
@@ -48,8 +49,8 @@ static func grade_rank(g: String) -> int:
 	return int(_GRADE_RANKS.get(g, 0))
 
 
-## 28 bins of 5 ms from -70 to +70 ms (early left). Bin i covers [-70 + 5i, -65 + 5i);
-## exactly +70 ms and anything beyond the range clamp into the end bins. Computed in integer
+## BIN_COUNT bins of 5 ms from -RANGE_MS to +RANGE_MS (early left). Bin i covers
+## [-RANGE_MS + 5i, -RANGE_MS + 5 + 5i); exactly +RANGE_MS and anything beyond the range clamp into the end bins. Computed in integer
 ## microseconds so float noise cannot move a value across a bin edge.
 static func histogram(offsets_s: PackedFloat32Array) -> PackedInt32Array:
 	var bins := PackedInt32Array()

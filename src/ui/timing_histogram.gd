@@ -1,23 +1,25 @@
 class_name TimingHistogram
 extends Control
 ## Results timing histogram (02.2 UI-SPEC 4.12, D-09, VIS-05). Shows whether the player rushes or
-## drags: the run's hit offsets (Perfect and Good, from HitOffsetRecorder) in 28 bins of 5 ms
-## from -70 to +70 ms, early on the left. The bins come from RunStats.histogram, so the chart is
+## drags: the run's hit offsets (Perfect and Good, from HitOffsetRecorder) in RunStats.BIN_COUNT
+## bins of 5 ms over +/- RunStats.RANGE_MS (40 bins, -100..+100 ms since 02.2-26), early on the left. The bins come from RunStats.histogram, so the chart is
 ## exactly the recorded offsets.
 ## The control covers the results timing panel (x 1280..1824, y 208..688); every constant below is
 ## in 1920x1080 layout coordinates and is drawn relative to ORIGIN.
-##   bars     bar i at x 1314 + 17 i, 13 wide, baseline y 600, height count / max * 300
+##   bars     bar i at x 1314 + PITCH i (PITCH = 476 / BIN_COUNT = 11.9), PITCH - GAP wide, baseline
+##            y 600, height count / max * 300
 ##   colours  bins fully inside +/- perfect_window SONAR_PALE, others TEXT_MID; the window is read
 ##            from JudgeConfig (or the run's run_info.perfect_window), never hard-coded
 ##   guides   dashed 1 px TEXT_LO 35% at +/- perfect_window; centre line 2 px TEXT_HI 40% at x 1552
-##   axis     "-70" / "0" / "+70" baseline 628, "EARLY" / "LATE" baseline 292 (spec 268; moved in the
+##   axis     "-RANGE_MS" / "0" / "+RANGE_MS" (built from RunStats.RANGE_MS) baseline 628, "EARLY" / "LATE" baseline 292 (spec 268; moved in the
 ##            02.2-16 visual review: at 268 "EARLY" stacked under the TIMING caption at baseline 248
 ##            and read as one caption; 292 keeps 8 px above the tallest bar top, y 300), Label 20 TEXT_LO
 ##   bars draw an 80% body with a 2 px full-colour top cap (bar_color is the cap / token colour)
 ##   summary  RunStats.summary_text(mean) Label 20 TEXT_MID at (1314, 664)
 ##   empty    "No hits to chart." centred in the chart area, no bars, no summary
-## Animation: grow(progress 0..1) over GROW_SEC; each bar grows over DUR_SLOW with a 10 ms
-## left-to-right stagger. Effect contract (UiKit.register_fx): Reduce motion = no growth or stagger,
+## Animation: grow(progress 0..1) over GROW_SEC; each bar grows over DUR_SLOW with a left-to-right
+## stagger spread over STAGGER_TOTAL (10 ms per bar at 28 bins; the total is kept at 0.27 s so
+## the results entrance stays 0.89 s with 40 bins). Effect contract (UiKit.register_fx): Reduce motion = no growth or stagger,
 ## the chart fades in instead (modulate). There is no glow, so Low effects changes nothing.
 
 const ORIGIN := Vector2(1280.0, 208.0)
@@ -27,9 +29,9 @@ const CHART_RIGHT := 1790.0
 const CHART_TOP := 280.0
 const BASELINE_Y := 600.0
 const MAX_H := 300.0
-const BAR_W := 13.0
-const PITCH := 17.0
-const GAP := 4.0
+const GAP := 3.0
+const PITCH := (CHART_RIGHT - CHART_X) / RunStats.BIN_COUNT
+const BAR_W := PITCH - GAP
 const CENTER_X := 1552.0
 const AXIS_BASE_Y := 628.0
 const SIDE_BASE_Y := 292.0
@@ -42,7 +44,8 @@ const AXIS_ALPHA := 0.35
 const WINDOW_BAND_ALPHA := 0.05
 const BAR_BODY_ALPHA := 0.8
 const BAR_CAP := 2.0
-const BIN_STAGGER := 0.01
+const STAGGER_TOTAL := 0.27
+const BIN_STAGGER := STAGGER_TOTAL / (RunStats.BIN_COUNT - 1)
 const GROW_SEC := Palette.DUR_SLOW + (RunStats.BIN_COUNT - 1) * BIN_STAGGER
 const EMPTY_TEXT := "No hits to chart."
 const CAPTION_SPACING := 2
@@ -50,7 +53,7 @@ const CAPTION_SPACING := 2
 ## Bin counts (RunStats.histogram of the offsets).
 var bins: PackedInt32Array = PackedInt32Array()
 ## Perfect window in seconds that drives the colour split and the guides.
-var perfect_window: float = 0.035
+var perfect_window: float = JudgeConfig.new().perfect_window
 ## One-line summary ("" when there are no hits).
 var summary: String = ""
 
@@ -131,7 +134,7 @@ func _bin_inside_window(i: int) -> bool:
 	return lo_us >= -pw_us and hi_us <= pw_us
 
 
-## x of a time offset (ms) on the chart: bin edges at 1314 + 17 i, so 0 ms = 1552.
+## x of a time offset (ms) on the chart: bin edges at 1314 + PITCH i, so 0 ms = 1552.
 static func x_of_ms(ms: float) -> float:
 	return CHART_X + (ms + RunStats.RANGE_MS) / RunStats.BIN_MS * PITCH
 
@@ -200,9 +203,9 @@ func _caption() -> Font:
 
 func _build_labels() -> void:
 	var f := Palette.font()
-	_label("AxisEarlyMs", "-70", f, Palette.TEXT_LO, Vector2(CHART_X, AXIS_BASE_Y), HORIZONTAL_ALIGNMENT_LEFT)
+	_label("AxisEarlyMs", "-%d" % RunStats.RANGE_MS, f, Palette.TEXT_LO, Vector2(CHART_X, AXIS_BASE_Y), HORIZONTAL_ALIGNMENT_LEFT)
 	_label("AxisZero", "0", f, Palette.TEXT_LO, Vector2(CENTER_X, AXIS_BASE_Y), HORIZONTAL_ALIGNMENT_CENTER)
-	_label("AxisLateMs", "+70", f, Palette.TEXT_LO, Vector2(CHART_RIGHT, AXIS_BASE_Y), HORIZONTAL_ALIGNMENT_RIGHT)
+	_label("AxisLateMs", "+%d" % RunStats.RANGE_MS, f, Palette.TEXT_LO, Vector2(CHART_RIGHT, AXIS_BASE_Y), HORIZONTAL_ALIGNMENT_RIGHT)
 	_label("Early", "EARLY", _caption(), Palette.TEXT_LO, Vector2(CHART_X, SIDE_BASE_Y), HORIZONTAL_ALIGNMENT_LEFT)
 	_label("Late", "LATE", _caption(), Palette.TEXT_LO, Vector2(CHART_RIGHT, SIDE_BASE_Y), HORIZONTAL_ALIGNMENT_RIGHT)
 	_summary_label = _label("Summary", "", f, Palette.TEXT_MID, Vector2(CHART_X, SUMMARY_BASE_Y),
