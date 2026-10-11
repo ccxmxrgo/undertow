@@ -206,6 +206,7 @@ var _row_titles: Array[String] = []
 var _hints: Dictionary = {}  # row title -> hint text
 var _toggles: Array[PillToggle] = []
 var _low := false
+var _bg_stick_dir := 0
 
 
 func _ready() -> void:
@@ -297,12 +298,61 @@ func _build() -> void:
 	_sample_player.stream = AudioSynth.make_tick(1.0)
 	add_child(_sample_player)
 	_refresh_all(false)
+	link_focus_rows()
 	Settings.settings_changed.connect(_refresh_all)
 
 
 func _exit_tree() -> void:
 	if Settings.settings_changed.is_connected(_refresh_all):
 		Settings.settings_changed.disconnect(_refresh_all)
+
+
+# --- focus (G3, 02.2-29) ----------------------------------------------------------------------
+
+
+## The focusable controls of each settings row, top to bottom (rows without one are skipped).
+## Disabled buttons (Add Folder when full, Re-run Calibration in the overlay) are left out.
+func focus_rows() -> Array:
+	var rows: Array = []
+	if scroll == null:
+		return rows
+	var by_parent: Dictionary = {}
+	for n in scroll.find_children("*", "Control", true, false):
+		var c := n as Control
+		if c is ScrollBar or c.focus_mode != Control.FOCUS_ALL or not c.visible:
+			continue
+		if c is BaseButton and (c as BaseButton).disabled:
+			continue
+		if c.is_queued_for_deletion():
+			continue
+		var parent := c.get_parent()
+		if not by_parent.has(parent):
+			by_parent[parent] = []
+			rows.append(by_parent[parent])
+		(by_parent[parent] as Array).append(c)
+	return rows
+
+
+## Explicit focus neighbours row by row (D-pad / stick / arrows): Up / Down go to the same
+## column of the next row (or its last control), so no row is skipped however wide or far right
+## its control sits; the first and last rows stop. Left / Right stay inside the row. Sliders and
+## the Background row consume Left / Right themselves.
+func link_focus_rows() -> void:
+	var rows := focus_rows()
+	for i in rows.size():
+		var row: Array = rows[i]
+		for j in row.size():
+			var c: Control = row[j]
+			var up: Control = c if i == 0 else _column(rows[i - 1], j)
+			var down: Control = c if i == rows.size() - 1 else _column(rows[i + 1], j)
+			c.focus_neighbor_top = c.get_path_to(up)
+			c.focus_neighbor_bottom = c.get_path_to(down)
+			c.focus_neighbor_left = c.get_path_to(row[maxi(j - 1, 0)])
+			c.focus_neighbor_right = c.get_path_to(row[mini(j + 1, row.size() - 1)])
+
+
+static func _column(row: Array, j: int) -> Control:
+	return row[mini(j, row.size() - 1)]
 
 
 # --- effect contract -------------------------------------------------------------------------
@@ -539,15 +589,35 @@ func _build_background_row(box: VBoxContainer) -> void:
 	background_button.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
 	background_button.name = "BackgroundButton"
 	background_button.pressed.connect(cycle_background)
-	background_button.gui_input.connect(func(ev: InputEvent) -> void:
-		if ev.is_action_pressed(&"ui_left") or ev.is_action_pressed(&"ui_right"):
-			cycle_background()
-			background_button.accept_event())
+	background_button.gui_input.connect(_on_background_input)
 	row.add_child(background_button)
 	var h := _hint(HINT_BACKGROUND)
 	h.custom_minimum_size = Vector2(VALUE_RIGHT - CONTROL_X - PillToggle.SIZE.x - ROW_GAP, 0.0)
 	row.add_child(h)
 	_hints[title] = HINT_BACKGROUND
+
+
+## ui_left / ui_right on the Background row flip it. A stick push is a stream of JoypadMotion
+## events, so it flips once per push (latched until the stick returns to centre) (G3, 02.2-29).
+func _on_background_input(ev: InputEvent) -> void:
+	if not (ev.is_action(&"ui_left") or ev.is_action(&"ui_right")):
+		return
+	var pressed_dir := 0
+	if ev.is_action_pressed(&"ui_left"):
+		pressed_dir = -1
+	elif ev.is_action_pressed(&"ui_right"):
+		pressed_dir = 1
+	if ev is InputEventJoypadMotion:
+		background_button.accept_event()
+		if pressed_dir == 0:
+			_bg_stick_dir = 0
+		elif pressed_dir != _bg_stick_dir:
+			_bg_stick_dir = pressed_dir
+			cycle_background()
+		return
+	if pressed_dir != 0:
+		cycle_background()
+		background_button.accept_event()
 
 
 static func background_label(style: String) -> String:
@@ -648,6 +718,8 @@ func rebuild_library_rows() -> void:
 		library_rows.add_child(row)
 	if add_folder_button != null:
 		add_folder_button.disabled = Settings.library_folders.size() >= Settings.MAX_LIBRARY_FOLDERS
+	if back_button != null:
+		link_focus_rows()
 
 
 ## "{n} songs" / "Not scanned yet" / "Folder not found".

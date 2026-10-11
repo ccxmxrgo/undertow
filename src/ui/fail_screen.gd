@@ -134,6 +134,16 @@ func setup(depth_m: float, max_combo: int = 0, saved_best: float = -1.0, p_progr
 	apply_effect_settings()
 
 
+## B / Esc (ui_cancel) = Back to Menu, as on the results screen (G3, 02.2-29). Inert while the
+## buttons are disabled (fading in, WR-06), so a mashed Esc / B during the squash does nothing.
+func _unhandled_input(event: InputEvent) -> void:
+	if menu_button == null or menu_button.disabled or not is_visible_in_tree():
+		return
+	if event.is_action_pressed(&"ui_cancel") and not event.is_echo():
+		get_viewport().set_input_as_handled()
+		menu_pressed.emit()
+
+
 ## Fade the panel in over 300 ms after `delay` seconds (the highway squash).
 func play(delay: float = SQUASH_SEC) -> void:
 	modulate.a = 0.0

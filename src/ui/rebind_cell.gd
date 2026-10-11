@@ -4,8 +4,8 @@ extends Button
 ## compact 48 px theme button. Activating enters a listening state ("PRESS A KEY" /
 ## "PRESS A BUTTON" in SONAR_PALE, edge pulsing SONAR at 1.2 Hz, static under Reduce motion).
 ## A rejected bind keeps the inline message copy and shows a WARNING_RED edge until cleared. Keyboard listening takes the next key; gamepad listening
-## takes a button or a trigger axis at |value| >= 0.5 (sticks and mouse are ignored). Esc (keyboard)
-## or B (gamepad) cancels with no change. Results go through BindingStore (duplicates and Tab
+## takes a button or a trigger axis at |value| >= 0.5 (sticks and mouse are ignored). Esc or pad B
+## cancels with no change (pad B also cancels a KEYBOARD cell, whose other pad input is swallowed). Results go through BindingStore (duplicates and Tab
 ## rejected); `message` reports the inline error copy and `bound` fires after a successful bind.
 
 signal bound(action: StringName)
@@ -36,6 +36,9 @@ func setup(p_action: StringName, p_device: StringName, p_store: BindingStore) ->
 	store = p_store
 	custom_minimum_size = Vector2(280.0, 48.0)
 	focus_mode = Control.FOCUS_ALL
+	# Listening starts when the activating press is RELEASED (mouse, Enter / Space, pad A), so
+	# the press that opens the cell can never be taken as the new binding (02.2-29).
+	action_mode = BaseButton.ACTION_MODE_BUTTON_RELEASE
 	pressed.connect(begin_listen)
 	refresh()
 
@@ -122,6 +125,16 @@ func handle_event(event: InputEvent) -> bool:
 	if not listening or event.is_echo():
 		return false
 	if device == &"keyboard":
+		# G3 (02.2-29): a pad-only player must never be stuck on a keyboard cell. Pad B cancels;
+		# every other pad event is swallowed so it neither binds nor moves focus / leaves the
+		# screen while the cell waits for a key.
+		if event is InputEventJoypadButton:
+			var pb := event as InputEventJoypadButton
+			if pb.pressed and pb.button_index == JOY_BUTTON_B:
+				cancel_listen()
+			return true
+		if event is InputEventJoypadMotion:
+			return true
 		if not (event is InputEventKey) or not event.is_pressed():
 			return false
 		var k := (event as InputEventKey).physical_keycode

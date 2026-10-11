@@ -81,25 +81,37 @@ func _gui_input(event: InputEvent) -> void:
 		_set_from_x((event as InputEventMouseMotion).position.x)
 		accept_event()
 		return
+	# Keys, D-pad and the left stick (ui_left / ui_right). A stick push arrives as a stream of
+	# JoypadMotion events (rising values, then back to centre); it counts as ONE press, and a
+	# motion on the same axis in the other direction reads as a release of this one (G3, 02.2-29).
+	var matched := false
+	var pressed_dir := 0
 	for dir in [-1, 1]:
 		var action: StringName = &"ui_left" if dir < 0 else &"ui_right"
 		if event.is_action(action):
-			if event.is_echo():
-				accept_event()  # our own timing handles repeat (400 ms, 10 Hz)
-			elif event.is_pressed():
-				step_by(dir)
-				_hold_dir = dir
-				_hold_time = 0.0
-				_repeat_time = 0.0
-				set_process(true)
-				accept_event()
-			else:
-				if _hold_dir == dir:
-					_hold_dir = 0
-					set_process(false)
-				released.emit()
-				accept_event()
-			return
+			matched = true
+			if event.is_action_pressed(action, true):
+				pressed_dir = dir
+	if not matched:
+		return
+	accept_event()
+	if event.is_echo():
+		return  # our own timing handles repeat (400 ms, 10 Hz)
+	if pressed_dir != 0:
+		if event is InputEventJoypadMotion and _hold_dir == pressed_dir:
+			return  # the same stick push, still deflected
+		step_by(pressed_dir)
+		_hold_dir = pressed_dir
+		_hold_time = 0.0
+		_repeat_time = 0.0
+		set_process(true)
+		return
+	if _hold_dir != 0 and event.is_action(&"ui_left" if _hold_dir < 0 else &"ui_right"):
+		_hold_dir = 0
+		set_process(false)
+		released.emit()
+	elif not (event is InputEventJoypadMotion):
+		released.emit()
 
 
 func _process(delta: float) -> void:

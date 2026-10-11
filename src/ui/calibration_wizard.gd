@@ -417,8 +417,31 @@ func show_step(s: int) -> void:
 			_build_visual_step()
 		Step.SUMMARY:
 			_build_summary_step()
+	_link_focus()
 	if _chips != null:
 		_chips.queue_redraw()
+
+
+## Explicit pad / arrow focus for the current step (G3, 02.2-29): Left / Right walk the button
+## row (step buttons, then Skip for now); Up from the row and Down from the visual slider connect
+## the two; the edges stay put. Hidden buttons (Accept while measuring) are passed over by Godot.
+func _link_focus() -> void:
+	var row: Array[Control] = []
+	for c in _content.get_children():
+		if c is Button:
+			row.append(c)
+	row.sort_custom(func(a: Control, b: Control) -> bool: return a.position.x < b.position.x)
+	row.append(skip_button)
+	var above: Control = visual_slider
+	for i in row.size():
+		var b := row[i]
+		b.focus_neighbor_left = b.get_path_to(row[maxi(i - 1, 0)])
+		b.focus_neighbor_right = b.get_path_to(row[mini(i + 1, row.size() - 1)])
+		b.focus_neighbor_top = b.get_path_to(above if above != null else b)
+		b.focus_neighbor_bottom = b.get_path_to(b)
+	if above != null:
+		above.focus_neighbor_top = above.get_path_to(above)
+		above.focus_neighbor_bottom = above.get_path_to(row[0])
 
 
 func _add_stage() -> void:
