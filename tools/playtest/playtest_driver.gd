@@ -47,9 +47,11 @@ const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f"
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note (miss). Values stay >= 5 ms
 ## from the JudgeConfig window edges (Perfect 50 / Good 100 / early-miss 130 ms since 02.2-26, G1)
 ## so frame jitter cannot flip the expected judgment: Perfect 0..+-40, Good +-60/75/90, late
-## strays +115/+120 (the note expires as a miss, the press is a stray), early miss -115.
-const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040,
-	0.060, -0.060, 0.0, 0.075, -0.075, 0.0, 0.115, 0.090, -0.090, 0.0, -0.115, 0.120, 0.005, null]
+## strays +115/+120 (the note expires as a miss, the press is a stray), early miss -115. Four misses
+## per 32 notes keep the hull alive through the 124-note hand chart (8 per miss, +1 per Perfect).
+const B_CYCLE := [0.0, 0.010, -0.010, 0.020, -0.020, 0.0, 0.030, -0.030, 0.0, 0.040, -0.040, 0.0,
+	0.060, -0.060, 0.0, 0.075, -0.075, 0.0, 0.115, 0.0, 0.090, -0.090, 0.0, 0.005,
+	-0.115, 0.0, -0.005, 0.120, 0.0, 0.015, -0.015, null]
 
 var scenario: String = "a"
 var checks: Array = []
