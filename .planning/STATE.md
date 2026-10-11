@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: checkpoint
-stopped_at: 02.2-25 Task 1 complete; awaiting Task 2 human-verify checkpoint (end-of-phase UAT)
-last_updated: "2026-10-10T23:11:34.495Z"
-last_activity: 2026-10-10
+status: executing
+stopped_at: Completed 02.2-26-PLAN.md (gap G1); gap plans 02.2-27..30 (G2, G3) remain
+last_updated: "2026-10-11T00:49:40.980Z"
+last_activity: 2026-10-11
 progress:
   total_phases: 9
   completed_phases: 5
-  total_plans: 65
-  completed_plans: 64
+  total_plans: 70
+  completed_plans: 66
   percent: 56
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-10-07)
 ## Current Position
 
 Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 25 of 25
-Status: Awaiting human checkpoint (02.2-25 Task 2: end-of-phase UAT, 02.2-HUMAN-UAT.md). Task 1 done: v0.5 zip built, UAT sheet + 30 screenshots committed. Phase NOT complete.
-Last activity: 2026-10-10
+Plan: 26 of 30 (gap closure)
+Status: 02.2-26 (gap G1) complete: gem/hit-line sync proven, triangle gem recentred, judge windows widened to 50/100/130 ms, gate re-baselined (judge_config.gd -> fbcf994). Next: 02.2-27 (G2), 02.2-28/29 (G3). Phase NOT complete.
+Last activity: 2026-10-11
 
 Progress: [██████████] 98%
 
@@ -94,6 +94,7 @@ Progress: [██████████] 98%
 | Phase 02.2 P23 | 25 min | 2 tasks | 9 files |
 | Phase 02.2 P24 | 38min | 2 tasks | 19 files |
 | Phase 02.2 P25 | 40 min | 1 tasks | 9 files |
+| Phase 02.2 P26 | 40 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,9 @@ Recent decisions affecting current work:
 
 - Local hit judgment, networked events only (ping never affects timing)
 - Gameplay goes through an EventChannel seam (Loopback, Bot, Net) so versus is built offline first
+- 02.2-26 (G1, user-approved): JudgeConfig defaults Perfect 50 / Good 100 / early-miss 130 ms; the timing gate pins judge_config.gd to fbcf994 and the other four core files to 72e21ce
+- 02.2-26: gem/receptor/hit-line sync is proven by tests/test_visual_sync.gd (60 cases); the triangle gem was 2.05 px above the line and is recentred in NotePainter.unit_shape
+- 02.2-26: the results histogram range follows the Good window (-100..+100 ms, 40 x 5 ms bins)
 - Transport for v1: ENet over Tailscale/ZeroTier; GodotSteam is an optional later swap
 - Godot 4.7.2 standard build, GDScript, version pinned for all friends
 - [Phase 01]: [01-01] gdUnit4 6.2.1 runs headless on 4.7.2 only with --ignoreHeadlessMode (in tools/run_tests.ps1)
@@ -182,6 +186,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
+- 02.2-26 on the PC: confirm notes that look on the receptor now score Perfect (1x and the usual speed); check Sea Shanty 2 Expert/Hard 92 ms same-lane repeats
 - 02.2-25 Task 2: user plays v0.5 (one Expert, one Easy song), walks every screen and answers 02.2-HUMAN-UAT.md
 - Windows PC: perf capture (fill the PENDING 02.2-PERF.md row), run_all.ps1 -SkipDrift, exe launch, listen to menu music / blips (02.2-HUMAN-UAT.md "Remaining for the Windows PC")
 
@@ -195,6 +200,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-10-10T23:11:30.696Z
-Stopped at: 02.2-25 Task 1 complete; awaiting Task 2 human-verify checkpoint
-Resume file: .planning/phases/02.2-visual-design-overhaul/02.2-HUMAN-UAT.md
+Last session: 2026-10-11T00:49:37.809Z
+Stopped at: Completed 02.2-26-PLAN.md (gap G1); next 02.2-27
+Resume file: .planning/phases/02.2-visual-design-overhaul/02.2-27-PLAN.md
