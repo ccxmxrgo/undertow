@@ -1,4 +1,4 @@
-UNDERTOW - early playtest build (v0.5.1, 2026-10-11)
+UNDERTOW - early playtest build (v0.5.2, 2026-10-13)
 ===================================================
 
 You're a submarine sinking into a deep-sea trench. This build is still the
@@ -9,6 +9,8 @@ v0.5 gives every screen a new look: a deep-sea submarine cockpit looking
 through a neon sonar into the abyss. v0.5.1 makes the hit windows wider
 (easier to get PERFECT and GOOD), adds a calmer background and makes the
 controller work in every menu (see WHAT'S NEW IN v0.5.1).
+v0.5.2 adds Guitar Hero / Clone Hero songs that come with a notes.mid chart
+(see WHAT'S NEW IN v0.5.2).
 This build is for friends only: please don't share it further.
 
 Want to help test? Open TESTER-CHECKLIST.txt (next to this file). It is a
@@ -76,6 +78,27 @@ SELECT SONG controls:
   Open Songs Folder  F6
   Back ............. Esc
 Highlight a song for half a second to hear a preview.
+
+
+WHAT'S NEW IN v0.5.2
+--------------------
+- Songs with a notes.mid chart now work (for example Guitar Hero 3 rips
+  and most Clone Hero packs). Drop the folder into Songs and press Rescan
+  Library (F5). All four difficulties, section names and solos work. The
+  lead guitar part is used. If a song has none, the next guitar or bass
+  part is used. With none at all it shows "No guitar part in .mid".
+- Songs that showed "MIDI charts not supported yet" are read again
+  automatically on the first scan (that scan can take a bit longer).
+- If a folder has both notes.chart and notes.mid, notes.chart is used.
+  Did you convert a song with Moonscraper earlier? You can delete that
+  notes.chart to go back to the original notes.mid (optional).
+- Sync: .mid songs are timed exactly like .chart songs (tested to within
+  1 ms). If EVERY song feels a little early or late, re-run Settings >
+  Calibration > Re-run Calibration (wired headphones help). If only one
+  song is off, tell us the song and whether notes come early or late. Its
+  song.ini "delay" (in ms, higher = notes later) can fix it.
+- Still not supported: .opus audio (shows "Opus audio not supported") and
+  drum-only or vocal-only charts.
 
 
 WHAT'S NEW IN v0.5.1
@@ -186,8 +209,9 @@ Where is the Songs folder?
 
 How to add songs:
   1. Get a Clone Hero song you own. A song is a folder with a notes.chart
-     file, usually a song.ini, and the audio (song.ogg, song.mp3 or
-     song.wav; split stems like guitar.ogg + drums.ogg also work).
+     or notes.mid file, usually a song.ini, and the audio (song.ogg,
+     song.mp3 or song.wav; split stems like guitar.ogg + drums.ogg also
+     work).
   2. Drop the whole folder into the Songs folder. A .zip of the folder
      works too: just drop the .zip in, no need to unpack it.
   3. In SELECT SONG press "Rescan Library" (F5). The song shows up.
@@ -211,7 +235,8 @@ How 5-fret charts become 4 lanes (the same for every song):
 Not supported (shown greyed out with the reason, so you know why):
   - Opus audio ("Opus audio not supported"). Convert it to OGG Vorbis,
     MP3 or WAV.
-  - .mid charts (only .chart files work for now).
+  - .mid charts without a guitar part ("No guitar part in .mid").
+  - Damaged .mid files ("Unreadable .mid"): download the song again.
 
 Only add songs you own. This friends-only build bundles a few songs the
 developer owns (see MUSIC CREDITS); please don't share it further.

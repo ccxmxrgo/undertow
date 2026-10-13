@@ -1,4 +1,4 @@
-UNDERTOW v0.5.1 - tester checklist
+UNDERTOW v0.5.2 - tester checklist
 ==================================
 
 Thanks for testing! Tick the boxes as you go ([x]) and write a few words
@@ -43,6 +43,9 @@ Start pause. The README has the full list.
     visualizer moves with the music.
 [ ] Typing filters the list by title or artist; Esc clears it.
 [ ] F2 changes the sort order.
+[ ] Drop a song folder with notes.mid into Songs, rescan (F5), play it.
+[ ] If you have a song that used to say "MIDI charts not supported yet": it
+    now plays.
 
 
 4. PLAY THE 3 SONGS
