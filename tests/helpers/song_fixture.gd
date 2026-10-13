@@ -140,6 +140,14 @@ static func make_song(dir: String, with_ini: bool = true, chart_text: String = C
 	make_wav(dir.path_join("song.wav"))
 
 
+static func make_mid_song(dir: String, mid_bytes: PackedByteArray, with_ini: bool = true) -> void:
+	mkdir(dir)
+	write_bytes(dir.path_join("notes.mid"), mid_bytes)
+	if with_ini:
+		write_text(dir.path_join("song.ini"), INI)
+	make_wav(dir.path_join("song.wav"))
+
+
 ## Community style: song-named chart, mixed-case keys, split stems, album art.
 static func make_community(dir: String) -> void:
 	mkdir(dir)

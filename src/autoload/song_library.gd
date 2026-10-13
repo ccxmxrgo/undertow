@@ -206,9 +206,9 @@ func build_chart(entry: SongEntry, difficulty: String) -> ChartData:
 	if stored.is_empty():
 		last_build_error = "Difficulty not available"
 		return null
-	var parsed := ChartParser.parse_bytes(FileAccess.get_file_as_bytes(entry.chart_path))
+	var parsed := ChartFile.parse(entry.chart_path)
 	if not parsed.ok:
-		last_build_error = parsed.error if parsed.error != "" else SongEntry.err_unreadable(0)
+		last_build_error = parsed.error
 		return null
 	if not ChartImporter.difficulties(parsed).has(difficulty):
 		last_build_error = SongEntry.ERR_NO_GUITAR

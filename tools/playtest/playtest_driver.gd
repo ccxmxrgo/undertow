@@ -3940,7 +3940,7 @@ func _densest_bundled_window() -> Dictionary:
 		if e == null or e.status != "ok" or e.difficulty("expert").is_empty():
 			per_song[str(b["id"])] = "unavailable"
 			continue
-		var parsed := ChartParser.parse_bytes(FileAccess.get_file_as_bytes(e.chart_path))
+		var parsed := ChartFile.parse(e.chart_path)
 		if not parsed.ok:
 			per_song[str(b["id"])] = "parse failed"
 			continue

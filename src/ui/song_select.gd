@@ -572,18 +572,12 @@ func _reap_section_tasks(all: bool) -> void:
 
 
 ## [{time, name}] from the chart's [Events] "section" lines (sanitized and capped by
-## ChartImporter). Worker-safe: no tree access. Unplayable, missing, oversized or
+## ChartImporter). .chart or .mid. Worker-safe: no tree access. Unplayable, missing, oversized or
 ## unparsable charts give [].
 static func parse_sections(e: SongEntry) -> Array:
 	if e == null or e.status != "ok" or e.chart_path == "":
 		return []
-	if not FileAccess.file_exists(e.chart_path):
-		return []
-	var f := FileAccess.open(e.chart_path, FileAccess.READ)
-	if f == null or f.get_length() > ChartParser.MAX_BYTES:
-		return []
-	var parsed := ChartParser.parse_bytes(f.get_buffer(f.get_length()))
-	f.close()
+	var parsed := ChartFile.parse(e.chart_path)
 	if not parsed.ok:
 		return []
 	var diff := "expert"
