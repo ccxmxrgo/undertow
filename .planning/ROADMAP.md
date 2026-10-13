@@ -156,10 +156,13 @@ Plans:
 **Goal:** Players can drop Clone Hero / Guitar Hero songs that ship `notes.mid` (e.g. a GH3 Legends of Rock pack) into the Songs folder and play them exactly like `.chart` songs. The importer reads PART GUITAR (falling back to other guitar tracks when absent), all four difficulties (Easy 60-64, Medium 72-76, Hard 84-88, Expert 96-100) mapped to the game's lanes the same way `.chart` files are, the tempo map and time signatures, EVENTS section names, solo markers (note 103), sustains, and song.ini metadata/delay. The "MIDI charts not supported yet" error goes away. Ends with a v0.5.2 friend zip. (User request 2026-10-11.)
 **Requirements**: CONT-01 (moved from v2 into this phase), SONG-07 (.mid solo markers)
 **Depends on:** Phase 02.2
-**Plans:** 0 plans
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 02.2.1 to break down)
+- [ ] 02.2.1-01-PLAN.md — Bounded SMF reader (SmfReader), MidiWriter test helper, "Unreadable .mid" / "No guitar part in .mid" errors, hostile-input tests
+- [ ] 02.2.1-02-PLAN.md — MidiChartReader (CH .mid semantics -> ParsedChart: track choice, difficulties, opens, sustain cutoff, sections, 103 solos) + .mid vs .chart parity within 1 ms
+- [ ] 02.2.1-03-PLAN.md — ChartFile dispatch at all parse sites, scanner .mid fallback with .chart precedence, legacy "MIDI charts not supported yet" cache re-read, scanner tests
+- [ ] 02.2.1-04-PLAN.md — End-to-end .mid Autoplay test, v0.5.2 README/checklist, local zip build (BUNDLED_OK 20), pending real-song UAT (non-blocking)
 
 ### Phase 02.1: Instrument Extraction Tool (INSERTED)
 
