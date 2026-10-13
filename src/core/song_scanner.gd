@@ -180,6 +180,8 @@ static func _cached(cache: SongCache, id: String, sig: String, source: String, l
 	if cache == null:
 		return null
 	var hit := cache.lookup(id, sig)
+	if hit != null and hit.error == SongEntry.LEGACY_ERR_MIDI:
+		return null  # v0.5.1 cached .mid songs as broken; re-read them under the .mid reader
 	if hit != null:
 		hit.source = source
 		hit.library_name = lib
@@ -251,12 +253,8 @@ static func import_folder(path: String, source: String, library_name: String,
 	e.library_name = library_name
 	var files: Array[String] = _list(path)["files"]
 	var chart_name := _pick_chart(files)
-	var has_mid := false
 	var ini_name := ""
 	for f in files:
-		var ext := f.get_extension().to_lower()
-		if ext == "mid":
-			has_mid = true
 		if f.to_lower() == "song.ini":
 			ini_name = f
 	var ini := {}
@@ -284,17 +282,13 @@ static func import_folder(path: String, source: String, library_name: String,
 	e.signature = folder_signature(path, audio_override)
 
 	if chart_name == "":
-		if has_mid:
-			return _fail(e, SongEntry.ERR_MIDI)
 		e.status = "needs_chart"
 		e.error = SongEntry.ERR_NEEDS_CHART
 		e.fix_hint = SongEntry.hint_for(e.error)
 		return e
 	e.chart_path = path.path_join(chart_name)
-	if _file_len(e.chart_path) > ChartParser.MAX_BYTES:
-		return _fail(e, SongEntry.ERR_TOO_LARGE)
 	parse_count += 1
-	var parsed := ChartParser.parse_bytes(FileAccess.get_file_as_bytes(e.chart_path))
+	var parsed := ChartFile.parse(e.chart_path)
 	if not parsed.ok:
 		return _fail(e, parsed.error)
 	e.warnings = parsed.warnings
@@ -507,13 +501,21 @@ static func folder_signature(path: String, audio_override: Array = []) -> String
 
 
 ## notes.chart first; else prefer names ending [Y]/[F]/(Y) over [N]; else the first by name.
+## With no .chart: notes.mid, else the first .mid (D-07).
 static func _pick_chart(files: Array[String]) -> String:
 	var charts: Array[String] = []
 	for f in files:
 		if f.get_extension().to_lower() == "chart":
 			charts.append(f)
 	if charts.is_empty():
-		return ""
+		var mids: Array[String] = []
+		for f in files:
+			if f.get_extension().to_lower() == "mid":
+				mids.append(f)
+		for m in mids:
+			if m.to_lower() == "notes.mid":
+				return m
+		return mids[0] if not mids.is_empty() else ""
 	for c in charts:
 		if c.to_lower() == "notes.chart":
 			return c

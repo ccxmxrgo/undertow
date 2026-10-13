@@ -166,7 +166,12 @@ func test_broken_songs_have_exact_reasons() -> void:
 	SongFixture.write_bytes(LIB + "/Garbled/notes.chart", _fixture_bytes("garbage.chart"))
 	SongFixture.make_song(LIB + "/NoAudio")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(LIB + "/NoAudio/song.wav"))
-	SongFixture.write_text(LIB + "/MidOnly/notes.mid", "MThd")
+	SongFixture.make_mid_song(LIB + "/MidOnly", "MThd".to_ascii_buffer())
+	SongFixture.make_mid_song(LIB + "/NoGuitarMid", _mid_no_guitar())
+	SongFixture.make_mid_song(LIB + "/HugeMid", PackedByteArray())
+	var hf := FileAccess.open(LIB + "/HugeMid/notes.mid", FileAccess.WRITE)
+	hf.resize(MidiChartReader.MAX_BYTES + 1)
+	hf.close()
 	SongFixture.make_song(LIB + "/Unsupported")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(LIB + "/Unsupported/song.wav"))
 	SongFixture.write_bytes(LIB + "/Unsupported/song.ogg", SongFixture.garbage_bytes())
@@ -183,7 +188,9 @@ func test_broken_songs_have_exact_reasons() -> void:
 		"Opus": SongEntry.ERR_OPUS,
 		"NoGuitar": SongEntry.ERR_NO_GUITAR,
 		"NoAudio": SongEntry.ERR_AUDIO_MISSING,
-		"MidOnly": SongEntry.ERR_MIDI,
+		"MidOnly": SongEntry.ERR_MIDI_BAD,
+		"NoGuitarMid": SongEntry.ERR_MIDI_NO_GUITAR,
+		"HugeMid": SongEntry.ERR_TOO_LARGE,
 		"Unsupported": SongEntry.ERR_UNSUPPORTED_AUDIO,
 		"BadMp3": SongEntry.ERR_AUDIO_BAD,
 		"bad": SongEntry.ERR_ZIP,
@@ -206,6 +213,134 @@ func test_broken_songs_have_exact_reasons() -> void:
 	assert_object(garbled).is_not_null()
 	assert_str(garbled.error).starts_with("Unreadable .chart (line ")
 	assert_str(garbled.status).is_equal("broken")
+
+
+func _mid_no_guitar() -> PackedByteArray:
+	var t0: Array = [MidiWriter.ev(0, MidiWriter.tempo(500000))]
+	var drums: Array = [MidiWriter.ev(0, MidiWriter.name("PART DRUMS")),
+			MidiWriter.ev(0, MidiWriter.on(96)), MidiWriter.ev(60, MidiWriter.off(96))]
+	return MidiWriter.file([MidiWriter.track(t0), MidiWriter.track(drums)], 480)
+
+
+func _diff_map(e: SongEntry, key: String) -> Dictionary:
+	var out := {}
+	for d in e.difficulties:
+		out[d["name"]] = d[key]
+	return out
+
+
+func _rename(from: String, to: String) -> void:
+	DirAccess.rename_absolute(ProjectSettings.globalize_path(from), ProjectSettings.globalize_path(to))
+
+
+func _find(es: Array, suffix: String) -> SongEntry:
+	for e in es:
+		if e.path.ends_with(suffix):
+			return e
+	return null
+
+
+func test_mid_only_folder_is_playable() -> void:
+	SongFixture.make_mid_song(LIB + "/MidOnly", MidiWriter.demo_song()["mid"])
+	var es := _scan()
+	assert_int(es.size()).is_equal(1)
+	var e: SongEntry = es[0]
+	assert_str(e.status).is_equal("ok")
+	assert_str(e.chart_path).ends_with("notes.mid")
+	assert_int(e.difficulties.size()).is_equal(4)
+	assert_str(e.title).is_equal("Ini Title")
+	assert_str(e.artist).is_equal("Ini Artist")
+	assert_bool(e.has_solos).is_true()
+
+
+func test_mid_name_matching() -> void:
+	SongFixture.make_mid_song(LIB + "/Named", MidiWriter.demo_song()["mid"])
+	_rename(LIB + "/Named/notes.mid", LIB + "/Named/Song [Y].mid")
+	SongFixture.make_mid_song(LIB + "/Upper", MidiWriter.demo_song()["mid"])
+	_rename(LIB + "/Upper/notes.mid", LIB + "/Upper/notes.MID")
+	SongFixture.make_mid_song(LIB + "/Midi", MidiWriter.demo_song()["mid"])
+	_rename(LIB + "/Midi/notes.mid", LIB + "/Midi/notes.midi")
+	var es := _scan()
+	assert_int(es.size()).is_equal(3)
+	assert_str(_find(es, "/Midi").status).is_equal("needs_chart")
+	for suffix in ["/Named", "/Upper"]:
+		var e := _find(es, suffix)
+		assert_str(e.status).is_equal("ok")
+		assert_str(e.chart_path.get_extension().to_lower()).is_equal("mid")
+
+
+func test_chart_wins_over_mid() -> void:
+	SongFixture.make_song(LIB + "/Both")
+	SongFixture.write_bytes(LIB + "/Both/notes.mid", MidiWriter.demo_song()["mid"])
+	SongFixture.make_song(LIB + "/Only")
+	var es := _scan()
+	assert_int(es.size()).is_equal(2)
+	var both := _find(es, "/Both")
+	assert_str(both.chart_path).ends_with(".chart")
+	assert_dict(_diff_map(both, "fingerprint")).is_equal(_diff_map(_find(es, "/Only"), "fingerprint"))
+
+
+func test_mid_ini_delay_and_preview() -> void:
+	var mid: PackedByteArray = MidiWriter.demo_song()["mid"]
+	SongFixture.make_mid_song(LIB + "/D0", mid)
+	SongFixture.make_mid_song(LIB + "/D250", mid, false)
+	SongFixture.write_text(LIB + "/D250/song.ini",
+			SongFixture.INI.replace("delay = 0", "delay = 250") + "preview_start_time = 1500\n")
+	var es := _scan()
+	var d0 := _find(es, "/D0")
+	var d250 := _find(es, "/D250")
+	assert_int(d250.delay_ms).is_equal(250)
+	assert_int(d250.preview_start_ms).is_equal(1500)
+	assert_bool(_diff_map(d250, "fingerprint") == _diff_map(d0, "fingerprint")).is_false()
+
+
+func test_mid_audio_stems_and_opus() -> void:
+	var mid: PackedByteArray = MidiWriter.demo_song()["mid"]
+	SongFixture.make_mid_song(LIB + "/Stems", mid, true)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(LIB + "/Stems/song.wav"))
+	SongFixture.make_wav(LIB + "/Stems/guitar.wav")
+	SongFixture.make_wav(LIB + "/Stems/rhythm.wav")
+	SongFixture.make_mid_song(LIB + "/OpusMid", mid, true)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(LIB + "/OpusMid/song.wav"))
+	SongFixture.write_bytes(LIB + "/OpusMid/song.ogg", SongFixture.opus_bytes())
+	var es := _scan()
+	var st := _find(es, "/Stems")
+	assert_str(st.status).is_equal("ok")
+	assert_int(st.audio_files.size()).is_equal(2)
+	var op := _find(es, "/OpusMid")
+	assert_str(op.status).is_equal("broken")
+	assert_str(op.error).is_equal(SongEntry.ERR_OPUS)
+
+
+func test_legacy_midi_cache_entry_is_reread() -> void:
+	SongFixture.make_mid_song(LIB + "/M", MidiWriter.demo_song()["mid"])
+	SongFixture.make_song(LIB + "/C")
+	var first := _scan()
+	var cache := SongCache.new()
+	for e in first:
+		if e.path.ends_with("/M"):
+			e.status = "broken"
+			e.error = SongEntry.LEGACY_ERR_MIDI
+			e.difficulties = []
+		cache.put(e)
+	var p0 := SongScanner.parse_count
+	var second := _scan(LIB, cache)
+	assert_int(SongScanner.parse_count).is_equal(p0 + 1)
+	for e in second:
+		assert_str(e.status).is_equal("ok")
+
+
+func test_mid_and_chart_folders_have_parity() -> void:
+	var demo := MidiWriter.demo_song()
+	SongFixture.make_song(LIB + "/A", true, demo["chart"])
+	SongFixture.make_mid_song(LIB + "/B", demo["mid"])
+	var es := _scan()
+	var a := _find(es, "/A")
+	var b := _find(es, "/B")
+	assert_str(a.status).is_equal("ok")
+	assert_str(b.status).is_equal("ok")
+	assert_dict(_diff_map(b, "note_count")).is_equal(_diff_map(a, "note_count"))
+	assert_dict(_diff_map(b, "fingerprint")).is_equal(_diff_map(a, "fingerprint"))
 
 
 func test_cache_hit_does_no_work_and_changes_invalidate_one() -> void:

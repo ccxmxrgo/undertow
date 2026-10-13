@@ -73,3 +73,51 @@ func test_parse_sections_on_hand_built_mid_entry() -> void:
 	assert_str(str(secs[0]["name"])).is_equal("Intro")
 	assert_str(str(secs[1]["name"])).is_equal("verse 1")
 	assert_str(str(secs[2]["name"])).is_equal("Chorus")
+
+
+const LIBD := D + "/songs"
+
+
+func _lib() -> Node:
+	SongFixture.make_mid_song(LIBD + "/MidSong", MidiWriter.demo_song()["mid"])
+	var lib: Node = load("res://src/autoload/song_library.gd").new()
+	lib.songs_root_override = LIBD
+	lib.cache_path = D + "/cache.json"
+	lib.auto_scan = false
+	add_child(lib)
+	lib.rescan()
+	var t0 := Time.get_ticks_msec()
+	while lib.scanning and Time.get_ticks_msec() - t0 < 30000:
+		await get_tree().process_frame
+	return lib
+
+
+func _mid_entry(lib: Node) -> SongEntry:
+	for x in lib.entries:
+		var e: SongEntry = x
+		if e.path.trim_suffix("/").ends_with("MidSong"):
+			return e
+	return null
+
+
+func test_library_builds_scanned_mid_with_scan_fingerprint() -> void:
+	var lib := await _lib()
+	var e := _mid_entry(lib)
+	assert_object(e).is_not_null()
+	assert_str(e.status).is_equal("ok")
+	assert_int(e.difficulties.size()).is_equal(4)
+	for d in e.difficulties:
+		var chart: ChartData = lib.build_chart(e, d["name"])
+		assert_object(chart).is_not_null()
+		assert_str(lib.last_build_error).is_equal("")
+		assert_str(chart.id).is_equal(d["fingerprint"])
+
+
+func test_parse_sections_on_scanned_mid_entry() -> void:
+	var lib := await _lib()
+	var e := _mid_entry(lib)
+	var secs: Array = SongSelect.parse_sections(e)
+	assert_int(secs.size()).is_equal(3)
+	assert_str(str(secs[0]["name"])).is_equal("Intro")
+	assert_str(str(secs[1]["name"])).is_equal("verse 1")
+	assert_str(str(secs[2]["name"])).is_equal("Chorus")

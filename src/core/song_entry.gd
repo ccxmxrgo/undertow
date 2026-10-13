@@ -6,7 +6,9 @@ extends RefCounted
 const ERR_OPUS := "Opus audio not supported"
 const ERR_NO_GUITAR := "No guitar chart"
 const ERR_AUDIO_MISSING := "Audio file missing"
-const ERR_MIDI := "MIDI charts not supported yet"
+## v0.5.1 and older cached this for .mid-only songs; kept only so SongScanner can treat such
+## cache entries as misses (README v0.5.2).
+const LEGACY_ERR_MIDI := "MIDI charts not supported yet"
 const ERR_UNSUPPORTED_AUDIO := "Unsupported audio format"
 const ERR_AUDIO_BAD := "Audio could not be read"
 const ERR_ZIP := "Zip could not be unpacked"
@@ -62,8 +64,6 @@ static func hint_for(err: String) -> String:
 			return "This chart has no lead guitar notes. Only guitar charts work."
 		ERR_AUDIO_MISSING:
 			return "No song audio found next to the chart. Add song.ogg, song.mp3 or song.wav, then press Rescan."
-		ERR_MIDI:
-			return "This song only has a .mid chart. Only .chart files work for now."
 		ERR_UNSUPPORTED_AUDIO:
 			return "Use OGG Vorbis, MP3 or WAV audio."
 		ERR_AUDIO_BAD:
