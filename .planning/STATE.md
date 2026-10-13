@@ -4,13 +4,13 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 02.2-30-PLAN.md (gap round close, v0.5.1); awaiting 02.2-25 re-test
-last_updated: "2026-10-13T20:32:00.577Z"
-last_activity: 2026-10-13 -- Phase 02.2.1 planning complete
+last_updated: "2026-10-13T20:36:26.043Z"
+last_activity: 2026-10-13
 progress:
   total_phases: 10
   completed_phases: 6
   total_plans: 74
-  completed_plans: 70
+  completed_plans: 71
   percent: 60
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-07)
 
 **Core value:** Hitting notes must feel tight and fair on each player's own machine, while torpedoes reach rivals over the network fast enough that a friend's perfect streak is felt inside the same song.
-**Current focus:** Phase 02.2 — Visual Design Overhaul
+**Current focus:** Phase 02.2.1 — midi-chart-import
 
 ## Current Position
 
-Phase: 02.2 (Visual Design Overhaul) — EXECUTING
-Plan: 30 of 30 (gap closure)
+Phase: 02.2.1 (midi-chart-import) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-10-13 -- Phase 02.2.1 planning complete
+Last activity: 2026-10-13
 
-Progress: [██████████] 100%
+Progress: [██████████] 96%
 
 ## Performance Metrics
 
@@ -99,6 +99,7 @@ Progress: [██████████] 100%
 | Phase 02.2 P28 | 20min | 2 tasks | 8 files |
 | Phase 02.2 P29 | ~25 min | 2 tasks | 9 files |
 | Phase 02.2 P30 | 90min | 2 tasks | 5 files |
+| Phase 02.2.1 P01 | 25min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -196,6 +197,7 @@ Recent decisions affecting current work:
 - [Phase 02.2]: 02.2-29: Settings rows use explicit row-by-row focus neighbours; a listening keyboard rebind cell swallows pad input except B (cancel)
 - [Phase 02.2]: 02.2-29: Stick pushes are latched (one step / flip per push) on StepSlider and the Background row; fail screen B/Esc = Back to Menu
 - [Phase 02.2]: 02.2-30: v0.5.1 friend zip built and self-tested (BUNDLED_OK 20); UAT sheet back to pending with G1-G3 fixed-pending-retest; 02.2-25 and the phase stay open until the user re-tests
+- [Phase 02.2.1]: 02.2.1-01: SmfReader text decoding drops NULs, validates UTF-8, falls back to Latin-1
 
 ### Pending Todos
 
@@ -215,6 +217,6 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-10-11T03:22:38.196Z
+Last session: 2026-10-13T20:36:20.394Z
 Stopped at: Completed 02.2-30-PLAN.md (gap round close, v0.5.1); awaiting 02.2-25 re-test
-Resume file: .planning/phases/02.2-visual-design-overhaul/02.2-HUMAN-UAT.md
+Resume file: None
