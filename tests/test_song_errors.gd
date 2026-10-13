@@ -217,8 +217,11 @@ func test_entry_rejects_bad_data() -> void:
 func test_hints_cover_all_errors() -> void:
 	for err in [SongEntry.ERR_OPUS, SongEntry.ERR_NO_GUITAR, SongEntry.ERR_AUDIO_MISSING,
 			SongEntry.ERR_MIDI, SongEntry.ERR_UNSUPPORTED_AUDIO, SongEntry.ERR_AUDIO_BAD,
-			SongEntry.ERR_ZIP, SongEntry.ERR_TOO_LARGE, SongEntry.err_unreadable(42)]:
+			SongEntry.ERR_ZIP, SongEntry.ERR_TOO_LARGE, SongEntry.err_unreadable(42),
+			SongEntry.ERR_MIDI_BAD, SongEntry.ERR_MIDI_NO_GUITAR]:
 		assert_bool(SongEntry.hint_for(err) != "").is_true()
+	assert_str(SongEntry.ERR_MIDI_BAD).is_equal("Unreadable .mid")
+	assert_str(SongEntry.ERR_MIDI_NO_GUITAR).is_equal("No guitar part in .mid")
 	assert_str(SongEntry.err_unreadable(7)).is_equal("Unreadable .chart (line 7)")
 	assert_str(SongEntry.hint_for(SongEntry.err_unreadable(7))).contains("near line 7")
 	assert_str(SongEntry.hint_for("whatever")).is_equal("")

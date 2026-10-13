@@ -12,6 +12,8 @@ const ERR_AUDIO_BAD := "Audio could not be read"
 const ERR_ZIP := "Zip could not be unpacked"
 const ERR_TOO_LARGE := "Chart too large"
 const ERR_NEEDS_CHART := "Needs a chart"
+const ERR_MIDI_BAD := "Unreadable .mid"
+const ERR_MIDI_NO_GUITAR := "No guitar part in .mid"
 
 const STATUSES: Array[String] = ["ok", "needs_chart", "broken"]
 const SOURCES: Array[String] = ["bundled", "songs", "library", "test"]
@@ -70,6 +72,10 @@ static func hint_for(err: String) -> String:
 			return "The zip is damaged or has unsafe paths. Unzip it into the Songs folder yourself."
 		ERR_TOO_LARGE:
 			return "This chart file is far larger than any normal song. It was skipped."
+		ERR_MIDI_BAD:
+			return "The .mid chart looks damaged. Download the song again."
+		ERR_MIDI_NO_GUITAR:
+			return "This .mid has no guitar or bass part. Only guitar charts work."
 		ERR_NEEDS_CHART:
 			return "Only audio was found. Add a notes.chart next to it, then press Rescan."
 	return ""
