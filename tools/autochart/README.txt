@@ -39,6 +39,8 @@ build/autochart/pythons, and the venvs from the committed exact pins:
                                                            librosa 1.0.0, soundfile 0.14.0
   build/autochart/venvB  Python 3.10  requirements-b.txt  basic-pitch 0.4.0, onnxruntime 1.23.2
                                                            (3.10 so basic-pitch picks ONNX, not tensorflow)
+  build/autochart/venvP  Python 3.12  requirements-pack.txt  merged A + Basic Pitch set, --no-deps
+                                                           --require-hashes (the runtime pack's pin set)
 Disk: about 1.5 GB under build/autochart. The first pipeline run downloads htdemucs (~80 MB, HF hub)
 and beat_this final0 (~77 MB, cloud.cp.jku.at) into build/autochart/cache; setup copies final0 from
 build/research-02.2.2/models/final0.ckpt instead when that copy has the pinned hash.
@@ -49,6 +51,25 @@ against MODEL HASHES below (mismatch = stop) and rebuilds
 which is the layout the runtime pack ships (HF_HOME=<models>/hf, TORCH_HOME=<models>/torch, so
 beats.py's checkpoint_path="final0" resolves offline unchanged). It prints PACK_MODELS_OK, or
 PACK_MODELS_PENDING (run one analyze first) while htdemucs is not downloaded yet.
+PACK PINS AND PARITY (Phase 2.2.2, D-03 / D-14)
+  requirements-pack.in   every requirements-a.txt pin + the venv-B-only pins (basic-pitch, onnxruntime,
+                         resampy, mir-eval, pretty-midi, mido, coloredlogs, humanfriendly, flatbuffers,
+                         protobuf, pyreadline3, six, audioread, importlib-resources); shared names keep the
+                         venv-A version; setuptools forced to 80.10.2 (resampy imports pkg_resources);
+                         no tensorflow / tflite / coremltools.
+  requirements-pack.txt  uv pip compile --generate-hashes --no-deps (exact command in its header);
+                         69 pins, every one with --hash=sha256.
+  check_pack_reqs.py     stdlib check: .in == .txt, every pin hashed, no tensorflow, setuptools 80.10.2
+                         -> PACK_REQS_OK.
+  build/autochart/venvP  Python 3.12.15 from requirements-pack.txt (--no-deps --require-hashes);
+                         basic_pitch.ICASSP_2022_MODEL_PATH ends in saved_models/icassp_2022/nmp.onnx (ONNX).
+  bp_parity.py           runs bp_worker.py under venvB and venvP on the 4 stems of the CC0 songs
+                         synth_wave_april and space_synth_wave -> reports/pack_bp_parity.json.
+  Result (2026-10-14): decision "merged". All 8 stems give byte-identical Basic Pitch note arrays
+  (April drums/bass/other/vocals 165/459/776/442 notes, Space 115/347/1519/568), so attach_pitch is
+  identical on all 7965 audible+loud onsets (0 pitch or amp>=0.3 differences) although venvP runs
+  librosa 1.0.0 / numpy 2.5.3 / scipy 1.18.1 vs librosa 0.11.0 / numpy 2.2.6 / scipy 1.15.3 in venvB.
+  The pack ships ONE interpreter (merged A+B).
 Env vars for every run (the tools set them; honoured under python -I):
   HF_HOME=build/autochart/cache  TORCH_HOME=build/autochart/cache  HF_HUB_DISABLE_SYMLINKS_WARNING=1
 

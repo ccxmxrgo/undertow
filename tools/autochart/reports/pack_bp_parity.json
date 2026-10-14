@@ -1,0 +1,192 @@
+{
+  "all_lane_keys_identical": true,
+  "all_notes_equal": true,
+  "decision": "merged",
+  "interpreters": {
+    "b": {
+      "basic-pitch": "0.4.0",
+      "librosa": "0.11.0",
+      "model_path": "basic_pitch/saved_models/icassp_2022/nmp.onnx",
+      "numpy": "2.2.6",
+      "onnxruntime": "1.23.2",
+      "python": "3.10.22",
+      "resampy": "0.4.2",
+      "scikit-learn": "1.7.2",
+      "scipy": "1.15.3"
+    },
+    "p": {
+      "basic-pitch": "0.4.0",
+      "librosa": "1.0.0",
+      "model_path": "basic_pitch/saved_models/icassp_2022/nmp.onnx",
+      "numpy": "2.5.3",
+      "onnxruntime": "1.23.2",
+      "python": "3.12.15",
+      "resampy": "0.4.2",
+      "scikit-learn": "1.9.1",
+      "scipy": "1.18.1"
+    }
+  },
+  "per_stem": {
+    "space_synth_wave/bass": {
+      "downstream": {
+        "amp_fold_diff": 0,
+        "audible_loud": 368,
+        "lane_key_diff": 0,
+        "lane_key_identical": true,
+        "max_amp_diff": 0.0,
+        "pitch_diff": 0
+      },
+      "notes": {
+        "count_b": 347,
+        "count_p": 347,
+        "equal": true,
+        "max_amp_diff": 0.0,
+        "max_end_diff_s": 0.0,
+        "max_start_diff_s": 0.0,
+        "pairing": "none",
+        "pitch_diff_share": 0.0
+      }
+    },
+    "space_synth_wave/drums": {
+      "downstream": {
+        "amp_fold_diff": 0,
+        "audible_loud": 1049,
+        "lane_key_diff": 0,
+        "lane_key_identical": true,
+        "max_amp_diff": 0.0,
+        "pitch_diff": 0
+      },
+      "notes": {
+        "count_b": 115,
+        "count_p": 115,
+        "equal": true,
+        "max_amp_diff": 0.0,
+        "max_end_diff_s": 0.0,
+        "max_start_diff_s": 0.0,
+        "pairing": "none",
+        "pitch_diff_share": 0.0
+      }
+    },
+    "space_synth_wave/other": {
+      "downstream": {
+        "amp_fold_diff": 0,
+        "audible_loud": 1248,
+        "lane_key_diff": 0,
+        "lane_key_identical": true,
+        "max_amp_diff": 0.0,
+        "pitch_diff": 0
+      },
+      "notes": {
+        "count_b": 1519,
+        "count_p": 1519,
+        "equal": true,
+        "max_amp_diff": 0.0,
+        "max_end_diff_s": 0.0,
+        "max_start_diff_s": 0.0,
+        "pairing": "none",
+        "pitch_diff_share": 0.0
+      }
+    },
+    "space_synth_wave/vocals": {
+      "downstream": {
+        "amp_fold_diff": 0,
+        "audible_loud": 1574,
+        "lane_key_diff": 0,
+        "lane_key_identical": true,
+        "max_amp_diff": 0.0,
+        "pitch_diff": 0
+      },
+      "notes": {
+        "count_b": 568,
+        "count_p": 568,
+        "equal": true,
+        "max_amp_diff": 0.0,
+        "max_end_diff_s": 0.0,
+        "max_start_diff_s": 0.0,
+        "pairing": "none",
+        "pitch_diff_share": 0.0
+      }
+    },
+    "synth_wave_april/bass": {
+      "downstream": {
+        "amp_fold_diff": 0,
+        "audible_loud": 1069,
+        "lane_key_diff": 0,
+        "lane_key_identical": true,
+        "max_amp_diff": 0.0,
+        "pitch_diff": 0
+      },
+      "notes": {
+        "count_b": 459,
+        "count_p": 459,
+        "equal": true,
+        "max_amp_diff": 0.0,
+        "max_end_diff_s": 0.0,
+        "max_start_diff_s": 0.0,
+        "pairing": "none",
+        "pitch_diff_share": 0.0
+      }
+    },
+    "synth_wave_april/drums": {
+      "downstream": {
+        "amp_fold_diff": 0,
+        "audible_loud": 401,
+        "lane_key_diff": 0,
+        "lane_key_identical": true,
+        "max_amp_diff": 0.0,
+        "pitch_diff": 0
+      },
+      "notes": {
+        "count_b": 165,
+        "count_p": 165,
+        "equal": true,
+        "max_amp_diff": 0.0,
+        "max_end_diff_s": 0.0,
+        "max_start_diff_s": 0.0,
+        "pairing": "none",
+        "pitch_diff_share": 0.0
+      }
+    },
+    "synth_wave_april/other": {
+      "downstream": {
+        "amp_fold_diff": 0,
+        "audible_loud": 1154,
+        "lane_key_diff": 0,
+        "lane_key_identical": true,
+        "max_amp_diff": 0.0,
+        "pitch_diff": 0
+      },
+      "notes": {
+        "count_b": 776,
+        "count_p": 776,
+        "equal": true,
+        "max_amp_diff": 0.0,
+        "max_end_diff_s": 0.0,
+        "max_start_diff_s": 0.0,
+        "pairing": "none",
+        "pitch_diff_share": 0.0
+      }
+    },
+    "synth_wave_april/vocals": {
+      "downstream": {
+        "amp_fold_diff": 0,
+        "audible_loud": 1102,
+        "lane_key_diff": 0,
+        "lane_key_identical": true,
+        "max_amp_diff": 0.0,
+        "pitch_diff": 0
+      },
+      "notes": {
+        "count_b": 442,
+        "count_p": 442,
+        "equal": true,
+        "max_amp_diff": 0.0,
+        "max_end_diff_s": 0.0,
+        "max_start_diff_s": 0.0,
+        "pairing": "none",
+        "pitch_diff_share": 0.0
+      }
+    }
+  },
+  "rule": "merged if the Basic Pitch note arrays are identical for every stem, or if attach_pitch gives the same (pitch, amp >= 0.3) for every audible+loud onset of every stem; otherwise two"
+}

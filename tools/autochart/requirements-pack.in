@@ -1,0 +1,82 @@
+# Runtime pack pins (Phase 2.2.2, D-03): ONE Python 3.12.15 interpreter holding venv A + the Basic Pitch set.
+# Merge rule: every name==version pin of requirements-a.txt, plus the venv-B-only names
+# (requirements-b.txt names absent from requirements-a.txt). Shared names keep the venv-A version
+# (librosa 1.0.0, numpy 2.5.3, scipy 1.18.1, scikit-learn 1.9.1, ...), except setuptools, which is
+# forced to the venv-B pin 80.10.2 because resampy 0.4.2 imports pkg_resources (02.1 Pitfall 7).
+# No tensorflow / tflite / coremltools: basic-pitch 0.4.0 picks its backend at import time and, with
+# onnxruntime present and tensorflow absent, loads saved_models/icassp_2022/nmp.onnx.
+# basic-pitch's install-time markers would pull tensorflow on 3.11+, so the whole set is installed
+# with --no-deps --require-hashes from requirements-pack.txt (generated from this file, see its header).
+# No new packages: every name was approved in the 02.1 Package Legitimacy Audit.
+#
+# --- venv A pins (requirements-a.txt; setuptools replaced by the venv B pin) ---
+anyio==4.15.1
+beat-this==1.1.0
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.2
+click==8.5.0
+cloudpickle==3.1.2
+colorama==0.4.6
+decorator==5.3.1
+demucs==4.1.0
+einops==0.8.2
+filelock==4.0.12
+fsspec==2026.9.0
+h11==0.16.0
+hf-xet==1.7.0
+httpcore2==2.13.1
+httpx2==2.13.1
+huggingface-hub==2.2.0
+idna==3.20
+jinja2==3.1.6
+joblib==1.6.0
+julius==0.2.8
+lameenc==1.8.4
+lazy-loader==0.6
+librosa==1.0.0
+llvmlite==0.50.0
+markupsafe==3.0.4
+mpmath==1.3.0
+msgpack==1.2.3
+narwhals==2.26.0
+networkx==3.7
+numba==0.68.0
+numpy==2.5.3
+packaging==26.3
+platformdirs==4.12.4
+pooch==1.9.0
+pycparser==3.1
+pyyaml==6.0.3
+requests==2.34.2
+rotary-embedding-torch==0.9.1
+safetensors==0.8.0
+scikit-learn==1.9.1
+scipy==1.18.1
+soundfile==0.14.0
+soxr==1.1.0
+sphn==0.2.1
+sympy==1.14.0
+threadpoolctl==3.7.0
+torch==2.11.0+cpu
+torchaudio==2.11.0+cpu
+tqdm==4.70.1
+truststore==0.10.4
+typing-extensions==4.16.0
+urllib3==2.8.0
+# --- venv B only pins (requirements-b.txt) ---
+audioread==3.1.0
+basic-pitch==0.4.0
+coloredlogs==15.0.1
+flatbuffers==25.12.19
+humanfriendly==10.0
+importlib-resources==7.1.0
+mido==1.3.3
+mir-eval==0.8.2
+onnxruntime==1.23.2
+pretty-midi==0.2.11.post0
+protobuf==7.36.2
+pyreadline3==3.5.6
+resampy==0.4.2
+six==1.17.0
+setuptools==80.10.2

@@ -8,6 +8,7 @@
 #   build/autochart/uvcache     uv package cache
 #   build/autochart/venvA       Python 3.12: torch/torchaudio 2.11 cpu, demucs, beat_this, librosa 1.0 (requirements-a.txt)
 #   build/autochart/venvB       Python 3.10: basic-pitch 0.4.0 + onnxruntime (requirements-b.txt)
+#   build/autochart/venvP       Python 3.12: merged pack pins, --no-deps --require-hashes (requirements-pack.txt)
 #   build/autochart/cache       model cache (HF_HOME and TORCH_HOME point here for every tool run)
 #   build/autochart/pack_models models in the layout the runtime pack ships (HF_HOME=<models>/hf, TORCH_HOME=<models>/torch)
 #
@@ -27,12 +28,15 @@ $uvSha = "7c38608c8a18ee137d748a1773053b07ec8f3a30fab49aebaa6f4e4efeceb019"
 $uv = Join-Path $uvDir "uv.exe"
 $venvA = Join-Path $ac "venvA"
 $venvB = Join-Path $ac "venvB"
+$venvP = Join-Path $ac "venvP"
 $pyA = Join-Path $venvA "Scripts/python.exe"
 $pyB = Join-Path $venvB "Scripts/python.exe"
+$pyP = Join-Path $venvP "Scripts/python.exe"
 $cache = Join-Path $ac "cache"
 $packModels = Join-Path $ac "pack_models"
 $reqA = Join-Path $root "tools/autochart/requirements-a.txt"
 $reqB = Join-Path $root "tools/autochart/requirements-b.txt"
+$reqP = Join-Path $root "tools/autochart/requirements-pack.txt"
 $indexArgs = @("--index-url", "https://download.pytorch.org/whl/cpu",
     "--extra-index-url", "https://pypi.org/simple",
     "--index-strategy", "unsafe-best-match")
@@ -105,8 +109,15 @@ if (-not (Test-Path $pyB)) {
 }
 Invoke-Native $uv @("pip", "install", "-p", $pyB, "-r", $reqB)
 
+# (5) venvP: the merged single-interpreter pin set the runtime pack ships (Python 3.12, venv A + Basic Pitch
+#     on onnxruntime, no tensorflow). --no-deps --require-hashes: every wheel is hash-checked (T-02.2.2-02).
+if (-not (Test-Path $pyP)) {
+    Invoke-Native $uv @("venv", "-p", "3.12.15", $venvP)
+}
+Invoke-Native $uv (@("pip", "install", "-p", $pyP, "--no-deps", "--require-hashes", "-r", $reqP) + $indexArgs)
+
 # (5b) model cache: reuse the hash-verified research copy of beat_this final0 when present.
-#      htdemucs comes from the HF hub on the first analyze (it needs htdemucs.yaml + 955717e8.json +
+#      htdemucs comes from the HF hub on the first analyze (demucs fetches htdemucs.yaml +
 #      the safetensors in the HF snapshot layout).
 $ckDir = Join-Path $cache "hub/checkpoints"
 $ck = Join-Path $ckDir "beat_this-final0.ckpt"
@@ -148,4 +159,5 @@ else {
 Write-Host "uv: $uv"
 Write-Host "venvA python: $pyA"
 Write-Host "venvB python: $pyB"
+Write-Host "venvP python: $pyP"
 Write-Output "AUTOCHART_ENV_OK"
