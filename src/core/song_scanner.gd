@@ -289,6 +289,16 @@ static func import_folder(path: String, source: String, library_name: String,
 	e.chart_path = path.path_join(chart_name)
 	parse_count += 1
 	var parsed := ChartFile.parse(e.chart_path)
+	if chart_name.get_extension().to_lower() == "chart":
+		# A stub / broken / guitar-less .chart must not hide a playable .mid in the same folder.
+		var mid_name := _pick_mid(files)
+		if mid_name != "" and (not parsed.ok or ChartImporter.difficulties(parsed).is_empty()):
+			var alt := ChartFile.parse(path.path_join(mid_name))
+			parse_count += 1
+			if alt.ok and not ChartImporter.difficulties(alt).is_empty():
+				chart_name = mid_name
+				e.chart_path = path.path_join(chart_name)
+				parsed = alt
 	if not parsed.ok:
 		return _fail(e, parsed.error)
 	e.warnings = parsed.warnings
@@ -508,14 +518,7 @@ static func _pick_chart(files: Array[String]) -> String:
 		if f.get_extension().to_lower() == "chart":
 			charts.append(f)
 	if charts.is_empty():
-		var mids: Array[String] = []
-		for f in files:
-			if f.get_extension().to_lower() == "mid":
-				mids.append(f)
-		for m in mids:
-			if m.to_lower() == "notes.mid":
-				return m
-		return mids[0] if not mids.is_empty() else ""
+		return _pick_mid(files)
 	for c in charts:
 		if c.to_lower() == "notes.chart":
 			return c
@@ -529,6 +532,18 @@ static func _pick_chart(files: Array[String]) -> String:
 		if not (base2.ends_with("[n]") or base2.ends_with("(n)")):
 			return c
 	return charts[0]
+
+
+## notes.mid, else the first .mid by listing order; "" when there is none.
+static func _pick_mid(files: Array[String]) -> String:
+	var mids: Array[String] = []
+	for f in files:
+		if f.get_extension().to_lower() == "mid":
+			mids.append(f)
+	for m in mids:
+		if m.to_lower() == "notes.mid":
+			return m
+	return mids[0] if not mids.is_empty() else ""
 
 
 ## Core + optional stems; with no reserved names the first non-preview audio file.
