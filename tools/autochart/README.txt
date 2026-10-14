@@ -28,16 +28,27 @@ Key findings:
 SETUP
 -----
   powershell -NoProfile -File tools/autochart/setup_venv.ps1
-Idempotent; prints AUTOCHART_ENV_OK. Installs uv 0.12.24 into build/autochart/boot (system Python
-3.14 untouched), CPython 3.12.15 + 3.10.22 into build/autochart/pythons, and two venvs from the
-committed exact pins:
+Idempotent; prints AUTOCHART_ENV_OK. No system Python is needed (this PC has none usable). uv 0.12.24
+is bootstrapped from its GitHub release zip
+  https://github.com/astral-sh/uv/releases/download/0.12.24/uv-x86_64-pc-windows-msvc.zip
+  sha256 7c38608c8a18ee137d748a1773053b07ec8f3a30fab49aebaa6f4e4efeceb019
+(curl.exe -> build/autochart/boot/dl, Get-FileHash checked BEFORE extraction, a mismatch deletes the zip
+and stops; uv.exe lands in build/autochart/boot/uv). uv then installs CPython 3.12.15 + 3.10.22 into
+build/autochart/pythons, and the venvs from the committed exact pins:
   build/autochart/venvA  Python 3.12  requirements-a.txt  torch 2.11 cpu, demucs 4.1.0, beat-this 1.1.0,
                                                            librosa 1.0.0, soundfile 0.14.0
   build/autochart/venvB  Python 3.10  requirements-b.txt  basic-pitch 0.4.0, onnxruntime 1.23.2
                                                            (3.10 so basic-pitch picks ONNX, not tensorflow)
 Disk: about 1.5 GB under build/autochart. The first pipeline run downloads htdemucs (~80 MB, HF hub)
-and beat_this final0 (~77 MB, cloud.cp.jku.at) into build/autochart/cache, unless setup copied them
-from build/research/cache.
+and beat_this final0 (~77 MB, cloud.cp.jku.at) into build/autochart/cache; setup copies final0 from
+build/research-02.2.2/models/final0.ckpt instead when that copy has the pinned hash.
+Pack model layout (Phase 2.2.2): once both models are in the cache, setup checks both SHA-256 values
+against MODEL HASHES below (mismatch = stop) and rebuilds
+  build/autochart/pack_models/hf/hub/models--adefossez--HTDemucs/{refs/main, snapshots/cbc8a9b1.../...}
+  build/autochart/pack_models/torch/hub/checkpoints/beat_this-final0.ckpt
+which is the layout the runtime pack ships (HF_HOME=<models>/hf, TORCH_HOME=<models>/torch, so
+beats.py's checkpoint_path="final0" resolves offline unchanged). It prints PACK_MODELS_OK, or
+PACK_MODELS_PENDING (run one analyze first) while htdemucs is not downloaded yet.
 Env vars for every run (the tools set them; honoured under python -I):
   HF_HOME=build/autochart/cache  TORCH_HOME=build/autochart/cache  HF_HUB_DISABLE_SYMLINKS_WARNING=1
 
