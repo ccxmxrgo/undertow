@@ -7,7 +7,11 @@ extends RefCounted
 ## against the chunk end, and every loop iteration advances the cursor.
 ## Clone Hero semantics (pitches, difficulties, SysEx meaning) live in MidiChartReader, not here.
 
-const MAX_BYTES := 16 * 1024 * 1024
+## Real Clone Hero / GH .mid files are well under 1 MB; 4 MB leaves generous headroom (review M-02).
+const MAX_BYTES := 4 * 1024 * 1024
+## Events scanned across ALL tracks of one file (review M-01 / M-02). Bounds parse time and memory
+## however the bytes are split over tracks. A real chart has well under 200k events.
+const MAX_EVENTS := 1500000
 const MAX_TRACKS := 256
 ## Per list per track (notes / texts / tempos / time_sigs / sysex); extras dropped, warnings += 1.
 const MAX_ENTRIES := 300000
@@ -23,6 +27,9 @@ class _Cur extends RefCounted:
 	var pos: int = 0
 	var end: int = 0
 	var warnings: int = 0
+	var events: int = 0
+	var max_events: int = 0
+	var over: bool = false
 
 	## Variable-length quantity, at most 4 bytes (a 5th continuation byte fails).
 	func vlq() -> int:
@@ -41,11 +48,12 @@ class _Cur extends RefCounted:
 ## keep_names (optional): upper-cased track names to parse fully. Track index 0 is always parsed fully.
 ## When keep_names is non-empty, any other track whose name is not in it gets {name, index, skipped=true}
 ## with empty lists and the rest of its chunk is skipped by length.
-## limits (optional, tests): {max_bytes, max_tracks, max_entries}.
+## limits (optional, tests): {max_bytes, max_tracks, max_entries, max_events}.
 static func read(bytes: PackedByteArray, limits: Dictionary = {}, keep_names: PackedStringArray = PackedStringArray()) -> Dictionary:
 	var max_bytes: int = limits.get("max_bytes", MAX_BYTES)
 	var max_tracks: int = limits.get("max_tracks", MAX_TRACKS)
 	var max_entries: int = limits.get("max_entries", MAX_ENTRIES)
+	var max_events: int = limits.get("max_events", MAX_EVENTS)
 	var res := {"ok": false, "error": "", "format": 0, "division": 0, "warnings": 0, "tracks": []}
 	var size := bytes.size()
 	if size > max_bytes:
@@ -65,6 +73,7 @@ static func read(bytes: PackedByteArray, limits: Dictionary = {}, keep_names: Pa
 
 	var cur := _Cur.new()
 	cur.b = bytes
+	cur.max_events = max_events
 	var tracks: Array[Dictionary] = []
 	var warnings := 0
 	var pos := 8 + hlen
@@ -73,6 +82,10 @@ static func read(bytes: PackedByteArray, limits: Dictionary = {}, keep_names: Pa
 		var clen := _u32(bytes, pos + 4)
 		var body := pos + 8
 		if body + clen > size:
+			if not is_trk and not tracks.is_empty():
+				# Junk after the last track (review L-03): keep what was read.
+				warnings += 1
+				break
 			return _bad(res)
 		if is_trk:
 			if tracks.size() >= max_tracks:
@@ -80,6 +93,10 @@ static func read(bytes: PackedByteArray, limits: Dictionary = {}, keep_names: Pa
 			else:
 				var t = _parse_track(cur, body, body + clen, tracks.size(), max_entries, keep_names)
 				if t == null:
+					if cur.over:
+						res["error"] = SongEntry.ERR_TOO_LARGE
+						res["tracks"] = []
+						return res
 					return _bad(res)
 				tracks.append(t)
 		pos = body + clen
@@ -119,6 +136,10 @@ static func _parse_track(c: _Cur, start: int, end: int, index: int, max_entries:
 	var has_name := false
 	var name_known := false
 	while c.pos < end:
+		c.events += 1
+		if c.events > c.max_events:
+			c.over = true
+			return null
 		var delta := c.vlq()
 		if delta < 0:
 			return null

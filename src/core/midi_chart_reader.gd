@@ -19,6 +19,8 @@ const SOLO_NOTE := 103
 const SP_NOTE := 116
 const EVENTS_TRACK := "EVENTS"
 const OPEN_FRET := 7
+## Open-note SysEx ranges kept per difficulty; extras are ignored (review H-01).
+const MAX_OPEN_RANGES := 4096
 
 
 ## limits (optional, tests): {max_bytes, max_tracks, max_entries}. max_entries caps gems per difficulty here.
@@ -32,7 +34,7 @@ static func parse_bytes(bytes: PackedByteArray, limits: Dictionary = {}) -> Pars
 
 	# max_entries is NOT forwarded: SmfReader would cap raw note on/off events with it.
 	var smf_limits := {}
-	for k in ["max_bytes", "max_tracks"]:
+	for k in ["max_bytes", "max_tracks", "max_events"]:
 		if limits.has(k):
 			smf_limits[k] = limits[k]
 	var keep := PackedStringArray()
@@ -273,11 +275,16 @@ static func _gems(tr: Dictionary, closed: Array, res: int) -> Dictionary:
 		var rs: Array = ranges[di]
 		if rs.is_empty():
 			continue
+		# Gems are sorted by tick; ranges are ordered and disjoint: one linear sweep (review H-01).
+		var ri := 0
 		for gm in list:
-			for r in rs:
-				if gm["tick"] >= r[0] and gm["tick"] < r[1]:
-					gm["a"] = OPEN_FRET
-					break
+			var gt: int = gm["tick"]
+			while ri < rs.size() and gt >= int(rs[ri][1]):
+				ri += 1
+			if ri >= rs.size():
+				break
+			if gt >= int(rs[ri][0]):
+				gm["a"] = OPEN_FRET
 	return out
 
 
@@ -306,7 +313,8 @@ static func _open_ranges(sysex: Array) -> Array:
 				if starts[t] < 0:
 					starts[t] = s["tick"]
 			elif starts[t] >= 0:
-				(ranges[t] as Array).append([starts[t], s["tick"]])
+				if (ranges[t] as Array).size() < MAX_OPEN_RANGES:
+					(ranges[t] as Array).append([starts[t], s["tick"]])
 				starts[t] = -1
 	for t in 4:
 		if starts[t] >= 0:

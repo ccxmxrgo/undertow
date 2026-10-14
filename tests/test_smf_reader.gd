@@ -310,3 +310,38 @@ func test_random_bytes_never_throw() -> void:
 	var r := SmfReader.read(rnd)
 	assert_bool(r["ok"]).is_false()
 	assert_str(r["error"]).is_equal(BAD)
+
+
+func test_global_event_budget_across_tracks() -> void:
+	# M-01/M-02: many same-named tracks, each under the per-track cap, still hit the file-wide budget.
+	var ev: Array = [_e(0, MidiWriter.name("PART GUITAR"))]
+	for i in 100:
+		ev.append(_e(i * 10, MidiWriter.on(96)))
+		ev.append(_e(i * 10 + 5, MidiWriter.off(96)))
+	var tracks: Array = [MidiWriter.track([])]
+	for k in 20:
+		tracks.append(MidiWriter.track(ev))
+	var bytes := MidiWriter.file(tracks)
+	var r := SmfReader.read(bytes, {"max_events": 1000})
+	assert_bool(r["ok"]).is_false()
+	assert_str(r["error"]).is_equal(SongEntry.ERR_TOO_LARGE)
+	r = SmfReader.read(bytes)
+	assert_bool(r["ok"]).is_true()
+	assert_int(SmfReader.MAX_BYTES).is_less_equal(4 * 1024 * 1024)
+
+
+func test_all_delta_zero_track_counts_against_budget() -> void:
+	var ev: Array = [_e(0, MidiWriter.name("PART GUITAR"))]
+	for i in 500:
+		ev.append(_e(0, MidiWriter.on(96)))
+	var r := SmfReader.read(MidiWriter.file([MidiWriter.track([]), MidiWriter.track(ev)]), {"max_events": 100})
+	assert_str(r["error"]).is_equal(SongEntry.ERR_TOO_LARGE)
+
+
+func test_trailing_junk_chunk_is_tolerated() -> void:
+	var out := _valid()
+	out.append_array(PackedByteArray([0x58, 0x58, 0x58, 0x58, 0, 0, 0xFF, 0xFF, 1, 2]))
+	var r := SmfReader.read(out)
+	assert_bool(r["ok"]).is_true()
+	assert_int(r["tracks"].size()).is_equal(2)
+	assert_int(r["warnings"]).is_greater_equal(1)

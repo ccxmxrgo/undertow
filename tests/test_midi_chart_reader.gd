@@ -262,3 +262,53 @@ func test_errors_and_limits() -> void:
 	assert_bool(pc.ok).is_true()
 	assert_int(_gems(pc, "ExpertSingle").size()).is_equal(2)
 	assert_int(pc.warnings).is_greater_equal(1)
+
+
+func test_many_open_sysex_ranges_finish_quickly() -> void:
+	# H-01: ~20k SysEx starts/ends x ~20k gems was quadratic; now one linear sweep with capped ranges.
+	var ev: Array = [_e(0, MidiWriter.name("PART GUITAR"))]
+	for i in 20000:
+		ev.append(_e(i * 4, MidiWriter.ps_open(0xFF, i % 2 == 0)))
+		ev.append(_e(i * 4 + 1, MidiWriter.on(96)))
+		ev.append(_e(i * 4 + 2, MidiWriter.off(96)))
+	var t0 := Time.get_ticks_msec()
+	var pc := MidiChartReader.parse_bytes(_mid([MidiWriter.track(ev)]))
+	assert_int(Time.get_ticks_msec() - t0).is_less(5000)
+	assert_bool(pc.ok).is_true()
+	assert_int(_gems(pc, "ExpertSingle").size()).is_equal(20000)
+
+
+func test_open_sysex_multiple_ranges_sweep_is_exact() -> void:
+	var ev: Array = [
+		_e(0, MidiWriter.name("PART GUITAR")),
+		_e(100, MidiWriter.ps_open(3, true)), _e(200, MidiWriter.ps_open(3, false)),
+		_e(300, MidiWriter.ps_open(3, true)), _e(400, MidiWriter.ps_open(3, false)),
+	]
+	for t in [50, 100, 150, 200, 250, 300, 399, 400, 500]:
+		ev.append(_e(t, MidiWriter.on(96)))
+		ev.append(_e(t + 1, MidiWriter.off(96)))
+	var pc := MidiChartReader.parse_bytes(_mid([MidiWriter.track(ev)]))
+	assert_array(_frets(pc, "ExpertSingle")).is_equal([0, 7, 7, 0, 0, 7, 7, 0, 0])
+
+
+func test_event_budget_is_global() -> void:
+	var tracks: Array = []
+	for k in 10:
+		var notes: Array = []
+		for i in 100:
+			notes.append([96, i * 10, i * 10 + 5])
+		tracks.append(_part("PART GUITAR", notes))
+	var pc := MidiChartReader.parse_bytes(_mid(tracks), {"max_events": 500})
+	assert_bool(pc.ok).is_false()
+	assert_str(pc.error).is_equal("Chart too large")
+
+
+func test_sustain_cutoff_scales_with_resolution() -> void:
+	# M-03: res / 3 is YARG's rule and already scales: the cutoff is a third of a beat at any PPQ.
+	for res in [96, 480, 960]:
+		var cutoff: int = res / 3
+		var notes := [[96, 0, cutoff - 1], [97, 1000, 1000 + cutoff]]
+		var pc := MidiChartReader.parse_bytes(_mid([_part("PART GUITAR", notes)], res))
+		var g := _gems(pc, "ExpertSingle")
+		assert_int(g[0][2]).is_equal(0)
+		assert_int(g[1][2]).is_equal(cutoff)
