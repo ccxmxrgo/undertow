@@ -36,6 +36,8 @@ uniform float travel = 534.0;
 uniform float perspective = 1.8;
 uniform float lane_spread = 210.0;
 uniform float far_spread = 0.045;
+// Depth where the sweep and phosphor start fading toward the far end (Trench.LINE_FADE_START).
+uniform float fade_start = 0.45;
 
 varying vec2 v_pos;
 
@@ -89,14 +91,15 @@ void fragment() {
 	c.rgb += lane_rgb(lane) * glass;
 	// Phosphor lift near the outer rails.
 	float rail = smoothstep(1.55, 2.0, abs(f));
-	c.rgb += sweep_color.rgb * phosphor * rail;
+	float far_fade = 1.0 - smoothstep(fade_start, 1.0, d);
+	c.rgb += sweep_color.rgb * phosphor * rail * far_fade;
 	if (sweep_on) {
 		float ys = y_at_depth(sweep_pos);
 		float below = v_pos.y - ys;
 		float band = below >= 0.0 ? 1.0 - smoothstep(0.0, band_px, below) : 1.0 - smoothstep(0.0, 6.0, -below);
 		float trail = d <= sweep_pos ? exp(-(sweep_pos - d) / max(afterglow, 0.001)) : 0.0;
 		float g = max(band, 0.6 * trail);
-		c.rgb += sweep_color.rgb * sweep_gain * sweep_color.a * g;
+		c.rgb += sweep_color.rgb * sweep_gain * sweep_color.a * g * far_fade;
 	}
 	if (scanlines_on && mod(floor(v_pos.y), 4.0) < 2.0) {
 		c.rgb = mix(c.rgb, scan_color.rgb, scan_color.a);

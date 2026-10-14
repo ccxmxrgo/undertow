@@ -10,12 +10,13 @@ class DrawProbe extends Control:
 	var type := NotePainter.NOTE_NORMAL
 	var state := NotePainter.STATE_READY
 	var drawn := false
+	var alpha := 1.0
 
 	func _draw() -> void:
 		for i in range(calls):
 			var lane := i % 4
-			NotePainter.draw_note(self, type, lane, Vector2(200.0 + 60.0 * lane, 200.0), 30.0, state, 0.0)
-		NotePainter.draw_chord_bar(self, Vector2(100, 300), Vector2(300, 300), 0.8)
+			NotePainter.draw_note(self, type, lane, Vector2(200.0 + 60.0 * lane, 200.0), 30.0, state, 0.0, 1.0, alpha)
+		NotePainter.draw_chord_bar(self, Vector2(100, 300), Vector2(300, 300), 0.8, alpha)
 		drawn = true
 
 
@@ -139,3 +140,21 @@ func test_source_has_no_colour_literals() -> void:
 	assert_bool(src.contains("static func draw_note(")).is_true()
 	var re := RegEx.create_from_string("Color\\(\\s*\"|Color\\(\\s*[0-9.]|Color8\\(")
 	assert_object(re.search(src)).is_null()
+
+
+func test_faded_scales_alpha_and_full_alpha_is_untouched() -> void:
+	var col := Palette.alpha(Palette.lane_color(0), 0.8)
+	assert_float(NotePainter.faded(col, 0.5).a).is_equal_approx(0.4, 0.0001)
+	assert_bool(NotePainter.faded(col, 1.0) == col).is_true()
+	assert_float(NotePainter.faded(col, 0.0).a).is_equal(0.0)
+
+
+func test_faded_draw_with_alpha_runs_for_every_state() -> void:
+	var probe: DrawProbe = auto_free(DrawProbe.new())
+	probe.calls = 4
+	probe.alpha = 0.5
+	add_child(probe)
+	probe.queue_redraw()
+	await await_idle_frame()
+	await await_idle_frame()
+	assert_bool(probe.drawn).is_true()

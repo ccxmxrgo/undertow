@@ -174,28 +174,28 @@ static func outline_ring(kind: int) -> PackedVector2Array:
 
 ## Draw one gem. `t` is the song time (reserved for animated Phase 3 types); `fade` scales a
 ## missed remnant (1 = fresh). Ready Full halos are NOT drawn here (see draw_halo).
-static func draw_note(ci: CanvasItem, type: int, lane: int, center: Vector2, r: float, state: int, t: float, fade: float = 1.0) -> void:
+static func draw_note(ci: CanvasItem, type: int, lane: int, center: Vector2, r: float, state: int, t: float, fade: float = 1.0, alpha: float = 1.0) -> void:
 	match resolve_type(type):
 		_:
-			_draw_normal(ci, lane, center, r, state, t, fade)
+			_draw_normal(ci, lane, center, r, state, t, fade, alpha)
 
 
 ## Additive halo sprite for a ready gem (Full effects); call on the additive Halos layer.
-static func draw_halo(ci: CanvasItem, lane: int, center: Vector2, r: float) -> void:
+static func draw_halo(ci: CanvasItem, lane: int, center: Vector2, r: float, alpha: float = 1.0) -> void:
 	var reach := HALO_REACH * r
 	ci.draw_texture_rect(UiKit.glow_texture(), Rect2(center - Vector2(reach, reach), Vector2(2.0 * reach, 2.0 * reach)),
-		false, Palette.alpha(Palette.lane_color(lane), HALO_ALPHA))
+		false, Palette.alpha(Palette.lane_color(lane), HALO_ALPHA * alpha))
 
 
 ## Chord bar between two chord gem centres (drawn behind the gems).
-static func draw_chord_bar(ci: CanvasItem, a: Vector2, b: Vector2, s: float) -> void:
-	var col := Palette.alpha(Palette.SONAR_PALE, CHORD_ALPHA)
+static func draw_chord_bar(ci: CanvasItem, a: Vector2, b: Vector2, s: float, alpha: float = 1.0) -> void:
+	var col := Palette.alpha(Palette.SONAR_PALE, CHORD_ALPHA * alpha)
 	ci.draw_line(a, b, col, 3.0 + 3.0 * s, true)
 	ci.draw_circle(a, CHORD_DOT_R, col, true, -1.0, true)
 	ci.draw_circle(b, CHORD_DOT_R, col, true, -1.0, true)
 
 
-static func _draw_normal(ci: CanvasItem, lane: int, center: Vector2, r: float, state: int, _t: float, fade: float) -> void:
+static func _draw_normal(ci: CanvasItem, lane: int, center: Vector2, r: float, state: int, _t: float, fade: float, alpha: float = 1.0) -> void:
 	var kind := NoteShape.kind_for_lane(lane)
 	var u := unit_shape(kind)
 	var poly: PackedVector2Array = u["poly"]
@@ -209,13 +209,13 @@ static func _draw_normal(ci: CanvasItem, lane: int, center: Vector2, r: float, s
 	var lane_col := Palette.lane_color(lane)
 	var ready := state == STATE_READY
 	if ready and UiKit.low_effects():
-		_outline(ci, kind, u, center, r + HALO_RING_GAP, HALO_RING_W, Palette.alpha(lane_col, HALO_RING_ALPHA))
+		_outline(ci, kind, u, center, r + HALO_RING_GAP, HALO_RING_W, Palette.alpha(lane_col, HALO_RING_ALPHA * alpha))
 	var rw := rim_width(scale_for_radius(r))
-	_outline(ci, kind, u, center, r + KEYLINE_W * 0.5, KEYLINE_W, Palette.KEYLINE)
-	_fill(ci, poly, center, r, core_color(lane))
-	_fill(ci, u["top"], center, r, toplight_color(lane))
-	_fill(ci, u["spec"], center, r, Palette.alpha(Palette.WHITE, SPEC_ALPHA))
-	_outline(ci, kind, u, center, r - rw * 0.5, rw, rim_color(lane, ready))
+	_outline(ci, kind, u, center, r + KEYLINE_W * 0.5, KEYLINE_W, faded(Palette.KEYLINE, alpha))
+	_fill(ci, poly, center, r, faded(core_color(lane), alpha))
+	_fill(ci, u["top"], center, r, faded(toplight_color(lane), alpha))
+	_fill(ci, u["spec"], center, r, Palette.alpha(Palette.WHITE, SPEC_ALPHA * alpha))
+	_outline(ci, kind, u, center, r - rw * 0.5, rw, faded(rim_color(lane, ready), alpha))
 
 
 ## Filled unit polygon scaled by k about center (no per-call point arrays).
@@ -246,3 +246,11 @@ static func _outline(ci: CanvasItem, kind: int, u: Dictionary, center: Vector2, 
 		for i in range(n):
 			_ring_quad[i] = center + ring[i] * k
 		ci.draw_polyline(_ring_quad, col, width, true)
+
+
+## Colour with its alpha scaled by the depth fade (alpha 1.0 returns it untouched).
+static func faded(col: Color, alpha: float) -> Color:
+	if alpha >= 1.0:
+		return col
+	col.a *= alpha
+	return col

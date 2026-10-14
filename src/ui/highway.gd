@@ -38,7 +38,9 @@ const BRIGHT_RAIL_GLOW := 0.35
 const POOL_TINT := 0.12
 const POOL_DEPTH := 0.40
 ## Surface rows (depths) for the per-vertex colour gradient; then y 950 and the strip end.
-const STRIP_ROW_D: Array[float] = [1.0, 0.7, 0.5, 0.4, 0.3, 0.22, 0.15, 0.09, 0.04, 0.0]
+const STRIP_ROW_D: Array[float] = [1.0, 0.85, 0.7, 0.6, 0.5, 0.4, 0.3, 0.22, 0.15, 0.09, 0.04, 0.0]
+## Depths at which rails and separators change colour (far-end line fade, D-04).
+const LINE_ROW_D: Array[float] = [1.0, 0.85, 0.7, 0.55, 0.4, 0.25, 0.1, 0.0]
 ## sonar_surface CRT pass (row 2).
 const SURFACE_SHADER := "res://shaders/sonar_surface.gdshader"
 const SCAN_ALPHA := 0.06
@@ -122,6 +124,9 @@ var _press_ticks: Array[int] = [-1, -1, -1, -1]
 var _quad := PackedVector2Array()
 var _edge_l := PackedVector2Array()
 var _edge_r := PackedVector2Array()
+var _edge_cols := PackedColorArray()
+var _line_pts := PackedVector2Array()
+var _line_cols := PackedColorArray()
 var _vis := PackedInt32Array()
 var _ring := PackedVector2Array()
 var _lane_labels := PackedStringArray(["", "", "", ""])
@@ -367,6 +372,9 @@ func setup(p_chart: ChartData, p_conductor: Conductor, p_cfg: JudgeConfig = null
 	_quad.resize(4)
 	_edge_l.resize(RIBBON_SAMPLES + 1)
 	_edge_r.resize(RIBBON_SAMPLES + 1)
+	_edge_cols.resize(RIBBON_SAMPLES + 1)
+	_line_pts.resize(LINE_ROW_D.size() + 1)
+	_line_cols.resize(LINE_ROW_D.size() + 1)
 	_graph.resize(GRAPH_SAMPLES)
 	_graph.fill(0.0)
 	_refresh_labels()
@@ -514,6 +522,7 @@ func strip_color(lane: int, y: float, tint: float) -> Color:
 	var col := Palette.alpha(Palette.HIGHWAY_BASE.lerp(Palette.lane_color(lane), t / maxf(a, 0.001)), a)
 	if y > STRIP_FADE_Y:
 		col.a *= clampf(1.0 - (y - STRIP_FADE_Y) / (STRIP_END_Y - STRIP_FADE_Y), 0.0, 1.0)
+	col.a *= Trench.line_fade(d)
 	return col
 
 
@@ -587,6 +596,7 @@ func _apply_surface_material() -> void:
 	m.set_shader_parameter("perspective", Trench.PERSPECTIVE)
 	m.set_shader_parameter("lane_spread", Trench.LANE_SPREAD)
 	m.set_shader_parameter("far_spread", Trench.FAR_SPREAD)
+	m.set_shader_parameter("fade_start", Trench.LINE_FADE_START)
 	m.set_shader_parameter("scanlines_on", true)
 	m.set_shader_parameter("sweep_on", not Settings.reduce_motion)
 	surface.material = m
@@ -623,11 +633,10 @@ func _update_sweep() -> void:
 func _draw_rails() -> void:
 	if cable_grow <= 0.0:
 		return
-	var y0 := Trench.VP.y
 	var y1 := _strip_end_y()
 	var sep := Palette.alpha(Palette.TEXT_HI, SEPARATOR_ALPHA)
 	for f in [-1.0, 0.0, 1.0]:
-		draw_line(Vector2(edge_x(f, y0), y0), Vector2(edge_x(f, y1), y1), sep, SEPARATOR_W, true)
+		_draw_fading_line(f, y1, sep, SEPARATOR_W)
 	var now := Time.get_ticks_usec()
 	var low: bool = Settings.low_effects
 	var fade := _fade_part(now)
@@ -639,19 +648,42 @@ func _draw_rails() -> void:
 	var max_a := 1.0 if tier == 4 else (fade if _drop_from_tier == 4 else 0.0)
 	var flash := rail_flash_alpha(now)
 	for f in [-2.0, 2.0]:
-		var a := Vector2(edge_x(f, y0), y0)
-		var b := Vector2(edge_x(f, y1), y1)
 		if glow > 0.0 and not low:
-			draw_line(a, b, Palette.alpha(Palette.SONAR, RAIL_GLOW_ALPHA * glow), RAIL_GLOW_W, true)
-			draw_line(a, b, Palette.alpha(Palette.SONAR, RAIL_GLOW_NEAR_ALPHA * glow), RAIL_GLOW_NEAR_W, true)
+			_draw_fading_line(f, y1, Palette.alpha(Palette.SONAR, RAIL_GLOW_ALPHA * glow), RAIL_GLOW_W)
+			_draw_fading_line(f, y1, Palette.alpha(Palette.SONAR, RAIL_GLOW_NEAR_ALPHA * glow), RAIL_GLOW_NEAR_W)
 		if flash > 0.0 and not low:
-			draw_line(a, b, Palette.alpha(Palette.SONAR_PALE, 0.35 * flash), RAIL_FLASH_W, true)
-		draw_line(a, b, Palette.alpha(Palette.SONAR, RAIL_ALPHA), RAIL_W, true)
+			_draw_fading_line(f, y1, Palette.alpha(Palette.SONAR_PALE, 0.35 * flash), RAIL_FLASH_W)
+		_draw_fading_line(f, y1, Palette.alpha(Palette.SONAR, RAIL_ALPHA), RAIL_W)
 		if max_a > 0.0:
-			draw_line(a, b, Palette.alpha(Palette.SONAR_PALE, max_a), MAX_RAIL_W, true)
+			_draw_fading_line(f, y1, Palette.alpha(Palette.SONAR_PALE, max_a), MAX_RAIL_W)
 			_draw_max_dashes(f, max_a)
 		if flash > 0.0:
-			draw_line(a, b, Palette.alpha(Palette.SONAR_PALE, flash), MAX_RAIL_W + 1.0, true)
+			_draw_fading_line(f, y1, Palette.alpha(Palette.SONAR_PALE, flash), MAX_RAIL_W + 1.0)
+
+
+## A lane line from the far end (VP) down to y_end whose alpha follows Trench.line_fade(d) over
+## LINE_ROW_D rows (D-04). edge_x is linear in y, so only the colours vary between rows.
+func _draw_fading_line(f: float, y_end: float, col: Color, w: float) -> void:
+	var n := 0
+	for d in LINE_ROW_D:
+		var y := Trench.point(0.0, d).y
+		if y >= y_end - 0.5:
+			break
+		_line_pts[n] = Vector2(edge_x(f, y), y)
+		var c := col
+		c.a *= Trench.line_fade(d)
+		_line_cols[n] = c
+		n += 1
+	if n == 0:
+		return
+	_line_pts[n] = Vector2(edge_x(f, y_end), y_end)
+	_line_cols[n] = col
+	n += 1
+	_line_pts.resize(n)
+	_line_cols.resize(n)
+	draw_polyline_colors(_line_pts, _line_cols, w, true)
+	_line_pts.resize(LINE_ROW_D.size() + 1)
+	_line_cols.resize(LINE_ROW_D.size() + 1)
 
 
 ## MAX rail dashes: 24 px SONAR_PALE 70% strokes, one every half beat, flowing toward the
@@ -668,14 +700,20 @@ func _draw_max_dashes(f: float, alpha: float) -> void:
 	var low: bool = Settings.low_effects
 	var n := 0
 	while d <= 1.0 and n < MAX_DASH_CAP:
-		var s := Trench.scale_at(d)
-		var p := Trench.point(f, d)
-		var q := p + dir * MAX_DASH_LEN * s
-		# Wider than the 3 px core so the beads read as light flowing down the rail.
-		var w := MAX_DASH_W * (0.5 + 0.5 * s)
-		if not low:
-			draw_line(p, q, glow, w * 2.6, true)
-		draw_line(p, q, col, w, true)
+		var lf := Trench.line_fade(d)
+		if lf >= 0.01:
+			var s := Trench.scale_at(d)
+			var p := Trench.point(f, d)
+			var q := p + dir * MAX_DASH_LEN * s
+			# Wider than the 3 px core so the beads read as light flowing down the rail.
+			var w := MAX_DASH_W * (0.5 + 0.5 * s)
+			if not low:
+				var gc := glow
+				gc.a *= lf
+				draw_line(p, q, gc, w * 2.6, true)
+			var cc := col
+			cc.a *= lf
+			draw_line(p, q, cc, w, true)
 		d += sp
 		n += 1
 
@@ -708,16 +746,25 @@ func _draw_beat_lines() -> void:
 		var y := Trench.point(0.0, d).y
 		if y > y_end:
 			continue
+		var lf := Trench.line_fade(d)
+		if lf < 0.01:
+			continue
 		var s := Trench.scale_at(d)
 		var a := Vector2(edge_x(-2.0, y), y)
 		var b := Vector2(edge_x(2.0, y), y)
 		if _beat_bar[i] == 1:
 			var w := 2.0 + 2.0 * s
 			if not low:
-				draw_line(a, b, bar_glow, w + BAR_GLOW_EXTRA_W, true)
-			draw_line(a, b, bar_col, w, true)
+				var gc := bar_glow
+				gc.a *= lf
+				draw_line(a, b, gc, w + BAR_GLOW_EXTRA_W, true)
+			var bc := bar_col
+			bc.a *= lf
+			draw_line(a, b, bc, w, true)
 		else:
-			draw_line(a, b, beat_col, 1.0 + s, true)
+			var tc := beat_col
+			tc.a *= lf
+			draw_line(a, b, tc, 1.0 + s, true)
 
 
 # ---- Row 5: hit line ---------------------------------------------------------------------
@@ -767,17 +814,19 @@ func _draw_sustain(lane: int, d_head: float, d_tail: float, state: int, phase: f
 	var low: bool = Settings.low_effects
 	if core and not low:
 		_tube_edges(f, d0, d1, TUBE_GLOW_HALF_W)
-		_fill_ribbon(Palette.alpha(lane_col, TUBE_GLOW_ALPHA * (fill_a / TUBE_FILL)))
+		_fill_ribbon(Palette.alpha(lane_col, TUBE_GLOW_ALPHA * (fill_a / TUBE_FILL)), d0, d1, true)
 	_tube_edges(f, d0, d1, TUBE_HALF_W)
-	_fill_ribbon(Palette.alpha(base, fill_a))
+	_fill_ribbon(Palette.alpha(base, fill_a), d0, d1, false)
 	var edge := Palette.alpha(base, TUBE_EDGE_ALPHA if core else TUBE_DEAD_FILL)
-	draw_polyline(_edge_l, edge, 1.5, true)
-	draw_polyline(_edge_r, edge, 1.5, true)
+	_fade_edge_cols(edge, d0, d1)
+	draw_polyline_colors(_edge_l, _edge_cols, 1.5, true)
+	draw_polyline_colors(_edge_r, _edge_cols, 1.5, true)
 	if core:
 		for k in range(RIBBON_SAMPLES + 1):
 			_edge_l[k] = Trench.point(f, lerpf(d0, d1, float(k) / float(RIBBON_SAMPLES)))
 		var w := 3.0 * Trench.scale_at(d0)
-		draw_polyline(_edge_l, Palette.alpha(Palette.mix(lane_col, Palette.WHITE, 0.5), TUBE_CORE_ALPHA), maxf(w, 1.0), true)
+		_fade_edge_cols(Palette.alpha(Palette.mix(lane_col, Palette.WHITE, 0.5), TUBE_CORE_ALPHA), d0, d1)
+		draw_polyline_colors(_edge_l, _edge_cols, maxf(w, 1.0), true)
 	if state == S_HOLDING and not low:
 		draw_circle(Trench.hit_point(lane), RECEPTOR_R * 0.9, Palette.alpha(lane_col, 0.18 + 0.12 * BeatClock.pulse(phase)))
 
@@ -792,13 +841,31 @@ func _tube_edges(f: float, d0: float, d1: float, k: float) -> void:
 		_edge_r[i] = Vector2(c.x + hw, c.y)
 
 
-func _fill_ribbon(col: Color) -> void:
+## Sustain colour at sample depth d: the tube body fades like a gem, the glow like a line.
+static func _ribbon_fade(d: float, glow: bool) -> float:
+	return Trench.line_fade(d) if glow else Trench.note_fade(d)
+
+
+## Per-sample copy of `col` with the depth fade applied, into _edge_cols.
+func _fade_edge_cols(col: Color, d0: float, d1: float) -> void:
+	for i in range(RIBBON_SAMPLES + 1):
+		var c := col
+		c.a *= Trench.note_fade(lerpf(d0, d1, float(i) / float(RIBBON_SAMPLES)))
+		_edge_cols[i] = c
+
+
+func _fill_ribbon(col: Color, d0: float, d1: float, glow: bool) -> void:
 	for i in range(RIBBON_SAMPLES):
+		var a := _ribbon_fade(lerpf(d0, d1, (float(i) + 0.5) / float(RIBBON_SAMPLES)), glow)
+		if a < 0.01:
+			continue
+		var c := col
+		c.a *= a
 		_quad[0] = _edge_l[i]
 		_quad[1] = _edge_r[i]
 		_quad[2] = _edge_r[i + 1]
 		_quad[3] = _edge_l[i + 1]
-		draw_colored_polygon(_quad, col)
+		draw_colored_polygon(_quad, c)
 
 
 # ---- Row 7: chord bars -------------------------------------------------------------------
@@ -816,7 +883,9 @@ func _draw_chord_bars() -> void:
 			var d := Trench.depth_for(float(notes[idx]["time"]), _vt, _approach)
 			var a := Trench.point(Trench.lane_f(int(notes[prev]["lane"])), d)
 			var b := Trench.point(Trench.lane_f(int(notes[idx]["lane"])), d)
-			NotePainter.draw_chord_bar(self, a, b, Trench.scale_at(d))
+			var ca := Trench.note_fade(d)
+			if ca >= 0.01:
+				NotePainter.draw_chord_bar(self, a, b, Trench.scale_at(d), ca)
 		prev = idx
 
 
@@ -922,7 +991,10 @@ func draw_notes_into(ci: CanvasItem) -> void:
 			var d := gem_depth(idx)
 			var c := gem_center(idx)
 			var r := Trench.note_radius(Trench.scale_at(d))
-			NotePainter.draw_note(ci, int(n.get("type", NotePainter.NOTE_NORMAL)), lane, c, r, paint, _st, fade)
+			var na := 1.0 if paint == NotePainter.STATE_MISSED else Trench.note_fade(d)
+			if na < 0.01:
+				continue
+			NotePainter.draw_note(ci, int(n.get("type", NotePainter.NOTE_NORMAL)), lane, c, r, paint, _st, fade, na)
 	_draw_lane_numbers(ci)
 
 
@@ -940,7 +1012,7 @@ func draw_halos_into(ci: CanvasItem) -> void:
 			continue
 		var lane: int = n["lane"]
 		var d := gem_depth(idx)
-		NotePainter.draw_halo(ci, lane, gem_center(idx), Trench.note_radius(Trench.scale_at(d)))
+		NotePainter.draw_halo(ci, lane, gem_center(idx), Trench.note_radius(Trench.scale_at(d)), Trench.note_fade(d))
 
 
 ## Bound key under each receptor (Label 20, lane colour 90%), cached per settings change.

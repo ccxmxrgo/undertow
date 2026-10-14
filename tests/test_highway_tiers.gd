@@ -267,3 +267,11 @@ func test_lit_strip_keeps_gem_contrast() -> void:
 		assert_float(Wcag.ratio(Palette.rim_ready(lane), bg)).is_greater_equal(4.5)
 		var outline := Wcag.over(Palette.lane_color(lane), 0.75, bg)
 		assert_float(Wcag.ratio(outline, bg)).is_greater_equal(3.0)
+
+
+func test_strip_color_keeps_alpha_at_the_hit_line_and_vanishes_at_the_far_end() -> void:
+	var hw := _highway(_chart(120.0))
+	var near := hw.strip_color(0, Trench.HIT_Y, hw.strip_tint_alpha())
+	assert_float(near.a).is_greater(0.85)
+	var far := hw.strip_color(0, Trench.VP.y, hw.strip_tint_alpha())
+	assert_float(far.a).is_less(0.02)
