@@ -7,12 +7,14 @@ extends RefCounted
 const VP := Vector2(960.0, 396.0)
 const HIT_Y := 930.0
 const LANE_SPREAD := 210.0
-const FAR_SPREAD := 0.045  # lane spread at the far end, as a fraction of LANE_SPREAD
+const FAR_SPREAD := 0.35  # lane spread at the far end, as a fraction of LANE_SPREAD
 const Z_SCALE := 0.42
 const APPROACH_BASE := 1.5
 const D_MIN := -0.15
 const D_FAR := 1.0
-const PERSPECTIVE := 1.8
+const PERSPECTIVE := 0.70
+const NOTE_FADE_START := 0.85  # depth where gems start fading out toward the far end
+const LINE_FADE_START := 0.45  # depth where lane lines start fading out
 const TRAVEL := HIT_Y - VP.y
 
 
@@ -66,3 +68,13 @@ static func line_points() -> PackedVector2Array:
 
 static func note_radius(s: float) -> float:
 	return 36.0 * s + 5.0
+
+
+## Gem opacity multiplier: 1.0 near the line, 0.0 at the far end (D-02).
+static func note_fade(d: float) -> float:
+	return 1.0 - smoothstep(NOTE_FADE_START, D_FAR, d)
+
+
+## Lane-line opacity multiplier: 1.0 near the line, 0.0 at the far end (D-04).
+static func line_fade(d: float) -> float:
+	return 1.0 - smoothstep(LINE_FADE_START, D_FAR, d)

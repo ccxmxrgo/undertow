@@ -62,10 +62,12 @@ func test_lane_paths_are_straight() -> void:
 
 
 func test_far_convergence() -> void:
+	var half := Trench.LANE_SPREAD * 1.5 * Trench.FAR_SPREAD
 	for lane in range(4):
 		var p := Trench.point(Trench.lane_f(lane), 1.0)
-		assert_float(absf(p.x - Trench.VP.x)).is_less(20.0)
+		assert_float(absf(p.x - Trench.VP.x)).is_less_equal(half + 0.01)
 		assert_float(p.y).is_equal_approx(Trench.VP.y, 1.0)
+	assert_float(Trench.point(1.5, 1.0).x - Trench.VP.x).is_equal_approx(half, 0.01)
 
 
 func test_near_line_speed_ratio() -> void:
@@ -122,3 +124,46 @@ func test_line_points() -> void:
 
 func test_note_radius() -> void:
 	assert_float(Trench.note_radius(1.0)).is_equal_approx(41.0, 1e-9)
+
+
+func _dy(d: float) -> float:
+	var h := 1e-4
+	return absf(Trench.point(0.0, d + h).y - Trench.point(0.0, d - h).y) / (2.0 * h)
+
+
+func test_near_far_speed_ratio() -> void:
+	# D-03: on-screen speed ratio near/far = (1+PERSPECTIVE)^2 = 2.89
+	var ratio := _dy(0.0) / _dy(1.0 - 2e-4)
+	assert_float(ratio).is_between(2.7, 3.1)
+
+
+func test_far_lanes_are_apart() -> void:
+	# D-01: far lane pitch >= 1.3 x far gem diameter
+	var pitch := Trench.point(1.0, 1.0).x - Trench.point(0.0, 1.0).x
+	var diameter := 2.0 * Trench.note_radius(Trench.scale_at(1.0))
+	assert_float(pitch).is_greater_equal(1.3 * diameter)
+
+
+func test_fade_curves() -> void:
+	assert_float(Trench.note_fade(0.0)).is_equal(1.0)
+	assert_float(Trench.note_fade(0.5)).is_equal(1.0)
+	assert_float(Trench.note_fade(Trench.D_FAR)).is_equal(0.0)
+	assert_float(Trench.line_fade(0.3)).is_equal(1.0)
+	assert_float(Trench.line_fade(Trench.D_FAR)).is_equal(0.0)
+	var pn := 2.0
+	var pl := 2.0
+	for i in range(0, 101):
+		var d := float(i) / 100.0
+		var n := Trench.note_fade(d)
+		var l := Trench.line_fade(d)
+		assert_float(n).is_less_equal(pn + 1e-9)
+		assert_float(l).is_less_equal(pl + 1e-9)
+		pn = n
+		pl = l
+
+
+func test_beats_visible_unchanged() -> void:
+	# D-05: timing semantics pinned
+	assert_float(Trench.approach_for(1.0)).is_equal_approx(1.5, 1e-9)
+	assert_float(Trench.D_FAR).is_equal(1.0)
+	assert_float(Trench.depth_for(11.0 + 1.5, 11.0, 1.5)).is_equal_approx(1.0, 1e-9)

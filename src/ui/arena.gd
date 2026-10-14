@@ -69,7 +69,8 @@ const CALM_COLONY_R := 2.5
 
 ## Note-path keep-out (UI-SPEC 7.1): the board trapezoid expanded by 48 px on every side.
 const KEEP_OUT_PX := 48.0
-const KEEP_OUT_NEAR_D := -0.043
+# Pixel-derived depth: bottom edge sits 64 px below the hit line under the PERSPECTIVE 0.70 slope.
+const KEEP_OUT_NEAR_D := -0.071
 
 ## Band fills (7.7): ABYSS_600 between ring k and k+1 (spec alpha 0.03 + 0.05 n, raised below).
 const BAND_MIN_PX := 1.5  # minimum band width where wavy rings would cross
@@ -262,7 +263,7 @@ static func colony_radius(pulse: float, reduce: bool) -> float:
 	return COLONY_R_BASE if reduce else COLONY_R_BASE + COLONY_R_PULSE * pulse
 
 
-## The note path (UI-SPEC 7.1) built from Trench.point(+-2, d) at d = 1.0 and d = -0.043,
+## The note path (UI-SPEC 7.1) built from Trench.point(+-2, d) at d = 1.0 and d = -0.071,
 ## expanded by 48 px (mitred). Cached.
 static func note_path_polygon() -> PackedVector2Array:
 	if _keep_out_cache.is_empty():

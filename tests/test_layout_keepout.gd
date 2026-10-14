@@ -9,7 +9,7 @@ extends GdUnitTestSuite
 
 const SCENE := "res://scenes/gameplay.tscn"
 const KEEP_OUT_PX := 48.0
-const NEAR_D := -0.043
+const NEAR_D := -0.071
 const FAR_D := 1.0
 
 var _saved_no_fail := false

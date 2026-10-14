@@ -166,3 +166,12 @@ func test_pending_note_past_line_keeps_moving() -> void:
 			assert_float(c.distance_to(expect)).is_less_equal(EPS_PX)
 			assert_float(c.y).is_greater(prev_y)
 			prev_y = c.y
+
+
+## G: the fade helper is fully opaque at the line and the gem y at d = 0 is the hit line y.
+func test_gem_at_line_is_unfaded() -> void:
+	Settings.visual_offset = 0.0
+	Settings.scroll_speed = 1.0
+	var hw := _board(NOTE_T)
+	assert_float(Trench.note_fade(0.0)).is_equal(1.0)
+	assert_float(hw.gem_center(0).y).is_equal_approx(Trench.line_points()[0].y, EPS_PX)
