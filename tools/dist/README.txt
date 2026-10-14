@@ -1,5 +1,5 @@
-UNDERTOW - early playtest build (v0.5.2, 2026-10-13)
-===================================================
+UNDERTOW - early playtest build (v0.5.3, 2026-10-11)
+====================================================
 
 You're a submarine sinking into a deep-sea trench. This build is still the
 single-player core: it's for checking that timing, the look and now real
@@ -11,6 +11,7 @@ through a neon sonar into the abyss. v0.5.1 makes the hit windows wider
 controller work in every menu (see WHAT'S NEW IN v0.5.1).
 v0.5.2 adds Guitar Hero / Clone Hero songs that come with a notes.mid chart
 (see WHAT'S NEW IN v0.5.2).
+v0.5.3 makes the note highway easier to read (see WHAT'S NEW IN v0.5.3).
 This build is for friends only: please don't share it further.
 
 Want to help test? Open TESTER-CHECKLIST.txt (next to this file). It is a
@@ -19,9 +20,9 @@ short list of things to try, with boxes to tick, and says how to report a bug.
 
 HOW TO RUN
 ----------
-1. Unzip the whole folder somewhere (e.g. your Desktop). Keep the .exe and
-   the .pck file together.
-2. Double-click undertow-debug.exe. The game opens fullscreen.
+1. Unzip the whole folder somewhere (e.g. your Desktop).
+2. Double-click UNDERTOW.exe. The game opens fullscreen. The whole game is
+   in that one file.
 3. Windows may say "Windows protected your PC" because the game isn't
    signed. Click "More info", then "Run anyway".
 4. On first launch the CALIBRATE SONAR wizard opens. Please do it! It
@@ -78,6 +79,27 @@ SELECT SONG controls:
   Open Songs Folder  F6
   Back ............. Esc
 Highlight a song for half a second to hear a preview.
+
+
+WHAT'S NEW IN v0.5.3
+--------------------
+- The download is now just one game file, UNDERTOW.exe (plus this README
+  and the checklist).
+- The far end of the highway is now much wider, so the four lanes stay
+  apart all the way down and notes no longer pile up into one blob.
+- Notes fade in at the far end instead of popping in as tiny specks, and
+  far notes are already a readable size.
+- Notes move at a steadier speed: they no longer race at the end (the
+  speed change across the board is about 2.9 times instead of about 7.8
+  times).
+- Lines, glows and sweeps fade out toward the far end, so the far end is
+  calmer.
+- Timing is unchanged: a note is still exactly on the hit line when you
+  should hit it, and the same number of beats is on screen at 1x.
+- At 1x the notes now look slower near the hit line. If you liked it
+  faster, raise Settings > Gameplay > Scroll speed.
+- Everything from v0.5.2 still applies: songs with a notes.mid chart work
+  the same way (see below).
 
 
 WHAT'S NEW IN v0.5.2
@@ -280,9 +302,9 @@ WHAT'S NEW IN v0.2
 
 FEEDBACK WE NEED (reply in Discord or on WhatsApp)
 --------------------------------------------------
-1. Did it launch? Any errors or crashes? (If it crashed, run
-   undertow-debug.console.exe instead and screenshot the text window.
-   It shows the error messages.)
+1. Did it launch? Any errors or crashes? (If it crashed, send us the file
+   godot.log from %APPDATA%\Godot\app_userdata\UNDERTOW\logs. Paste that
+   path into the Explorer address bar to open the folder.)
 2. What audio offset did calibration give you? (shown as "+NN MS")
 3. Do hits feel ON the beat, early or late? Does anything feel laggy?
 4. Do PERFECT / GOOD / MISS feel fair? Too strict or too easy?

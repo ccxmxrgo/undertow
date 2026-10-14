@@ -1,4 +1,4 @@
-UNDERTOW v0.5.2 - tester checklist
+UNDERTOW v0.5.3 - tester checklist
 ==================================
 
 Thanks for testing! Tick the boxes as you go ([x]) and write a few words
@@ -13,9 +13,8 @@ Start pause. The README has the full list.
 
 1. SETUP
 --------
-[ ] Unzip the WHOLE folder somewhere (e.g. your Desktop). Keep the .exe and
-    the .pck file together.
-[ ] Double-click undertow-debug.exe.
+[ ] Unzip the WHOLE folder somewhere (e.g. your Desktop).
+[ ] Double-click UNDERTOW.exe.
 [ ] If Windows says "Windows protected your PC": click "More info", then
     "Run anyway" (the game isn't signed, that's expected).
 [ ] Do the CALIBRATE SONAR wizard first (it opens by itself on first launch,
@@ -43,9 +42,6 @@ Start pause. The README has the full list.
     visualizer moves with the music.
 [ ] Typing filters the list by title or artist; Esc clears it.
 [ ] F2 changes the sort order.
-[ ] Drop a song folder with notes.mid into Songs, rescan (F5), play it.
-[ ] If you have a song that used to say "MIDI charts not supported yet": it
-    now plays.
 
 
 4. PLAY THE 3 SONGS
@@ -63,12 +59,25 @@ For each one:
 [ ] Do the hit windows feel fair now (not too easy, not too strict)?
     (v0.5.1 made them wider.)
 [ ] Can you tell the 4 note shapes apart quickly?
+[ ] Is the highway easier to read? Do notes still feel in sync?
+    (v0.5.3 widened the far end and made notes fade in. Try Scroll speed 1x and 2x.)
 [ ] Hit explosions, the multiplier ring and the hull arc react to your
     play; section names show up at the top during the song.
 Write down anything odd as: song, difficulty, time (e.g. "HRT, Easy, 1:20").
 [ ] Settings > Display > Background: play one song on Calm and one on
     Living. Which do you prefer, and what bothers you in the other?
     I prefer: Calm / Living   ____________________________________
+
+
+4b. GUITAR HERO / CLONE HERO SONGS (.mid)
+-----------------------------------------
+[ ] Drop a song folder with notes.mid into Songs, rescan, play it.
+    (Open Songs Folder, then Rescan Library with F5.)
+[ ] Do these songs feel in sync? Early, late or fine? Do the bundled songs
+    feel the same? (If EVERY song feels off, re-run Settings > Calibration
+    first and try again.)
+[ ] Any song still greyed out? Write down its name and the reason it
+    shows.
 
 
 5. RESULTS SCREEN
@@ -131,6 +140,8 @@ Is anything hard to read during play?
   ______________________________________________________________
 Anything that feels too busy?
   ______________________________________________________________
+Highway: easier or harder to read than before, and is 1x too slow?
+  ______________________________________________________________
 Anything else (confusing, ugly, annoying, or something you liked)?
   ______________________________________________________________
 
@@ -144,7 +155,8 @@ Please send:
   - a screenshot if you can (Win + Shift + S, or the Print Screen key)
   - your PC: Windows version, graphics card, and your headphones/speakers
     (wired / Bluetooth / USB)
-If the game crashed: start undertow-debug.console.exe instead, do the same
-thing again, and screenshot the black text window. It shows the error.
+If the game crashed: send us the file godot.log from
+%APPDATA%\Godot\app_userdata\UNDERTOW\logs. Paste that path into the
+Explorer address bar to open the folder.
 
 Thanks for diving!
