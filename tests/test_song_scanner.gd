@@ -462,3 +462,24 @@ func test_id3_reader_handles_garbage() -> void:
 	var t := SongScanner.read_id3(D + "/g.mp3")
 	assert_bool(t.is_empty()).is_true()
 	assert_bool(SongScanner.read_id3(D + "/none.mp3").is_empty()).is_true()
+
+
+func test_broken_chart_falls_back_to_valid_mid() -> void:
+	SongFixture.make_song(LIB + "/Stub", true, "not a chart at all")
+	SongFixture.write_bytes(LIB + "/Stub/notes.mid", MidiWriter.demo_song()["mid"])
+	SongFixture.make_song(LIB + "/BrokenOnly", true, "not a chart at all")
+	var es := _scan()
+	var stub := _find(es, "/Stub")
+	assert_str(stub.status).is_equal("ok")
+	assert_str(stub.chart_path).ends_with("notes.mid")
+	assert_str(_find(es, "/BrokenOnly").status).is_equal("broken")
+
+
+func test_bundled_signature_follows_mid_content() -> void:
+	var mid: PackedByteArray = MidiWriter.demo_song()["mid"]
+	SongFixture.make_mid_song(LIB + "/Sig", mid)
+	var a := SongLibrary.bundled_signature(LIB + "/Sig", "")
+	var edited := mid.duplicate()
+	edited[edited.size() - 5] = (edited[edited.size() - 5] + 1) % 256  # same size, different content
+	SongFixture.write_bytes(LIB + "/Sig/notes.mid", edited)
+	assert_str(SongLibrary.bundled_signature(LIB + "/Sig", "")).is_not_equal(a)

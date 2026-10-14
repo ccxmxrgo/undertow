@@ -299,7 +299,7 @@ static func bundled_signature(dir: String, audio_path: String) -> String:
 	var parts: Array[String] = [SongScanner.folder_signature(dir, [audio_path])]
 	for f in DirAccess.get_files_at(dir):
 		var ext := f.get_extension().to_lower()
-		if ext == "chart" or ext == "ini":
+		if ext == "chart" or ext == "ini" or ext == "mid":
 			parts.append("%s=%s" % [f, FileAccess.get_md5(dir.path_join(f))])
 	return "|".join(parts)
 
