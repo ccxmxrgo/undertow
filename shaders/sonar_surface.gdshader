@@ -33,9 +33,9 @@ uniform bool sweep_on = true;
 uniform float vp_x = 960.0;
 uniform float vp_y = 396.0;
 uniform float travel = 534.0;
-uniform float perspective = 1.8;
+uniform float perspective = 0.70;
 uniform float lane_spread = 210.0;
-uniform float far_spread = 0.045;
+uniform float far_spread = 0.35;
 // Depth where the sweep and phosphor start fading toward the far end (Trench.LINE_FADE_START).
 uniform float fade_start = 0.45;
 
