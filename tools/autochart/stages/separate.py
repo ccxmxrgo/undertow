@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-from stages import d3
+from stages import d3, runtime
 from stages.decode import lag_segment
 from stages.errors import AutochartError
 
@@ -22,15 +22,13 @@ STEMS = ("drums", "bass", "other", "vocals")
 MODEL = "htdemucs"
 TIMEOUT_S = 1800
 LAG_MAX_MS = 1.0
-ROOT = Path(__file__).resolve().parents[3]
-CACHE = ROOT / "build" / "autochart" / "cache"
 
 
 def _env() -> dict:
+    """os.environ plus the model paths of the current runtime mode (dev: HF_HOME = TORCH_HOME =
+    build/autochart/cache, read at call time from stages/runtime.py)."""
     env = dict(os.environ)
-    env["HF_HOME"] = str(CACHE)
-    env["TORCH_HOME"] = str(CACHE)
-    env["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+    env.update(runtime.model_env())
     return env
 
 

@@ -3,7 +3,8 @@ AudioStreamMP3 within 0.05 ms (02.1-RESEARCH.md "Decoder offsets", Pitfall 1). d
 WAV, never the MP3 (its own MP3 reader lands +25.01 ms late). Runs in venv A.
 
 Untrusted input guard (T-02.1-10): suffix whitelist, size <= 200 MB, sample rate 44.1 / 48 kHz only,
-length 5 .. 1200 s. Every failure is an AutochartError("decode", ...).
+length 5 .. 1200 s. Every failure is an AutochartError("decode", ..., code=...) with a stable code
+(not_found, bad_type, too_big, decode, bad_rate, too_short, too_long; Phase 2.2.2 job protocol).
 """
 from __future__ import annotations
 
@@ -35,24 +36,27 @@ def _sha256(path: Path) -> str:
 def decode(src: Path, work: Path) -> dict:
     src = Path(src)
     if not src.is_file():
-        raise AutochartError("decode", f"source file not found: {src}")
+        raise AutochartError("decode", f"source file not found: {src}", code="not_found")
     if src.suffix.lower() not in SUFFIXES:
-        raise AutochartError("decode", f"unsupported file type '{src.suffix}' (allowed: .mp3 .ogg .wav .flac)")
+        raise AutochartError("decode", f"unsupported file type '{src.suffix}' (allowed: .mp3 .ogg .wav .flac)",
+                             code="bad_type")
     size = src.stat().st_size
     if size > MAX_BYTES:
-        raise AutochartError("decode", f"file is {size / 1e6:.0f} MB, the limit is 200 MB")
+        raise AutochartError("decode", f"file is {size / 1e6:.0f} MB, the limit is 200 MB", code="too_big")
     try:
         x, sr = sf.read(str(src), dtype="float32", always_2d=True)
     except Exception as e:  # libsndfile raises LibsndfileError / RuntimeError on bad data
-        raise AutochartError("decode", f"cannot decode {src.name}: {e}") from e
+        raise AutochartError("decode", f"cannot decode {src.name}: {e}", code="decode") from e
     if sr not in (44100, 48000):
-        raise AutochartError("decode", f"sample rate {sr} Hz is not supported (44100 or 48000 only)")
+        raise AutochartError("decode", f"sample rate {sr} Hz is not supported (44100 or 48000 only)",
+                             code="bad_rate")
     if sr == 48000:
         import soxr
         x = soxr.resample(x, 48000, SR, quality="HQ").astype(np.float32)
     length_s = x.shape[0] / SR
     if not (MIN_S <= length_s <= MAX_S):
-        raise AutochartError("decode", f"length {length_s:.1f} s is outside {MIN_S:.0f}..{MAX_S:.0f} s")
+        raise AutochartError("decode", f"length {length_s:.1f} s is outside {MIN_S:.0f}..{MAX_S:.0f} s",
+                             code="too_short" if length_s < MIN_S else "too_long")
     work.mkdir(parents=True, exist_ok=True)
     sf.write(str(work / "decoded.wav"), x, SR, subtype="FLOAT")
     info = {"sr": SR, "length_s": round(length_s, 6), "channels": int(x.shape[1]),

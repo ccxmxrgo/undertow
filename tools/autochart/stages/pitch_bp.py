@@ -14,19 +14,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+from stages import runtime
 from stages.errors import AutochartError
 
-ROOT = Path(__file__).resolve().parents[3]
-VENV_B = ROOT / "build" / "autochart" / "venvB" / "Scripts" / "python.exe"
-WORKER = ROOT / "tools" / "autochart" / "bp_worker.py"
 TIMEOUT_S = 600
 EPS = 1e-9
 
 
 def run_bp(stem_wav: Path, out_json: Path) -> None:
-    if not VENV_B.is_file():
-        raise AutochartError("pitch", f"{VENV_B} is missing; run tools/autochart/setup_venv.ps1")
-    cmd = [str(VENV_B), "-I", "-B", str(WORKER), str(stem_wav), str(out_json)]
+    # Interpreter and worker are read at call time (dev: build/autochart/venvB + tools/autochart/bp_worker.py).
+    venv_b = runtime.VENV_B
+    worker = runtime.WORKER
+    if not venv_b.is_file():
+        raise AutochartError("pitch", f"{venv_b} is missing; run tools/autochart/setup_venv.ps1")
+    cmd = [str(venv_b), "-I", "-B", str(worker), str(stem_wav), str(out_json)]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT_S)
     except subprocess.TimeoutExpired as e:
