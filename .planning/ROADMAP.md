@@ -167,7 +167,7 @@ Plans:
 ### Phase 02.2.1.1: Highway readability and single-file build (v0.5.3) (INSERTED)
 
 **Goal:** Rebuild the lost v0.5.3 changes, exactly as the shipped v0.5.3 README ("WHAT'S NEW IN v0.5.3", `.planning/reference/v0.5.3-README.txt`) describes them. The far end of the highway is much wider, so the four lanes stay apart all the way down. Notes fade in at the far end instead of popping in, and far notes are already readable. Notes move at a steadier speed: the speed change across the board drops from about 7.8x to about 2.9x. Lines, glows and sweeps fade toward the far end. Timing is unchanged: a note is exactly on the hit line at its on-time moment, and the same number of beats is on screen at 1x. The friend download becomes one file, UNDERTOW.exe with the pck embedded, plus the README and checklist. Ends with a v0.5.3 friend zip. (User request 2026-10-13: rebuild work lost in a PC format.)
-**Requirements**: VIS-02 (board readability, revisited)
+**Requirements**: VIS-03 (highway readability, revisited)
 **Depends on:** Phase 02.2.1
 **Plans:** 3 plans
 
