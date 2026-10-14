@@ -79,6 +79,7 @@ try {
     $p = Start-Process -FilePath $uexe.FullName -ArgumentList @("--headless", "--", "--selftest-bundled") `
         -WorkingDirectory $uexe.DirectoryName -RedirectStandardOutput $outFile -RedirectStandardError $errFile `
         -PassThru -NoNewWindow
+    $null = $p.Handle  # cache the handle so ExitCode survives WaitForExit
     if (-not $p.WaitForExit(120000)) {
         try { $p.Kill() } catch { }
         Write-Error "Unzipped selftest timed out after 120 s"; exit 1
