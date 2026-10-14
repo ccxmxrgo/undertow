@@ -69,7 +69,7 @@ const CALM_COLONY_R := 2.5
 
 ## Note-path keep-out (UI-SPEC 7.1): the board trapezoid expanded by 48 px on every side.
 const KEEP_OUT_PX := 48.0
-# Pixel-derived depth: bottom edge sits 64 px below the hit line under the PERSPECTIVE 0.70 slope.
+# Pixel-derived depth: bottom edge sits about 68 px below the hit line under the PERSPECTIVE 0.70 slope.
 const KEEP_OUT_NEAR_D := -0.071
 
 ## Band fills (7.7): ABYSS_600 between ring k and k+1 (spec alpha 0.03 + 0.05 n, raised below).
