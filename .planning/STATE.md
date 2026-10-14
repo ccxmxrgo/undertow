@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 status: verifying
 stopped_at: Completed 02.2.1-04-PLAN.md
-last_updated: "2026-10-13T20:59:44.988Z"
+last_updated: "2026-10-14T00:22:12.928Z"
 last_activity: 2026-10-13
 progress:
-  total_phases: 10
+  total_phases: 12
   completed_phases: 7
   total_plans: 74
   completed_plans: 74
-  percent: 70
+  percent: 58
 ---
 
 # Project State
@@ -109,6 +109,8 @@ Progress: [██████████] 100%
 ### Roadmap Evolution
 
 - Phase 02.2.1 inserted after Phase 02.2: MIDI chart import (CONT-01 pulled forward; friend's GH3 pack uses notes.mid) (URGENT)
+- Phase 02.2.1.1 inserted after Phase 02.2.1: Highway readability + single-file build (rebuild lost v0.5.3)
+- Phase 02.2.2 inserted after Phase 02.2.1.1: In-game autocharter shipped to players (optional Autocharter pack default)
 
 ### Decisions
 

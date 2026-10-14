@@ -164,6 +164,26 @@ Plans:
 - [x] 02.2.1-03-PLAN.md — ChartFile dispatch at all parse sites, scanner .mid fallback with .chart precedence, legacy "MIDI charts not supported yet" cache re-read, scanner tests
 - [x] 02.2.1-04-PLAN.md — End-to-end .mid Autoplay test, v0.5.2 README/checklist, local zip build (BUNDLED_OK 20), pending real-song UAT (non-blocking)
 
+### Phase 02.2.1.1: Highway readability and single-file build (v0.5.3) (INSERTED)
+
+**Goal:** Rebuild the lost v0.5.3 changes, exactly as the shipped v0.5.3 README ("WHAT'S NEW IN v0.5.3", `.planning/reference/v0.5.3-README.txt`) describes them. The far end of the highway is much wider, so the four lanes stay apart all the way down. Notes fade in at the far end instead of popping in, and far notes are already readable. Notes move at a steadier speed: the speed change across the board drops from about 7.8x to about 2.9x. Lines, glows and sweeps fade toward the far end. Timing is unchanged: a note is exactly on the hit line at its on-time moment, and the same number of beats is on screen at 1x. The friend download becomes one file, UNDERTOW.exe with the pck embedded, plus the README and checklist. Ends with a v0.5.3 friend zip. (User request 2026-10-13: rebuild work lost in a PC format.)
+**Requirements**: VIS-02 (board readability, revisited)
+**Depends on:** Phase 02.2.1
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.2.1.1 to break down)
+
+### Phase 02.2.2: In-game autocharter (Chart a song, shipped to players) (INSERTED)
+
+**Goal:** Any player can turn an audio file they own into a playable chart from inside the game, with no dev tools: a "Chart a song" flow picks a file, shows progress, and adds the result to the library like any other song. It uses the proven Phase 02.1 pipeline: htdemucs stems, beat_this tempo map, D3 onsets on the chosen stem, Basic Pitch contour lanes, and Hard/Medium/Easy reductions. Charts are made from an extracted instrument, never the full mix (CONT-02 stays rejected). Default delivery is an optional Autocharter pack: the game stays small and offers to download the pack the first time a player uses the feature (this choice was made while the user was away, and they can revisit it at discuss time). Charts made this way must pass the existing sync gate, and timing stays untouched. Ends with a friend zip. (User request 2026-10-13.)
+**Requirements**: STEM-02, STEM-03, STEM-04, STEM-05 (made available to players in-game, not only on the dev PC)
+**Depends on:** Phase 02.2.1.1
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 02.2.2 to break down)
+
 ### Phase 02.1: Instrument Extraction Tool (INSERTED)
 
 **Goal:** Players can turn a song they own into a playable chart by extracting its instruments. Research comes first: study how to separate stems and how to turn a stem into notes, then build the tool.
