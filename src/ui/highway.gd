@@ -125,8 +125,6 @@ var _quad := PackedVector2Array()
 var _edge_l := PackedVector2Array()
 var _edge_r := PackedVector2Array()
 var _edge_cols := PackedColorArray()
-var _line_pts := PackedVector2Array()
-var _line_cols := PackedColorArray()
 var _vis := PackedInt32Array()
 var _ring := PackedVector2Array()
 var _lane_labels := PackedStringArray(["", "", "", ""])
@@ -373,8 +371,6 @@ func setup(p_chart: ChartData, p_conductor: Conductor, p_cfg: JudgeConfig = null
 	_edge_l.resize(RIBBON_SAMPLES + 1)
 	_edge_r.resize(RIBBON_SAMPLES + 1)
 	_edge_cols.resize(RIBBON_SAMPLES + 1)
-	_line_pts.resize(LINE_ROW_D.size() + 1)
-	_line_cols.resize(LINE_ROW_D.size() + 1)
 	_graph.resize(GRAPH_SAMPLES)
 	_graph.fill(0.0)
 	_refresh_labels()
@@ -664,26 +660,34 @@ func _draw_rails() -> void:
 ## A lane line from the far end (VP) down to y_end whose alpha follows Trench.line_fade(d) over
 ## LINE_ROW_D rows (D-04). edge_x is linear in y, so only the colours vary between rows.
 func _draw_fading_line(f: float, y_end: float, col: Color, w: float) -> void:
-	var n := 0
+	var data := fading_line_data(f, y_end, col)
+	var pts: PackedVector2Array = data[0]
+	if pts.size() < 2:
+		return
+	draw_polyline_colors(pts, data[1], w, true)
+
+
+## Points and colours for a fading lane line ending at y_end. The last point's alpha follows
+## Trench.line_fade at the depth of y_end, so a still-growing cable fades like the gems do.
+## Pure (no setup() state), so it is safe before setup() and testable.
+static func fading_line_data(f: float, y_end: float, col: Color) -> Array:
+	var pts := PackedVector2Array()
+	var cols := PackedColorArray()
 	for d in LINE_ROW_D:
 		var y := Trench.point(0.0, d).y
 		if y >= y_end - 0.5:
 			break
-		_line_pts[n] = Vector2(edge_x(f, y), y)
+		pts.append(Vector2(edge_x(f, y), y))
 		var c := col
 		c.a *= Trench.line_fade(d)
-		_line_cols[n] = c
-		n += 1
-	if n == 0:
-		return
-	_line_pts[n] = Vector2(edge_x(f, y_end), y_end)
-	_line_cols[n] = col
-	n += 1
-	_line_pts.resize(n)
-	_line_cols.resize(n)
-	draw_polyline_colors(_line_pts, _line_cols, w, true)
-	_line_pts.resize(LINE_ROW_D.size() + 1)
-	_line_cols.resize(LINE_ROW_D.size() + 1)
+		cols.append(c)
+	if pts.is_empty():
+		return [pts, cols]
+	pts.append(Vector2(edge_x(f, y_end), y_end))
+	var c_end := col
+	c_end.a *= Trench.line_fade(depth_at_y(y_end))
+	cols.append(c_end)
+	return [pts, cols]
 
 
 ## MAX rail dashes: 24 px SONAR_PALE 70% strokes, one every half beat, flowing toward the

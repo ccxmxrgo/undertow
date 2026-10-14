@@ -275,3 +275,24 @@ func test_strip_color_keeps_alpha_at_the_hit_line_and_vanishes_at_the_far_end() 
 	assert_float(near.a).is_greater(0.85)
 	var far := hw.strip_color(0, Trench.VP.y, hw.strip_tint_alpha())
 	assert_float(far.a).is_less(0.02)
+
+
+## 02.2.1.1 WR-01/WR-02: the lane line's last point follows Trench.line_fade at the depth of
+## y_end (a partially grown cable), and building it needs no setup().
+func test_fading_line_end_follows_line_fade_at_partial_grow() -> void:
+	var y_end := lerpf(Trench.VP.y, Highway.STRIP_END_Y, 0.3)
+	var col := Palette.SONAR
+	var data := Highway.fading_line_data(1.0, y_end, col)
+	var pts: PackedVector2Array = data[0]
+	var cols: PackedColorArray = data[1]
+	assert_int(pts.size()).is_equal(cols.size())
+	assert_float(pts[pts.size() - 1].y).is_equal_approx(y_end, 0.01)
+	var want := col.a * Trench.line_fade(Highway.depth_at_y(y_end))
+	assert_float(cols[cols.size() - 1].a).is_equal_approx(want, 0.001)
+	assert_float(cols[cols.size() - 1].a).is_less(col.a)
+
+
+func test_draw_fading_line_safe_before_setup() -> void:
+	var hw: Highway = auto_free(Highway.new())
+	var data := hw.fading_line_data(1.0, Highway.STRIP_END_Y, Palette.SONAR)
+	assert_int((data[0] as PackedVector2Array).size()).is_greater(1)
