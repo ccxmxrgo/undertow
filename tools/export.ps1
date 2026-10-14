@@ -19,14 +19,14 @@ try {
         & $godot --headless --path . --import
     }
     # Drop stale artifacts so a failed export cannot be mistaken for a fresh build (WR-07).
-    Remove-Item build/undertow-debug.exe, build/undertow-debug.pck -ErrorAction SilentlyContinue
-    & $godot --headless --path . --export-debug "Windows Desktop" build/undertow-debug.exe
+    Remove-Item build/UNDERTOW.exe, build/UNDERTOW.pck, build/UNDERTOW.console.exe, build/undertow-d* -ErrorAction SilentlyContinue
+    & $godot --headless --path . --export-debug "Windows Desktop" build/UNDERTOW.exe
     $code = $LASTEXITCODE
-    if ($code -ne 0 -or -not (Test-Path "build/undertow-debug.exe")) {
-        Write-Error "Export failed: build/undertow-debug.exe is missing (godot exit code $code)"
+    if ($code -ne 0 -or -not (Test-Path "build/UNDERTOW.exe")) {
+        Write-Error "Export failed: build/UNDERTOW.exe is missing (godot exit code $code)"
         exit 1
     }
-    Write-Host "Export OK: build/undertow-debug.exe"
+    Write-Host "Export OK: build/UNDERTOW.exe"
     exit 0
 }
 finally {
