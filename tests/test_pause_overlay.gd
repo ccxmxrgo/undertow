@@ -155,3 +155,80 @@ func test_pause_action_fills_run_line_from_gameplay() -> void:
 	assert_str(gp.pause_menu.run_label.text).is_equal(expect)
 	assert_bool(gp.pause_menu.run_label.text.begins_with(gp.chart.title + " · ")).is_true()
 	assert_float(gp.progress_pct()).is_between(0.0, 100.0)
+
+
+# ---- 03-12: versus pause copy (03-UI-SPEC 9.5) ---------------------------------------------
+
+func _dialog_of(pm: PauseMenu) -> ConfirmDialog:
+	for c in pm.get_children():
+		if c is ConfirmDialog:
+			return c
+	return null
+
+
+func test_match_mode_run_line_and_buttons() -> void:
+	var gp := _launch()
+	await _frames(2)
+	var pm := gp.pause_menu
+	pm.match_mode = true
+	pm.set_run_info("Sea Shanty 2", "expert", 42.0)
+	assert_str(pm.run_label.text).is_equal("Sea Shanty 2 · EXPERT · VERSUS · 42%")
+	assert_str(PauseMenu.run_line("T", "hard", 7.0, true)).is_equal("T · HARD · VERSUS · 7%")
+	assert_str(pm.resume_button.text).is_equal("Resume Match")
+	assert_str(pm.restart_button.text).is_equal("Restart Match")
+	assert_str(pm.settings_button.text).is_equal("Settings")
+	assert_str(pm.menu_button.text).is_equal("Leave Match")
+	pm.match_mode = false
+	assert_str(pm.resume_button.text).is_equal("Resume Dive")
+	assert_str(pm.restart_button.text).is_equal("Restart Dive")
+	assert_str(pm.menu_button.text).is_equal("Back to Menu")
+	pm.set_run_info("Sea Shanty 2", "expert", 42.0)
+	assert_str(pm.run_label.text).is_equal("Sea Shanty 2 · EXPERT · 42%")
+
+
+func test_match_mode_restart_confirm_copy() -> void:
+	var gp := _launch()
+	await _frames(2)
+	var pm := gp.pause_menu
+	pm.match_mode = true
+	pm.open()
+	var restarts: Array[int] = []
+	pm.restart_confirmed.connect(func() -> void: restarts.append(1))
+	gp.score.score = 0  # versus confirms even at score 0
+	pm.request_restart()
+	await _frames(2)
+	assert_array(restarts).is_empty()
+	var d := _dialog_of(pm)
+	assert_object(d).is_not_null()
+	assert_str(d.title_label.text).is_equal("RESTART")
+	assert_str(d.body_label.text).is_equal("Restart this match from the beginning? Everyone's progress will be lost.")
+	assert_str(d.confirm_button.text).is_equal("Restart Match")
+	assert_str(d.safe_button.text).is_equal("Keep Playing")
+	assert_bool(d.safe_button.has_focus()).is_true()
+	d.safe_button.pressed.emit()
+	await _frames(2)
+	assert_array(restarts).is_empty()
+	assert_bool(pm.restart_button.has_focus()).is_true()
+
+
+func test_match_mode_leave_confirm_copy() -> void:
+	var gp := _launch()
+	await _frames(2)
+	var pm := gp.pause_menu
+	pm.match_mode = true
+	pm.open()
+	var leaves: Array[int] = []
+	pm.menu_confirmed.connect(func() -> void: leaves.append(1))
+	pm.request_menu()
+	await _frames(2)
+	var d := _dialog_of(pm)
+	assert_object(d).is_not_null()
+	assert_str(d.title_label.text).is_equal("LEAVE MATCH")
+	assert_str(d.body_label.text).is_equal("Leave this match? It ends now and nothing is saved.")
+	assert_str(d.confirm_button.text).is_equal("Leave Match")
+	assert_str(d.safe_button.text).is_equal("Stay")
+	assert_bool(d.safe_button.has_focus()).is_true()
+	# Disconnect the gameplay's own handler effect by only checking our capture on confirm.
+	d.confirm_button.pressed.emit()
+	await _frames(1)
+	assert_array(leaves).has_size(1)

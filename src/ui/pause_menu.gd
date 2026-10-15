@@ -42,6 +42,13 @@ var lane_input: LaneInput
 var score: HullScore
 ## False in autoplay runs: the player never has live lane input there.
 var restore_input: bool = true
+## Versus match (03-UI-SPEC 9.5): Gameplay sets this before open() (plan 03-14). Switches the run
+## line, the button labels and the confirm copy; signals are unchanged (restart_confirmed =
+## Restart Match, menu_confirmed = Leave Match).
+var match_mode: bool = false:
+	set(v):
+		match_mode = v
+		_apply_mode_copy()
 
 var resume_button: Button
 var restart_button: Button
@@ -95,12 +102,15 @@ func has_settings_overlay() -> bool:
 	return _overlay != null and is_instance_valid(_overlay)
 
 
-## Run line under the title: "{title} · {DIFFICULTY} · {nn}%" (UI-SPEC 9.1 / 14).
-static func run_line(title: String, difficulty: String, progress_pct: float) -> String:
+## Run line under the title: "{title} · {DIFFICULTY} · {nn}%" (UI-SPEC 9.1 / 14); a versus match
+## adds "VERSUS" before the percentage (03-UI-SPEC 9.5).
+static func run_line(title: String, difficulty: String, progress_pct: float, versus: bool = false) -> String:
 	var parts: Array[String] = []
 	for part in [title.strip_edges(), difficulty.strip_edges().to_upper()]:
 		if part != "":
 			parts.append(part)  # charts without a difficulty name skip that part
+	if versus:
+		parts.append("VERSUS")
 	parts.append("%d%%" % int(clampf(progress_pct, 0.0, 100.0)))
 	return " · ".join(parts)
 
@@ -110,7 +120,7 @@ func set_run_info(title: String, difficulty: String, progress_pct: float) -> voi
 	if run_label == null:
 		return
 	var font := run_label.get_theme_font("font")
-	var full := run_line(title, difficulty, progress_pct)
+	var full := run_line(title, difficulty, progress_pct, match_mode)
 	var tail := full.substr(title.strip_edges().length())  # " · DIFFICULTY · nn%" always stays visible
 	var tail_w := font.get_string_size(tail, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL).x
 	run_label.text = ProgressTrack.truncate_px(title.strip_edges(), font, Palette.SIZE_LABEL, RUN_MAX_W - tail_w) + tail
@@ -148,7 +158,10 @@ func resume_dive() -> void:
 
 
 func request_restart() -> void:
-	if score != null and score.score > 0:
+	if match_mode:  # versus: everyone's progress is at stake, so always confirm (03-UI-SPEC 9.5)
+		_show_dialog("RESTART", "Restart this match from the beginning? Everyone's progress will be lost.",
+			"Restart Match", "Keep Playing", restart_button, func() -> void: restart_confirmed.emit())
+	elif score != null and score.score > 0:
 		_show_dialog("RESTART", "Restart this dive from the beginning? Your progress will be lost.",
 			"Restart Dive", "Keep Playing", restart_button, func() -> void: restart_confirmed.emit())
 	else:
@@ -156,6 +169,10 @@ func request_restart() -> void:
 
 
 func request_menu() -> void:
+	if match_mode:
+		_show_dialog("LEAVE MATCH", "Leave this match? It ends now and nothing is saved.",
+			"Leave Match", "Stay", menu_button, func() -> void: menu_confirmed.emit())
+		return
 	_show_dialog("BACK TO MENU", "Leave this dive? Your progress will be lost.",
 		"Leave Dive", "Stay", menu_button, func() -> void: menu_confirmed.emit())
 
@@ -323,6 +340,7 @@ func _build() -> void:
 	restart_button = _button("Restart Dive", "default", 1, request_restart)
 	settings_button = _button("Settings", "default", 2, open_settings)
 	menu_button = _button("Back to Menu", "default", 3, request_menu)
+	_apply_mode_copy()
 	var buttons := [resume_button, restart_button, settings_button, menu_button]
 	for i in range(buttons.size()):
 		var b: Button = buttons[i]
@@ -348,6 +366,16 @@ func _build() -> void:
 	countdown_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	countdown_label.visible = false
 	add_child(countdown_label)
+
+
+## Button labels for the current mode (solo copy U-14, versus copy 03-UI-SPEC 9.5).
+func _apply_mode_copy() -> void:
+	if resume_button == null:
+		return
+	resume_button.text = "Resume Match" if match_mode else "Resume Dive"
+	restart_button.text = "Restart Match" if match_mode else "Restart Dive"
+	settings_button.text = "Settings"
+	menu_button.text = "Leave Match" if match_mode else "Back to Menu"
 
 
 func _draw_ring(ci: CanvasItem) -> void:
