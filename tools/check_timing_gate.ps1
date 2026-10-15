@@ -5,16 +5,19 @@
 # Two baselines:
 #   1. conductor.gd, clock_model.gd, input_judge.gd, hull_score.gd -> $base = 72e21ce (the last
 #      commit that touched them before the visual phase).
-#   2. judge_config.gd -> $judgeBase = fbcf994. 02.2 UAT gap G1: on 2026-10-11 the user approved
+#   2. judge_config.gd -> $judgeBase (was fbcf994, now 2c2e54c). 02.2 UAT gap G1: on 2026-10-11 the user approved
 #      widening the judge windows to Perfect 50 / Good 100 / early-miss 130 ms. Commit fbcf994
 #      changes exactly those three defaults; the gate is re-baselined to it for that file only.
+#      03-SPEC req 14 (D-29): on 2026-10-08 the user approved perfect_regen 1.0 -> 0.25. Commit
+#      2c2e54c changes exactly that default; the judge windows (50/100/130 ms) are unchanged. The
+#      gate is re-baselined to it for judge_config.gd only.
 # Any further edit of any of the five files (committed or not) fails the gate again.
 #
 # Usage: powershell -NoProfile -File tools/check_timing_gate.ps1
 # Exit 0 + "TIMING GATE OK" when untouched; exit 1 + the diff + "TIMING GATE FAILED" otherwise.
 $root = Split-Path -Parent $PSScriptRoot
 $base = "72e21ce"
-$judgeBase = "fbcf994"
+$judgeBase = "2c2e54c"
 $groups = @(
     @{ Base = $base; Paths = @(
         "src/core/conductor.gd",
