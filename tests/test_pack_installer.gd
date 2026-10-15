@@ -485,6 +485,20 @@ func test_remove_pack() -> void:
 	_assert_nothing_installed()
 
 
+## WR-11: removing the pack also frees the stem cache and the numba cache.
+func test_remove_pack_also_clears_the_chart_cache() -> void:
+	await _install_three()
+	var w := AutochartPaths.work_root().path_join("w_0123456789abcdef")
+	SongFixture.write_text(w.path_join("stems/other.wav"), "x")
+	SongFixture.write_text(AutochartPaths.work_root().path_join("jobs/j_1_1/log.txt"), "x")
+	var numba := AutochartPaths.root().path_join("cache/numba")
+	SongFixture.write_text(numba.path_join("f.nbi"), "x")
+	assert_bool(_inst.remove_pack(false)).is_true()
+	assert_bool(DirAccess.dir_exists_absolute(w)).is_false()
+	assert_bool(DirAccess.dir_exists_absolute(AutochartPaths.work_root().path_join("jobs/j_1_1"))).is_false()
+	assert_bool(DirAccess.dir_exists_absolute(AutochartPaths.root().path_join("cache"))).is_false()
+
+
 func test_start_twice_ignored() -> void:
 	var parts := _three()
 	_inst.spec = _spec(parts)

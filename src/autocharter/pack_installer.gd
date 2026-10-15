@@ -208,6 +208,10 @@ func remove_pack(job_running: bool) -> bool:
 	AutochartPaths.rm_tree(AutochartPaths.version_dir(v))
 	AutochartPaths.rm_tree(AutochartPaths.staging_dir(v))
 	AutochartPaths.rm_tree(AutochartPaths.dl_dir())
+	# WR-11: the stem cache and the numba cache go with the pack; Clear Chart Cache is not
+	# reachable once the pack is gone.
+	AutochartWorkCache.clear(AutochartPaths.work_root())
+	AutochartPaths.rm_tree(AutochartPaths.root().path_join("cache"))
 	if _state == "done":
 		_set_state("idle")
 	return not DirAccess.dir_exists_absolute(AutochartPaths.version_dir(v))
