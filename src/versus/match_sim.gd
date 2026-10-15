@@ -964,8 +964,11 @@ func _on_landed_bounty(rec: Dictionary, t: float) -> void:
 	if from == to or to != bounty_holder or _by_seat[from].is_drone:
 		return
 	_pending_bounty[rec["id"]] = {"shooter": from, "holder": to}
-	var heads: Array = rec.get("warheads", [])
-	if heads.is_empty():
+	# Decide from the live warhead state, not the launch snapshot (CR-01): a non-Perfect
+	# warhead judged early (before arrival) already closed the reflect chance and erased
+	# _heads[id], so the claim is due now. A still-open (or already cleared) set waits for
+	# _kill_heads / _reflect.
+	if not _heads.has(rec["id"]):
 		_claim_bounty(rec["id"], t)
 
 

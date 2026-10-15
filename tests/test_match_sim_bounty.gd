@@ -180,3 +180,49 @@ func test_nobody_holds_before_anyone_scores() -> void:
 	assert_int(sim.bounty_holder).is_equal(-1)
 	sim.report_status(1, 100.0, 10.0, 1.0, 1, 2.1)
 	assert_int(sim.bounty_holder).is_equal(1)
+
+
+## CR-01 regression: the first warhead (on the arrival beat) judged early and below Perfect
+## closes the reflect chance before the torpedo lands. The arrival must then claim at once
+## instead of parking a _pending_bounty entry that nothing will ever resolve.
+func test_early_non_perfect_first_warhead_claims_on_arrival() -> void:
+	var sim := _sim(4)
+	_give(1, INK)
+	sim.request_fire(1, 1.1)
+	sim.update(1.6)
+	var launch := _of(GameEvent.TORPEDO_LAUNCH)
+	assert_int(launch.size()).is_equal(1)
+	var heads: Array = launch[0]["warheads"]
+	assert_bool(heads.is_empty()).is_false()
+	var arrive_t: float = launch[0]["arrive_t"]
+	var id: int = launch[0]["id"]
+	# Early Good on the first warhead, 60 ms before the torpedo arrives.
+	sim.on_judged(0, int(heads[0]), InputJudge.Judgment.GOOD, arrive_t - 0.06)
+	assert_int(_of(GameEvent.BOUNTY_CLAIMED).size()).is_equal(0)
+	sim.update(arrive_t + 0.01)
+	assert_int(_of(GameEvent.LANDED).size()).is_equal(1)
+	var bc := _of(GameEvent.BOUNTY_CLAIMED)
+	assert_int(bc.size()).is_equal(1)
+	assert_int(bc[0]["from"]).is_equal(1)
+	assert_float(bc[0]["t"]).is_equal_approx(arrive_t, 1e-9)
+	assert_bool(sim._pending_bounty.has(id)).is_false()
+	assert_int(_players[1].bounties).is_equal(1)
+
+
+## CR-01 companion: every warhead cleared Perfect before arrival reflects on landing and the
+## bounty is dropped, not claimed.
+func test_all_warheads_cleared_early_drops_bounty() -> void:
+	var sim := _sim(4)
+	_give(1, INK)
+	sim.request_fire(1, 1.1)
+	sim.update(1.6)
+	var launch := _of(GameEvent.TORPEDO_LAUNCH)
+	var heads: Array = launch[0]["warheads"]
+	var arrive_t: float = launch[0]["arrive_t"]
+	var id: int = launch[0]["id"]
+	for n in heads:
+		sim.on_judged(0, int(n), P, arrive_t - 0.04)
+	sim.update(arrive_t + 0.01)
+	assert_int(_of(GameEvent.REFLECTED).size()).is_equal(1)
+	assert_int(_of(GameEvent.BOUNTY_CLAIMED).size()).is_equal(0)
+	assert_bool(sim._pending_bounty.has(id)).is_false()
