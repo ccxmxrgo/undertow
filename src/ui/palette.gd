@@ -46,6 +46,8 @@ const COVER_GRADIENTS: Array = [
 ]
 const PANEL_ALPHA := 0.82
 const HIGHWAY_ALPHA := 0.90
+const HUD_GLASS_ALPHA := 0.92  # in-game versus glass fill alpha (UI-SPEC 3.1: WARNING_RED text passes 4.5:1 over WALL_TEAL)
+const JAM_GREY := TEXT_MID  # Sonar Jam gem core (D-15), alias: no new hue
 
 const GRADE_COLORS := {
 	"S": REWARD_GOLD,

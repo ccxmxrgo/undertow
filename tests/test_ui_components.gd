@@ -498,10 +498,17 @@ func test_register_fx_follows_tree_and_does_not_leak() -> void:
 func test_ui_icons_names_and_unknown_name_is_noop() -> void:
 	assert_array(UiIcons.names()).contains_exactly([
 		"dive", "lifebuoy", "sonar", "sliders", "auto", "folder", "power", "chart",
-		"check", "chevron_left", "chevron_right"])
+		"check", "chevron_left", "chevron_right",
+		"crossed_wires", "ghost_notes", "ink_cloud", "pressure_crack", "sonar_jam",
+		"depth_charge", "decoy_flare", "ballast_patch", "overclock",
+		"arrow_right", "reflect", "shield", "cross", "skull", "bounty", "target", "debris", "versus",
+		"medal_untouchable", "medal_uno_reverse", "medal_bounty_hunter", "medal_shredder",
+		"medal_head_on", "medal_grudge", "medal_dogpiled"])
+	var n_icons := UiIcons.names().size()
+	assert_int(n_icons).is_equal(36)
 	var c: Control = auto_free(Control.new())
 	add_child(c)
-	c.size = Vector2(400, 40)
+	c.size = Vector2(1200, 40)
 	var drawn := []
 	c.draw.connect(func() -> void:
 		var x := 0.0
@@ -511,10 +518,37 @@ func test_ui_icons_names_and_unknown_name_is_noop() -> void:
 		drawn.append(UiIcons.draw(c, "no_such_icon", Rect2(0, 0, 24, 24), Palette.SONAR)))
 	c.queue_redraw()
 	await await_idle_frame()
-	assert_int(drawn.size()).is_equal(12)
-	for i in 11:
+	assert_int(drawn.size()).is_equal(n_icons + 1)
+	for i in n_icons:
 		assert_bool(drawn[i]).is_true()
-	assert_bool(drawn[11]).is_false()
+	assert_bool(drawn[n_icons]).is_false()
+
+
+## 03-UI-SPEC section 4: every Phase 3 glyph draws at 16, 20, 24 and 32 px.
+func test_ui_icons_phase3_glyphs_draw_at_all_sizes() -> void:
+	var phase3 := ["crossed_wires", "ghost_notes", "ink_cloud", "pressure_crack", "sonar_jam",
+		"depth_charge", "decoy_flare", "ballast_patch", "overclock",
+		"arrow_right", "reflect", "shield", "cross", "skull", "bounty", "target", "debris", "versus",
+		"medal_untouchable", "medal_uno_reverse", "medal_bounty_hunter", "medal_shredder",
+		"medal_head_on", "medal_grudge", "medal_dogpiled"]
+	assert_int(phase3.size()).is_equal(25)
+	var c: Control = auto_free(Control.new())
+	add_child(c)
+	c.size = Vector2(1920, 200)
+	var drawn := []
+	c.draw.connect(func() -> void:
+		var y := 0.0
+		for px: float in [16.0, 20.0, 24.0, 32.0]:
+			var x := 0.0
+			for n: String in phase3:
+				drawn.append(UiIcons.draw(c, n, Rect2(x, y, px, px), Palette.SONAR))
+				x += px + 4.0
+			y += px + 4.0)
+	c.queue_redraw()
+	await await_idle_frame()
+	assert_int(drawn.size()).is_equal(100)
+	for ok: bool in drawn:
+		assert_bool(ok).is_true()
 
 
 # ---- Plan 05 task 2: FocusMarker.

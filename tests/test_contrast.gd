@@ -1,6 +1,6 @@
 extends GdUnitTestSuite
 ## VIS-10 / AV-01 / VIS-03 readability guardrail: every UI-SPEC section 13 contrast pair
-## (C1..C19) computed from Palette tokens, composited with Wcag.over exactly as listed.
+## (C1..C19, Phase 3 C20..C25) computed from Palette tokens, composited with Wcag.over exactly as listed.
 ## Only the strip-hex sanity check names hex values (to prove the compositing matches the
 ## UI-SPEC numbers); every pair below reads Palette tokens.
 
@@ -147,3 +147,43 @@ func test_c19_progress_text_on_top_scrim() -> void:
 		_check("C19 title TEXT_MID", Palette.TEXT_MID, bg, 4.5)
 		_check("C19 section SONAR_PALE", Palette.SONAR_PALE, bg, 4.5)
 		_check("C19 time TEXT_LO", Palette.TEXT_LO, bg, 4.5)
+
+
+# ---- C20..C25 (Phase 3, 03-UI-SPEC section 13) ----
+
+func test_c20_jam_grey_core_on_strip() -> void:
+	for lane in LANES:
+		_check("C20 JAM_GREY core lane %d" % (lane + 1), Palette.JAM_GREY, _strip(lane), 4.5)
+
+
+func test_c21_jam_rim_on_strip() -> void:
+	for lane in LANES:
+		_check("C21 jam rim TEXT_HI lane %d" % (lane + 1), Palette.TEXT_HI, _strip(lane), 4.5)
+
+
+func test_c22_warhead_ring_on_strip() -> void:
+	for lane in LANES:
+		_check("C22 warhead WARNING_RED lane %d" % (lane + 1), Palette.WARNING_RED, _strip(lane), 3.0)
+
+
+func test_c23_ghost_rims_on_strip() -> void:
+	for lane in LANES:
+		_check("C23 ghost far rim lane %d" % (lane + 1), Palette.rim_far(lane), _strip(lane), 4.5)
+		_check("C23 ghost ready rim lane %d" % (lane + 1), Palette.rim_ready(lane), _strip(lane), 4.5)
+
+
+func test_c24_hud_glass_worst_case() -> void:
+	assert_float(Palette.HUD_GLASS_ALPHA).is_equal_approx(0.92, 0.0001)
+	var glass := Wcag.over(Palette.ABYSS_700, Palette.HUD_GLASS_ALPHA, Palette.WALL_TEAL)
+	_check("C24 TEXT_LO on HUD glass", Palette.TEXT_LO, glass, 4.5)
+	_check("C24 WARNING_RED on HUD glass", Palette.WARNING_RED, glass, 4.5)
+
+
+func test_c25_ink_receptor_outline_on_abyss() -> void:
+	for lane in LANES:
+		var outline := Wcag.over(Palette.lane_color(lane), 0.6, Palette.ABYSS_900)
+		_check("C25 ink receptor outline lane %d" % (lane + 1), outline, Palette.ABYSS_900, 3.0)
+
+
+func test_jam_grey_is_text_mid_alias() -> void:
+	assert_bool(Palette.JAM_GREY == Palette.TEXT_MID).is_true()
