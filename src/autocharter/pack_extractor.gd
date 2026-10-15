@@ -75,11 +75,22 @@ static func extract_all(zip_path: String, dest_dir: String, progress: Callable =
 			zr.close()
 			return {"ok": false, "error": "cancelled", "written": written}
 		DirAccess.make_dir_recursive_absolute(String(p[1]).get_base_dir())
+		# WR-03: the tree on disk must match the hashed zip. An entry that reads back with a
+		# different size than its central-directory record, or a write that fails (disk full,
+		# antivirus lock), fails the whole part instead of leaving a truncated file.
+		var data := zr.read_file(p[0])
+		if data.size() != int(sizes.get(p[0], -1)):
+			zr.close()
+			return {"ok": false, "error": "read_failed", "written": written}
 		var f := FileAccess.open(p[1], FileAccess.WRITE)
 		if f == null:
 			zr.close()
 			return {"ok": false, "error": "write_failed", "written": written}
-		f.store_buffer(zr.read_file(p[0]))
+		var stored := f.store_buffer(data)
+		if not stored or f.get_error() != OK or f.get_position() != data.size():
+			f.close()
+			zr.close()
+			return {"ok": false, "error": "write_failed", "written": written}
 		f.close()
 		written += 1
 		if progress.is_valid() and written % every == 0 and written < file_count:

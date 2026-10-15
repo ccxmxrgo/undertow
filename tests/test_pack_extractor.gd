@@ -171,3 +171,24 @@ func test_extract_cancel() -> void:
 	assert_bool(r["ok"]).is_false()
 	assert_str(r["error"]).is_equal("cancelled")
 	assert_int(DirAccess.get_files_at(_abs(D + "/o")).size()).is_equal(3)
+
+
+## WR-03: an entry whose bytes do not match its central-directory size fails the part instead
+## of leaving a truncated (here: empty) file behind while extraction reports ok.
+func test_extract_short_entry_fails_closed() -> void:
+	var z := D + "/short.zip"
+	SongFixture.make_zip(z, {"a.bin": "0123456789", "b.bin": "abc"})
+	var bytes := FileAccess.get_file_as_bytes(z)
+	var patched := false
+	for i in range(bytes.size() - 46, -1, -1):
+		if bytes.decode_u32(i) == 0x02014B50:
+			var nlen := bytes.decode_u16(i + 28)
+			if bytes.slice(i + 46, i + 46 + nlen).get_string_from_utf8() == "a.bin":
+				bytes.encode_u32(i + 24, 20)  # central record claims 20 bytes, the data holds 10
+				patched = true
+	assert_bool(patched).is_true()
+	SongFixture.write_bytes(z, bytes)
+	var r := PackExtractor.extract_all(z, D + "/o")
+	assert_bool(r["ok"]).is_false()
+	assert_str(r["error"]).is_equal("read_failed")
+	assert_bool(FileAccess.file_exists(D + "/o/a.bin")).is_false()
