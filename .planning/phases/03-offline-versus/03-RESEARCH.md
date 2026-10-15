@@ -499,12 +499,14 @@ The `ui_phase` setting is true. Run `/gsd:ui-phase 3` before planning so a 03-UI
 | A4 | Players accept that "medium" skill rarely earns rewards on Expert with the locked 0.12 ratio | Pitfall 11 | Medium: fun risk; the ratio is tunable and rubber-banding is deferred by spec |
 | A5 | Same-difficulty-for-all is acceptable offline (depth comparisons fair) | D-18 | Low: Phase 4 may revisit mixed difficulties |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Ballast Patch 25%** is still marked "unconfirmed" in the spec. Recommendation: ship 25 as a tunable and ask in UAT.
-2. **Does reflection count as "landed" for the shooter's stats?** Recommendation: no. Track it as `reflected_by_target`. Results show landed and reflected separately (MATCH-05).
-3. **Mixed difficulties in versus:** deferred to Phase 4 (D-18 keeps them the same).
-4. **Should a Ghost hit reset the reward meter?** D-12 says no (consistent with the stray rule). The user may want teeth; tunable flag `ghost_resets_meter` = false.
+All four were resolved by 03-CONTEXT.md "Open questions resolved by default" (2026-10-15).
+
+1. **Ballast Patch 25%** is still marked "unconfirmed" in the spec. Recommendation: ship 25 as a tunable and ask in UAT. **RESOLVED:** Ballast Patch restores 25% hull (VersusConfig.ballast_restore_ratio), confirmed in UAT.
+2. **Does reflection count as "landed" for the shooter's stats?** Recommendation: no. Track it as `reflected_by_target`. Results show landed and reflected separately (MATCH-05). **RESOLVED:** a reflected shot does not count as landed for the original shooter.
+3. **Mixed difficulties in versus:** deferred to Phase 4 (D-18 keeps them the same). **RESOLVED:** every player in a match uses the same difficulty; mixed difficulties are deferred to Phase 4.
+4. **Should a Ghost hit reset the reward meter?** D-12 says no (consistent with the stray rule). The user may want teeth; tunable flag `ghost_resets_meter` = false. **RESOLVED:** a ghost hit does not reset the reward meter (ghost_resets_meter = false).
 
 ## Environment Availability
 
