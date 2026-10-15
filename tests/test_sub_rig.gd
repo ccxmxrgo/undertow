@@ -172,3 +172,23 @@ func test_approach_s_feeds_player_state() -> void:
 	var rig := _rig()
 	rig.approach_s = 0.9
 	assert_float(_players[0].approach_s).is_equal(0.9)
+
+
+## CR-02 helper: builds a whole match graph in a local scope and returns weak references, so
+## nothing on this stack frame keeps it alive once the function returns.
+func _build_and_drop() -> Array:
+	var chart := TestCharts.click_chart(120.0, 64, 1000)
+	var ps: Array[PlayerState] = [PlayerState.new(0, "A", true), PlayerState.new(1, "B")]
+	var ch := LoopbackChannel.new()
+	var cfg := VersusConfig.new()
+	var sim := MatchSim.new(chart, cfg, JudgeConfig.new(), ps, ch, 3)
+	var rig := SubRig.new(0, chart, JudgeConfig.new(), cfg, sim, ch, false)
+	rig.press(1, 0.5)  # fires hull_changed / score_changed through the rig's handlers
+	return [weakref(rig), weakref(sim), weakref(rig.hull), weakref(rig.judge)]
+
+
+## CR-02 regression: the rig must not form a reference cycle with its hull's signals.
+func test_dropped_rig_is_freed() -> void:
+	var refs := _build_and_drop()
+	for r in refs:
+		assert_object((r as WeakRef).get_ref()).is_null()

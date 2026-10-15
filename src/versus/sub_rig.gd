@@ -67,8 +67,10 @@ func _init(p_seat: int, p_chart: ChartData, p_jcfg: JudgeConfig, p_cfg: VersusCo
 	judge.stray.connect(_on_stray)
 	judge.ghost_hit.connect(_on_ghost_hit)
 	hull.connect_versus(judge, cfg)
-	hull.hull_changed.connect(func(_v: float, _d: float) -> void: _report())
-	hull.score_changed.connect(func(_v: int) -> void: _report())
+	# Method callables, not lambdas (CR-02): a lambda captures self strongly, so hull -> signal ->
+	# lambda -> rig formed a reference cycle that leaked the whole match after every game.
+	hull.hull_changed.connect(_on_hull_changed)
+	hull.score_changed.connect(_on_score_changed)
 	hull.failed.connect(_on_failed)
 	channel.received.connect(_on_event)
 
@@ -132,6 +134,14 @@ func _on_stray(_lane: int) -> void:
 
 func _on_ghost_hit(_lane: int, _payload_id: int) -> void:
 	ghost_hits += 1  # hull damage via connect_versus; never the meter (D-12)
+
+
+func _on_hull_changed(_v: float, _d: float) -> void:
+	_report()
+
+
+func _on_score_changed(_v: int) -> void:
+	_report()
 
 
 func _report() -> void:
