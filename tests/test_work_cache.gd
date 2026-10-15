@@ -160,3 +160,39 @@ func test_size_bytes_sums_nested_files() -> void:
 	SongFixture.write_bytes(dir.path_join("x/y/b.bin"), PackedByteArray([1, 2, 3, 4, 5]))
 	assert_int(AutochartWorkCache.size_bytes(dir)).is_equal(8)
 	assert_int(AutochartWorkCache.size_bytes(_wr().path_join("missing"))).is_equal(0)
+
+
+## Windows directory junction link -> target (no admin rights needed). False when unavailable.
+func _junction(link: String, target: String) -> bool:
+	if OS.get_name() != "Windows":
+		return false
+	DirAccess.make_dir_recursive_absolute(link.get_base_dir())
+	var out: Array = []
+	OS.execute("cmd.exe", ["/c", "mklink", "/J", link.replace("/", "\\"), target.replace("/", "\\")], out)
+	return DirAccess.dir_exists_absolute(link)
+
+
+## WR-04: a junction under the pack root is removed itself; the folder it points at (outside
+## the root) keeps every file. Clear Chart Cache, prune and the installer share this delete.
+func test_rm_tree_never_follows_a_junction() -> void:
+	var outside := ProjectSettings.globalize_path(D + "/outside_target")
+	SongFixture.write_text(outside.path_join("keep.txt"), "keep")
+	SongFixture.write_text(outside.path_join("sub/keep2.txt"), "keep")
+	var link := _wr().path_join("w_link")
+	if not _junction(link, outside):
+		return  # junctions need Windows
+	SongFixture.write_text(_wr().path_join("w_plain/a.txt"), "x")
+	var nested := _wr().path_join("w_plain/stems_link")
+	assert_bool(_junction(nested, outside)).is_true()
+	# size_bytes does not count the link target, so "freed" matches what was deleted.
+	assert_int(AutochartWorkCache.size_bytes(_wr().path_join("w_plain"))).is_equal(1)
+	assert_int(AutochartWorkCache.clear(_wr())).is_greater_equal(1)
+	assert_bool(_exists(link)).is_false()
+	assert_bool(_exists(_wr().path_join("w_plain"))).is_false()
+	assert_bool(FileAccess.file_exists(outside.path_join("keep.txt"))).is_true()
+	assert_bool(FileAccess.file_exists(outside.path_join("sub/keep2.txt"))).is_true()
+	# Direct call on a link at the top level.
+	assert_bool(_junction(link, outside)).is_true()
+	assert_bool(AutochartPaths.rm_tree(link)).is_true()
+	assert_bool(_exists(link)).is_false()
+	assert_bool(FileAccess.file_exists(outside.path_join("keep.txt"))).is_true()

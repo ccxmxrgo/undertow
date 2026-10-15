@@ -21,7 +21,7 @@ static var _seq := 0
 ## Creates work_root/jobs/<unique id>/ and returns its absolute path ("" on failure). The id is
 ## j_<unix ms>_<n>, so the age of a job dir is readable from its name.
 static func new_job_dir(work_root: String) -> String:
-	var jobs := _abs(work_root).path_join(JOBS)
+	var jobs := AutochartPaths.norm(work_root).path_join(JOBS)
 	var ms := int(Time.get_unix_time_from_system() * 1000.0)
 	for _i in 1000:
 		_seq += 1
@@ -36,19 +36,19 @@ static func new_job_dir(work_root: String) -> String:
 
 ## True when the Python job finished analysing this work dir (its stems can be reused).
 static func is_analyzed(work_dir: String) -> bool:
-	return work_dir != "" and FileAccess.file_exists(_abs(work_dir).path_join(MARKER))
+	return work_dir != "" and FileAccess.file_exists(AutochartPaths.norm(work_dir).path_join(MARKER))
 
 
 ## Keeps the `keep` most recently used finished w_* dirs (the protected one always stays and
 ## counts toward `keep`), deletes unfinished unprotected w_* dirs and job dirs older than
 ## JOB_MAX_AGE_S. Returns the bytes freed, or -1 when work_root is outside the pack root.
 static func prune(work_root: String, keep: int = KEEP, protect: String = "") -> int:
-	var wr := _abs(work_root)
+	var wr := AutochartPaths.norm(work_root)
 	if not AutochartPaths.is_under_root(wr):
 		return -1
 	if not DirAccess.dir_exists_absolute(wr):
 		return 0
-	var prot := _abs(protect) if protect != "" else ""
+	var prot := AutochartPaths.norm(protect) if protect != "" else ""
 	var freed := 0
 	var finished: Array = []  # [t, path]
 	for n in DirAccess.get_directories_at(wr):
@@ -83,20 +83,20 @@ static func prune(work_root: String, keep: int = KEEP, protect: String = "") -> 
 static func remove_unfinished(work_dir: String) -> bool:
 	if work_dir.strip_edges() == "":
 		return false
-	var p := _abs(work_dir)
+	var p := AutochartPaths.norm(work_dir)
 	if not AutochartPaths.is_under_root(p):
 		return false
 	if is_analyzed(p):
 		return false
 	if not DirAccess.dir_exists_absolute(p):
 		return true
-	return _rm_tree(p)
+	return AutochartPaths.rm_tree(p)
 
 
 ## Clear Chart Cache: deletes every w_* dir and every job dir. Returns the bytes freed, or -1
 ## when work_root is not under AutochartPaths.root() (nothing is touched).
 static func clear(work_root: String) -> int:
-	var wr := _abs(work_root)
+	var wr := AutochartPaths.norm(work_root)
 	if not AutochartPaths.is_under_root(wr):
 		return -1
 	if not DirAccess.dir_exists_absolute(wr):
@@ -116,10 +116,11 @@ static func clear(work_root: String) -> int:
 
 ## Sum of every file size under path (0 when missing). A file path gives its own size.
 static func size_bytes(path: String) -> int:
-	var p := _abs(path)
+	var p := AutochartPaths.norm(path)
 	if FileAccess.file_exists(p):
 		return _file_size(p)
-	if not DirAccess.dir_exists_absolute(p):
+	# rm_tree removes a junction / symlink, never its target, so it frees nothing (WR-04).
+	if not DirAccess.dir_exists_absolute(p) or AutochartPaths.is_link(p):
 		return 0
 	var total := 0
 	for f in DirAccess.get_files_at(p):
@@ -130,11 +131,6 @@ static func size_bytes(path: String) -> int:
 
 
 # ---- helpers ---------------------------------------------------------------------------------
-
-
-static func _abs(p: String) -> String:
-	var g := ProjectSettings.globalize_path(p) if p.begins_with("user://") or p.begins_with("res://") else p
-	return g.replace("\\", "/").simplify_path()
 
 
 static func _file_size(p: String) -> int:
@@ -176,21 +172,4 @@ static func _job_time(dir: String) -> float:
 ## Deletes path (file or tree) and returns the bytes it held when it is gone, else 0.
 static func _remove(path: String) -> int:
 	var n := size_bytes(path)
-	return n if _rm_tree(path) else 0
-
-
-## Recursive delete that refuses anything outside AutochartPaths.root(). True when gone.
-static func _rm_tree(path: String) -> bool:
-	var p := _abs(path)
-	if not AutochartPaths.is_under_root(p):
-		push_error("AutochartWorkCache: refusing to delete outside the pack root: " + p)
-		return false
-	if FileAccess.file_exists(p):
-		return DirAccess.remove_absolute(p) == OK
-	if not DirAccess.dir_exists_absolute(p):
-		return true
-	for f in DirAccess.get_files_at(p):
-		DirAccess.remove_absolute(p.path_join(f))
-	for d in DirAccess.get_directories_at(p):
-		_rm_tree(p.path_join(d))
-	return DirAccess.remove_absolute(p) == OK
+	return n if AutochartPaths.rm_tree(path) else 0

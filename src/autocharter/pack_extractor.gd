@@ -12,11 +12,6 @@ const MAX_TOTAL_BYTES := 1717986918
 const PROGRESS_EVERY := 200
 
 
-static func _abs(p: String) -> String:
-	var g := ProjectSettings.globalize_path(p) if p.begins_with("user://") or p.begins_with("res://") else p
-	return g.replace("\\", "/").simplify_path()
-
-
 ## limits (tests): max_entries, max_total, max_entry, progress_every. progress(written, total).
 ## should_cancel() -> bool is checked before every file. Returns {ok, error, written}.
 static func extract_all(zip_path: String, dest_dir: String, progress: Callable = Callable(),
@@ -35,7 +30,7 @@ static func extract_all(zip_path: String, dest_dir: String, progress: Callable =
 	if files.size() > max_entries:
 		zr.close()
 		return _fail("too_many")
-	var dest := _abs(dest_dir)
+	var dest := AutochartPaths.norm(dest_dir)
 	var prefix := dest + "/"
 	# Pass 1: every name and every claimed size, before touching any data.
 	var plan: Array = []  # [entry name, absolute target, is_dir]

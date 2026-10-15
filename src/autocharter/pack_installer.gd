@@ -177,9 +177,9 @@ func remove_pack(job_running: bool) -> bool:
 	if job_running or _busy():
 		return false
 	var v := _version()
-	_rm_tree(AutochartPaths.version_dir(v))
-	_rm_tree(AutochartPaths.staging_dir(v))
-	_rm_tree(AutochartPaths.dl_dir())
+	AutochartPaths.rm_tree(AutochartPaths.version_dir(v))
+	AutochartPaths.rm_tree(AutochartPaths.staging_dir(v))
+	AutochartPaths.rm_tree(AutochartPaths.dl_dir())
 	if _state == "done":
 		_set_state("idle")
 	return not DirAccess.dir_exists_absolute(AutochartPaths.version_dir(v))
@@ -213,7 +213,7 @@ func _next_part() -> void:
 		return
 	var dest := AutochartPaths.dl_dir().path_join(pname)
 	if source_dir != "":
-		var src := _abs(source_dir).path_join(pname)
+		var src := AutochartPaths.norm(source_dir).path_join(pname)
 		if not FileAccess.file_exists(src):
 			_fail("not_available", "Part %s was not found in the chosen folder." % pname)
 			return
@@ -285,7 +285,7 @@ func _on_verified(msg: Dictionary) -> void:
 		_:
 			# Every verified path is under dl/ (folder installs verify their dl/ copy); the
 			# player's own folder is never touched.
-			var in_dl := _abs(path).begins_with(AutochartPaths.dl_dir() + "/")
+			var in_dl := AutochartPaths.norm(path).begins_with(AutochartPaths.dl_dir() + "/")
 			if in_dl:
 				_delete_file(path)  # never extract a part that fails its pin
 			if _reused and in_dl:
@@ -335,7 +335,7 @@ func _on_finalized(msg: Dictionary) -> void:
 		push_warning("PackInstaller: finalize failed: " + r)
 		_fail("extract", EXTRACT_TEXT)
 		return
-	_rm_tree(AutochartPaths.dl_dir())
+	AutochartPaths.rm_tree(AutochartPaths.dl_dir())
 	set_process(false)
 	_set_state("done")
 	installed.emit()
@@ -400,7 +400,7 @@ static func hash_stream(f: FileAccess, size: int, sha: String, out: FileAccess =
 
 func _extract_task(gen: int, zips: Array, staging: String) -> void:
 	if DirAccess.dir_exists_absolute(staging):
-		_rm_tree(staging)
+		AutochartPaths.rm_tree(staging)
 	var total := 0
 	for z in zips:
 		var sizes: Variant = ZipExtractor._central_sizes(z)
@@ -436,7 +436,7 @@ func _finalize_task(gen: int, full: bool, roots: Array, pins: Dictionary) -> voi
 		DirAccess.remove_absolute(marker)
 	var result := "ok"
 	if full:
-		if DirAccess.dir_exists_absolute(vdir) and not _rm_tree(vdir):
+		if DirAccess.dir_exists_absolute(vdir) and not AutochartPaths.rm_tree(vdir):
 			result = "remove_failed"
 		elif _is_cancelled():
 			result = "cancelled"
@@ -449,7 +449,7 @@ func _finalize_task(gen: int, full: bool, roots: Array, pins: Dictionary) -> voi
 			if not (DirAccess.dir_exists_absolute(src) or FileAccess.file_exists(src)):
 				continue
 			if DirAccess.dir_exists_absolute(dst):
-				_rm_tree(dst)
+				AutochartPaths.rm_tree(dst)
 			elif FileAccess.file_exists(dst):
 				DirAccess.remove_absolute(dst)
 			if _is_cancelled():
@@ -459,7 +459,7 @@ func _finalize_task(gen: int, full: bool, roots: Array, pins: Dictionary) -> voi
 				result = "rename_failed"
 				break
 		if DirAccess.dir_exists_absolute(staging):
-			_rm_tree(staging)
+			AutochartPaths.rm_tree(staging)
 	if result == "ok" and _is_cancelled():
 		result = "cancelled"
 	if result == "ok":
@@ -558,9 +558,9 @@ func _fail(code: String, message: String) -> void:
 ## Staging always goes; dl/ goes on cancel (failed runs keep complete, hash-checked-later
 ## leftovers so a retry does not redownload everything). Nothing in source_dir is touched.
 func _cleanup_run(remove_dl: bool) -> void:
-	_rm_tree(AutochartPaths.staging_dir(_version()))
+	AutochartPaths.rm_tree(AutochartPaths.staging_dir(_version()))
 	if remove_dl:
-		_rm_tree(AutochartPaths.dl_dir())
+		AutochartPaths.rm_tree(AutochartPaths.dl_dir())
 	else:
 		var dl := AutochartPaths.dl_dir()
 		if DirAccess.dir_exists_absolute(dl):
@@ -576,11 +576,6 @@ func _free_space(path: String) -> int:
 	return d.get_space_left() if d != null else 0
 
 
-static func _abs(p: String) -> String:
-	var g := ProjectSettings.globalize_path(p) if p.begins_with("user://") or p.begins_with("res://") else p
-	return g.replace("\\", "/").simplify_path()
-
-
 static func _safe_part_name(n: String) -> bool:
 	return n != "" and ZipExtractor.safe_rel(n) == n and not n.contains("/")
 
@@ -590,22 +585,6 @@ func _delete_file(path: String) -> void:
 		DirAccess.remove_absolute(path)
 
 
-## Recursive delete that refuses anything outside AutochartPaths.root() (defence in depth).
-## Safe on worker threads. Returns true when the path no longer exists.
-static func _rm_tree(path: String) -> bool:
-	var p := _abs(path)
-	if not AutochartPaths.is_under_root(p):
-		push_error("PackInstaller: refusing to delete outside the pack root: " + p)
-		return false
-	if FileAccess.file_exists(p):
-		return DirAccess.remove_absolute(p) == OK
-	if not DirAccess.dir_exists_absolute(p):
-		return true
-	for f in DirAccess.get_files_at(p):
-		DirAccess.remove_absolute(p.path_join(f))
-	for d in DirAccess.get_directories_at(p):
-		_rm_tree(p.path_join(d))
-	return DirAccess.remove_absolute(p) == OK
 
 
 # ---- default fetcher: HTTPRequest, 1 MiB chunks, own stall timer, one retry ----
