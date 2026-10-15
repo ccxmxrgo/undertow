@@ -1,9 +1,9 @@
-UNDERTOW - early playtest build (v0.5.4, 2026-10-15)
+UNDERTOW - early playtest build (v0.6.0, 2026-10-15)
 ====================================================
 
 You're a submarine sinking into a deep-sea trench. This build is still the
-single-player core: it's for checking that timing, the look and now real
-songs feel good. Torpedoes and online versus come later.
+core game plus offline versus against bots: it's for checking that timing,
+the look, real songs and torpedoes feel good. Online versus comes later.
 
 v0.5 gives every screen a new look: a deep-sea submarine cockpit looking
 through a neon sonar into the abyss. v0.5.1 makes the hit windows wider
@@ -14,6 +14,8 @@ v0.5.2 adds Guitar Hero / Clone Hero songs that come with a notes.mid chart
 v0.5.3 makes the note highway easier to read (see WHAT'S NEW IN v0.5.3).
 v0.5.4 adds Chart a Song: turn an audio file you own into a playable chart
 (see WHAT'S NEW IN v0.5.4).
+v0.6.0 adds Versus Bots: race up to 3 bot subs down the trench, with killstreak
+torpedoes (see WHAT'S NEW IN v0.6.0).
 This build is for friends only: please don't share it further.
 
 Want to help test? Open TESTER-CHECKLIST.txt (next to this file). It is a
@@ -41,6 +43,9 @@ CONTROLS
   Fullscreen ....... F11            (switches fullscreen / window)
   Debug overlay .... F3             (shows timing numbers)
   Autoplay ......... F4             (watch the bot play the song perfectly)
+  Fire reward ...... Space          (gamepad: A; versus and Solo Dive)
+  Switch target .... H              (gamepad: Y; versus)
+  Fire and Switch target can be rebound in Settings > Controls.
 
 Menus with a gamepad (every screen: menu, song select, results, pause,
 Settings, calibration, dialogs):
@@ -66,7 +71,8 @@ Played v0.1? Your keys move to 1 2 3 4 automatically, unless you had
 changed them yourself. Settings > Reset Controls always gives you 1 2 3 4.
 
 Menu: "Start Dive" opens SELECT SONG, where you pick a song and a
-difficulty. "Practice Dive (No-Fail)" does the same, but you can't sink.
+difficulty. "Solo Dive (No-Fail)" does the same, but you can't sink, and can
+add training torpedoes. "Versus Bots" sets up a match against bot subs.
 Settings lets you rebind keys, change scroll speed and volume, turn on
 No-Fail and add Clone Hero song folders (see SONGS below).
 
@@ -81,6 +87,32 @@ SELECT SONG controls:
   Open Songs Folder  F6
   Back ............. Esc
 Highlight a song for half a second to hear a preview.
+
+
+WHAT'S NEW IN v0.6.0
+--------------------
+- Main menu > Versus Bots: you against 1 to 3 bot subs (Rookie, Regular or
+  Veteran) on the same song. Last hull standing wins; if several survive,
+  the deepest dive wins. Versus matches do not set records.
+- Unbroken Perfects fill your torpedo tube. A full tube loads a random
+  reward: 6 disruptors (Crossed Wires, Ghost Notes, Ink Cloud, Pressure
+  Crack, Sonar Jam, Depth Charge) and 3 buffs (Decoy Flare, Ballast Patch,
+  Overclock). Space fires it; H switches target (AUTO, each rival,
+  ATTACKERS).
+- A torpedo aimed at you is announced a beat before it lands (red INCOMING
+  box, red screen edges, a ping). Hit the red-ringed notes Perfect to send
+  it back.
+- Two torpedoes fired at each other on the same beat collide. The leader
+  carries a bounty. Guitar solos become Solo Duels. A killfeed (top right)
+  shows what happened, and the results show medals.
+- If your hull breaks in versus you keep playing as a wreck and can charge
+  small debris attacks.
+- Practice Dive is now Solo Dive. In Song Select press F3 (or the gamepad
+  triggers) to pick training torpedoes that a drone fires at you.
+- Hull repair is slower: each Perfect now repairs a quarter of what it used
+  to, so a Miss takes about 32 Perfects to undo.
+- Strong players earn about 3 rewards a song on Expert; if you rarely earn
+  one, tell us (it is tunable).
 
 
 WHAT'S NEW IN v0.5.4
@@ -328,7 +360,7 @@ WHAT'S NEW IN v0.2
 - A big streak counter, with popups at 10, 25, 50 and 100 in a row.
 - Your best score is saved and shown on the results screen. Practice,
   Autoplay and No-Fail dives never set a record.
-- "Practice Dive (No-Fail)" in the main menu, right under Start Dive.
+- "Solo Dive (No-Fail)" in the main menu (called Practice Dive before v0.6.0).
 
 
 FEEDBACK WE NEED (reply in Discord or on WhatsApp)

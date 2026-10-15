@@ -1,4 +1,4 @@
-UNDERTOW v0.5.4 - tester checklist
+UNDERTOW v0.6.0 - tester checklist
 ==================================
 
 Thanks for testing! Tick the boxes as you go ([x]) and write a few words
@@ -98,6 +98,27 @@ Write down anything odd as: song, difficulty, time (e.g. "HRT, Easy, 1:20").
     Did a message about the "Visual C++ Redistributable" show up?  yes / no
 
 
+4d. VERSUS (new in v0.6.0)
+--------------------------
+[ ] Main menu > Versus Bots opens the match setup, and Start Match starts
+    a dive with bot panels on the left.
+[ ] The torpedo tube fills and a reward appears (name under the socket).
+[ ] Space fires it and the killfeed (top right) shows it.
+[ ] An incoming torpedo is noticed in time (box, red edges, ping).
+    Which cue did you notice first? ______
+[ ] Each disruptor is readable and survivable (note any that feel unfair):
+    ______________________________________________________________
+[ ] You reflected a torpedo by hitting the ringed notes.
+[ ] A Solo Duel banner appeared on a guitar solo.
+[ ] The results show places and medals.
+[ ] Veteran / Regular / Rookie feel different.
+[ ] Solo Dive training torpedoes work (F3 in Song Select).
+[ ] Hull repair feels slower but fair.
+[ ] The frame rate stayed smooth with 3 bots.
+[ ] Pressing Space while holding 3 lane keys still fires and still hits
+    the notes (keyboard rollover). If not, your keyboard model: ______
+
+
 5. RESULTS SCREEN
 -----------------
 [ ] The grade (S A B C D), accuracy %, depth and max combo look right.
@@ -137,7 +158,7 @@ Open Settings (from the pause menu or the main menu):
 7. CALIBRATION AND PRACTICE
 ---------------------------
 [ ] Settings > Calibration > Re-run Calibration works and saves a value.
-[ ] Main menu > Practice Dive (No-Fail): play badly on purpose. You
+[ ] Main menu > Solo Dive (No-Fail): play badly on purpose. You
     shouldn't sink, and the results say the dive was not recorded.
 [ ] Settings > Gameplay > No-Fail does the same for normal dives.
 
