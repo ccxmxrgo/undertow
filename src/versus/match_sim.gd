@@ -38,6 +38,17 @@ const EPS_T := 1e-9
 const _EX_PAYLOAD := 0
 const _EX_DECOY := 1
 const _EX_OVERCLOCK := 2
+## Solo Duel milestones (announce, start, resolution) come after the per-seat expiries.
+const _EX_DUEL := 3
+
+## T-03-15: at most this many Solo Duels per chart (imported solo markers are untrusted).
+const MAX_DUELS := 64
+
+## Solo Duel states.
+const _DUEL_WAIT := 0
+const _DUEL_ANNOUNCED := 1
+const _DUEL_RUNNING := 2
+const _DUEL_DONE := 3
 
 var chart: ChartData
 var cfg: VersusConfig
@@ -75,6 +86,10 @@ var _finished := false
 var _heads := {}
 ## Vector2i(target seat, note index) -> torpedo id, for O(1) warhead lookup.
 var _head_notes := {}
+## Eligible Solo Duels sorted by start: {solo (chart.solos index), start, end, lo, hi, count,
+## announce_t, resolve_t, state, stats: seat -> {judged, perfects, streak, best}, parts: seat ->
+## true (set at DUEL_START)}.
+var _duels: Array[Dictionary] = []
 
 
 func _init(p_chart: ChartData, p_cfg: VersusConfig, p_jcfg: JudgeConfig,
@@ -98,6 +113,7 @@ func _init(p_chart: ChartData, p_cfg: VersusConfig, p_jcfg: JudgeConfig,
 		p.meter.queue_changed.connect(_on_meter_queue.bind(p.seat))
 		p.meter.reward_earned.connect(_on_meter_reward.bind(p.seat))
 	_seats.sort()
+	_build_duels()
 
 
 # --- Statics -------------------------------------------------------------------------------
@@ -360,8 +376,34 @@ func on_failed(seat: int, t: float) -> void:
 	for id in ids:
 		if _heads[id]["to"] == seat:
 			_kill_heads(id, t)
+	# Spec req 11: players eliminated mid-solo leave the duel.
+	for d in _duels:
+		d["parts"].erase(seat)
 	_check_targets()
 	_update_bounty(t)
+
+
+## Live Perfect % (0..100) of `seat` in the running Solo Duel; -1.0 when no duel runs, the seat
+## does not take part, or it has judged no solo note yet.
+func duel_live(seat: int) -> float:
+	for d in _duels:
+		if d["state"] != _DUEL_RUNNING:
+			continue
+		if not d["parts"].has(seat):
+			return -1.0
+		var st: Dictionary = d["stats"].get(seat, {})
+		if st.is_empty() or int(st["judged"]) == 0:
+			return -1.0
+		return float(st["perfects"]) * 100.0 / float(st["judged"])
+	return -1.0
+
+
+## chart.solos index of the running Solo Duel, or -1.
+func duel_active() -> int:
+	for d in _duels:
+		if d["state"] == _DUEL_RUNNING:
+			return d["solo"]
+	return -1
 
 
 ## Process everything due up to song time t.
@@ -412,6 +454,11 @@ func _next_expiry() -> Dictionary:
 			if best.is_empty() or it[0] < best["time"] \
 					or (it[0] == best["time"] and it[1] < best["kind"]):
 				best = {"time": it[0], "kind": it[1], "seat": s}
+	for i in range(_duels.size()):
+		var d: Dictionary = _duels[i]
+		var dt := _duel_next_time(d)
+		if is_finite(dt) and (best.is_empty() or dt < best["time"]):
+			best = {"time": dt, "kind": _EX_DUEL, "seat": i}
 	return best
 
 
@@ -419,7 +466,7 @@ func _process_expiry(ex: Dictionary) -> void:
 	var t: float = ex["time"]
 	_now = t
 	var seat: int = ex["seat"]
-	var p: PlayerState = _by_seat[seat]
+	var p: PlayerState = _by_seat.get(seat) if int(ex["kind"]) != _EX_DUEL else null
 	match int(ex["kind"]):
 		_EX_PAYLOAD:
 			var rec := p.active
@@ -439,6 +486,8 @@ func _process_expiry(ex: Dictionary) -> void:
 			p.overclock_until = -INF
 			_emit(GameEvent.BUFF_ENDED, t,
 				{"seat": seat, "reward": Reward.Id.OVERCLOCK, "reason": "expired"})
+		_EX_DUEL:
+			_step_duel(_duels[seat], t)
 
 
 func _process_beat(b: int, tb: float) -> void:
@@ -934,6 +983,7 @@ func _drop_bounty(id: int) -> void:
 ## Called for every base judgment on every seat (wrecks and drones included), after the meter.
 func _on_judged_hook(seat: int, note_index: int, judgment: int, t: float) -> void:
 	_warhead_judged(seat, note_index, judgment, t)
+	_duel_judged(seat, note_index, judgment)
 
 
 ## A judged warhead note: raw PERFECT advances k (Overclock never counts); anything else ends
@@ -1012,6 +1062,165 @@ func _forget_heads(id: int) -> void:
 		if _head_notes.get(key, -1) == id:
 			_head_notes.erase(key)
 	_heads.erase(id)
+
+
+# --- Solo Duel (spec req 11, Pitfall 9) --------------------------------------------------------
+
+## Eligible duels from the untrusted chart.solos (T-03-15): finite start < end, start not after
+## the last note, base notes recounted with start <= time <= end, at least solo_duel_min_notes,
+## no overlap with an earlier kept solo, at most MAX_DUELS.
+func _build_duels() -> void:
+	_duels = []
+	var notes := chart.notes
+	if notes.is_empty():
+		return
+	var last_t := float(notes[notes.size() - 1]["time"])
+	var cands: Array[Dictionary] = []
+	for i in range(chart.solos.size()):
+		var so = chart.solos[i]
+		if not (so is Dictionary):
+			continue
+		var st := float(so.get("start", NAN))
+		var en := float(so.get("end", NAN))
+		if not is_finite(st) or not is_finite(en) or en <= st or st > last_t + EPS_T:
+			continue
+		var lo := _first_note_at_or_after(st - EPS_T)
+		var hi := _first_note_at_or_after(en + EPS_T) - 1
+		var count := hi - lo + 1
+		if count < maxi(1, cfg.solo_duel_min_notes):
+			continue
+		cands.append({"solo": i, "start": st, "end": en, "lo": lo, "hi": hi, "count": count})
+	cands.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if a["start"] != b["start"]:
+			return a["start"] < b["start"]
+		return a["solo"] < b["solo"])
+	var tm: Array = chart.tempo_map
+	var prev_end := -INF
+	for c in cands:
+		if _duels.size() >= MAX_DUELS:
+			break
+		if c["start"] <= prev_end + EPS_T:
+			continue
+		prev_end = c["end"]
+		var st: float = c["start"]
+		var ab := BeatClock.beat_at(st, tm) - bar_beats_at(st, chart)
+		c["announce_t"] = clampf(BeatClock.time_at_beat(ab, tm), 0.0, st)
+		c["resolve_t"] = float(c["end"]) + jcfg.good_window + 0.001
+		c["state"] = _DUEL_WAIT
+		c["stats"] = {}
+		c["parts"] = {}
+		_duels.append(c)
+
+
+func _first_note_at_or_after(t: float) -> int:
+	var notes := chart.notes
+	var lo := 0
+	var hi := notes.size()
+	while lo < hi:
+		var mid := (lo + hi) / 2
+		if float(notes[mid]["time"]) < t:
+			lo = mid + 1
+		else:
+			hi = mid
+	return lo
+
+
+func _duel_next_time(d: Dictionary) -> float:
+	match int(d["state"]):
+		_DUEL_WAIT:
+			return d["announce_t"]
+		_DUEL_ANNOUNCED:
+			return d["start"]
+		_DUEL_RUNNING:
+			return d["resolve_t"]
+	return INF
+
+
+func _step_duel(d: Dictionary, t: float) -> void:
+	match int(d["state"]):
+		_DUEL_WAIT:
+			d["state"] = _DUEL_ANNOUNCED
+			_emit(GameEvent.DUEL_ANNOUNCE, t, {"solo": d["solo"], "start": d["start"],
+				"end": d["end"], "note_count": d["count"]})
+		_DUEL_ANNOUNCED:
+			d["state"] = _DUEL_RUNNING
+			for s in _seats:
+				var p: PlayerState = _by_seat[s]
+				if p.alive and not p.is_drone:
+					d["parts"][s] = true
+			_emit(GameEvent.DUEL_START, t, {"solo": d["solo"]})
+		_DUEL_RUNNING:
+			d["state"] = _DUEL_DONE
+			_resolve_duel(d, t)
+
+
+## Base solo notes only (overlay notes never reach this hook). Judgments are tracked from the
+## announcement, so a solo note judged early (before DUEL_START) still counts.
+func _duel_judged(seat: int, note_index: int, judgment: int) -> void:
+	for d in _duels:
+		var state: int = d["state"]
+		if state != _DUEL_ANNOUNCED and state != _DUEL_RUNNING:
+			continue
+		if note_index < int(d["lo"]) or note_index > int(d["hi"]):
+			continue
+		if state == _DUEL_RUNNING and not d["parts"].has(seat):
+			continue
+		var stats: Dictionary = d["stats"]
+		if not stats.has(seat):
+			stats[seat] = {"judged": 0, "perfects": 0, "streak": 0, "best": 0}
+		var st: Dictionary = stats[seat]
+		st["judged"] = int(st["judged"]) + 1
+		if judgment == InputJudge.Judgment.PERFECT:
+			st["perfects"] = int(st["perfects"]) + 1
+			st["streak"] = int(st["streak"]) + 1
+			st["best"] = maxi(int(st["best"]), int(st["streak"]))
+		else:
+			st["streak"] = 0
+
+
+## Final % = Perfects / solo note count. Best % at or above solo_duel_min_accuracy wins; ties
+## by longest in-solo Perfect streak; still tied -> winner -1, tied true. pct is the winner's %
+## (-1.0 without a winner); best_pct is the best % of any participant.
+func _resolve_duel(d: Dictionary, t: float) -> void:
+	var count: int = d["count"]
+	var best_pct := 0.0
+	var top: Array[int] = []
+	var top_p := -1
+	var top_s := -1
+	var min_p := cfg.solo_duel_min_accuracy * 100.0 - 1e-9
+	var parts: Array = d["parts"].keys()
+	parts.sort()
+	for s in parts:
+		var p: PlayerState = _by_seat[s]
+		if not p.alive:
+			continue
+		var st: Dictionary = d["stats"].get(s, {"perfects": 0, "best": 0})
+		var perf: int = st["perfects"]
+		var pct := float(perf) * 100.0 / float(count)
+		best_pct = maxf(best_pct, pct)
+		if pct < min_p:
+			continue
+		var streak: int = st["best"]
+		if perf > top_p or (perf == top_p and streak > top_s):
+			top = [s]
+			top_p = perf
+			top_s = streak
+		elif perf == top_p and streak == top_s:
+			top.append(s)
+	var winner: int = top[0] if top.size() == 1 else -1
+	var tied := top.size() > 1
+	var wpct: float = float(top_p) * 100.0 / float(count) if winner != -1 else -1.0
+	_now = t
+	_emit(GameEvent.DUEL_RESULT, t, {"solo": d["solo"], "winner": winner, "pct": wpct,
+		"best_pct": best_pct, "tied": tied})
+	if winner == -1:
+		return
+	var w: PlayerState = _by_seat[winner]
+	w.duels_won += 1
+	# Prize: next bag item into the slot, else the one-item queue; dropped if both are full.
+	# queue_prize emits REWARD_EARNED "duel" / REWARD_QUEUED through the meter signals.
+	if w.meter.held == -1 or w.meter.queued == -1:
+		w.meter.queue_prize(w.bag.draw())
 
 
 # --- Events ----------------------------------------------------------------------------------
