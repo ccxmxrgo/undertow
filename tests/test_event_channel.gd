@@ -28,7 +28,7 @@ func test_every_type_is_unique() -> void:
 		seen[ty] = true
 	assert_bool(seen.has(GameEvent.TORPEDO_LAUNCH)).is_true()
 	assert_bool(seen.has(GameEvent.MATCH_END)).is_true()
-	assert_int(GameEvent.ALL_TYPES.size()).is_equal(26)
+	assert_int(GameEvent.ALL_TYPES.size()).is_equal(25)
 
 
 func test_base_channel_emits_synchronously() -> void:
