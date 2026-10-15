@@ -255,8 +255,8 @@ func test_launch_opens_song_select_and_does_not_preset_chart() -> void:
 
 func test_item_order_and_focus_ring_include_open_songs_folder() -> void:
 	var m := _main_menu()
-	var order: Array = [m.start_button, m.practice_button, m.calibrate_button, m.settings_button,
-		m.autoplay_button, m.open_folder_button, m.quit_button]
+	var order: Array = [m.start_button, m.practice_button, m.chart_button, m.calibrate_button,
+		m.settings_button, m.autoplay_button, m.open_folder_button, m.quit_button]
 	assert_str(m.open_folder_button.text).is_equal("Open Songs Folder")
 	for i in order.size():
 		var b: Button = order[i]
@@ -322,13 +322,14 @@ func test_records_load_error_shown_once() -> void:
 
 # ---- 02.2 plan 06: living title screen ----------------------------------------------------
 
-const MENU_TEXTS: Array[String] = ["Start Dive", "Practice Dive (No-Fail)", "Calibrate Sonar", "Settings",
-	"Autoplay Dive (test)", "Open Songs Folder", "Quit Game"]
-const MENU_ICONS: Array[String] = ["dive", "lifebuoy", "sonar", "sliders", "auto", "folder", "power"]
-const MENU_TOPS: Array[float] = [416.0, 488.0, 560.0, 632.0, 704.0, 776.0, 848.0]
+const MENU_TEXTS: Array[String] = ["Start Dive", "Practice Dive (No-Fail)", "Chart a Song", "Calibrate Sonar",
+	"Settings", "Autoplay Dive (test)", "Open Songs Folder", "Quit Game"]
+const MENU_ICONS: Array[String] = ["dive", "lifebuoy", "chart", "sonar", "sliders", "auto", "folder", "power"]
+const MENU_TOPS: Array[float] = [416.0, 480.0, 544.0, 608.0, 672.0, 736.0, 800.0, 864.0]
 const MENU_DESCRIPTIONS: Array[String] = [
 	"Pick a song and dive. Your hull is on the line.",
 	"Dive without imploding. Records are not saved.",
+	"Turn an audio file you own into a playable chart.",
 	"Line up audio and visuals for tight timing.",
 	"Controls, scroll speed, effects and volume.",
 	"Watch the sub play a song by itself.",
@@ -338,7 +339,7 @@ const MENU_DESCRIPTIONS: Array[String] = [
 
 
 func _menu_buttons(m: MainMenu) -> Array:
-	return [m.start_button, m.practice_button, m.calibrate_button, m.settings_button,
+	return [m.start_button, m.practice_button, m.chart_button, m.calibrate_button, m.settings_button,
 		m.autoplay_button, m.open_folder_button, m.quit_button]
 
 
@@ -351,11 +352,25 @@ func test_menu_buttons_have_fixed_rects_icons_and_order() -> void:
 		assert_str(b.text).is_equal(MENU_TEXTS[i])
 		assert_vector(b.position).override_failure_message("%s at %s" % [b.text, b.position]) \
 			.is_equal(Vector2(128.0, MENU_TOPS[i]))
-		assert_vector(b.size).override_failure_message("%s size %s" % [b.text, b.size]).is_equal(Vector2(512.0, 64.0))
+		assert_vector(b.size).override_failure_message("%s size %s" % [b.text, b.size]).is_equal(Vector2(512.0, 56.0))
 		assert_str(String(b.get_meta(&"ui_icon", ""))).is_equal(MENU_ICONS[i])
 		assert_float(b.modulate.a).is_equal(1.0)
 	assert_str(String(m.start_button.get_meta(&"ui_variant", ""))).is_equal("primary")
 	assert_str(String(m.quit_button.get_meta(&"ui_variant", ""))).is_equal("default")
+	assert_str(String(m.chart_button.get_meta(&"ui_variant", ""))).is_equal("default")
+	assert_int(m.menu_buttons().size()).is_equal(8)
+	# The last item ends above the focus description line (baseline 960).
+	var last: Button = order[order.size() - 1]
+	assert_float(last.position.y + last.size.y).is_less(
+		MainMenu.DESC_BASELINE - Palette.font().get_ascent(Palette.SIZE_BODY))
+
+
+func test_chart_a_song_opens_the_chart_screen() -> void:
+	var m := _main_menu()
+	var calls: Array = []
+	m.navigate = func(p: String) -> void: calls.append(p)
+	m.chart_button.pressed.emit()
+	assert_array(calls).is_equal(["res://scenes/chart_song.tscn"])
 
 
 func test_focus_sets_description_for_every_item() -> void:

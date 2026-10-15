@@ -497,7 +497,7 @@ func test_register_fx_follows_tree_and_does_not_leak() -> void:
 
 func test_ui_icons_names_and_unknown_name_is_noop() -> void:
 	assert_array(UiIcons.names()).contains_exactly([
-		"dive", "lifebuoy", "sonar", "sliders", "auto", "folder", "power",
+		"dive", "lifebuoy", "sonar", "sliders", "auto", "folder", "power", "chart",
 		"check", "chevron_left", "chevron_right"])
 	var c: Control = auto_free(Control.new())
 	add_child(c)
@@ -511,10 +511,10 @@ func test_ui_icons_names_and_unknown_name_is_noop() -> void:
 		drawn.append(UiIcons.draw(c, "no_such_icon", Rect2(0, 0, 24, 24), Palette.SONAR)))
 	c.queue_redraw()
 	await await_idle_frame()
-	assert_int(drawn.size()).is_equal(11)
-	for i in 10:
+	assert_int(drawn.size()).is_equal(12)
+	for i in 11:
 		assert_bool(drawn[i]).is_true()
-	assert_bool(drawn[10]).is_false()
+	assert_bool(drawn[11]).is_false()
 
 
 # ---- Plan 05 task 2: FocusMarker.
