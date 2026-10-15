@@ -90,6 +90,8 @@ var _head_notes := {}
 ## announce_t, resolve_t, state, stats: seat -> {judged, perfects, streak, best}, parts: seat ->
 ## true (set at DUEL_START)}.
 var _duels: Array[Dictionary] = []
+## seat -> {progress, held, used}: wreck debris meters (D-24). Created at elimination.
+var _debris := {}
 
 
 func _init(p_chart: ChartData, p_cfg: VersusConfig, p_jcfg: JudgeConfig,
@@ -209,6 +211,8 @@ func on_judged(seat: int, note_index: int, judgment: int, t: float) -> void:
 		return
 	if p.alive and not p.is_drone:
 		p.meter.on_judgment(judgment, t < p.overclock_until)
+	elif not p.is_drone:
+		_debris_judged(seat, judgment)
 	_on_judged_hook(seat, note_index, judgment, t)
 
 
@@ -257,6 +261,8 @@ func request_fire(seat: int, t: float) -> int:
 	var p: PlayerState = _by_seat.get(seat)
 	if p == null:
 		return FIRE_NOTHING
+	if not p.alive and not p.is_drone:
+		return _fire_debris(seat, t)
 	if not p.alive or p.is_drone or p.meter.held == -1:
 		_refuse(seat, "nothing")
 		return FIRE_NOTHING
@@ -379,6 +385,9 @@ func on_failed(seat: int, t: float) -> void:
 	# Spec req 11: players eliminated mid-solo leave the duel.
 	for d in _duels:
 		d["parts"].erase(seat)
+	# D-24: the wreck keeps playing with a debris meter (same threshold, Perfects only, no bag).
+	_debris[seat] = {"progress": 0, "held": -1, "used": 0}
+	_emit_debris_meter(seat)
 	_check_targets()
 	_update_bounty(t)
 
@@ -500,7 +509,8 @@ func _process_beat(b: int, tb: float) -> void:
 
 # --- Launches, collisions, arrivals ---------------------------------------------------------
 
-func _queue_launch(seat: int, to: int, reward: int, t: float, inject: bool) -> int:
+func _queue_launch(seat: int, to: int, reward: int, t: float, inject: bool,
+		wreck: bool = false) -> int:
 	if to == -1 or not _by_seat.has(to):
 		_refuse(seat, "no_target")
 		return FIRE_NO_TARGET
@@ -513,7 +523,7 @@ func _queue_launch(seat: int, to: int, reward: int, t: float, inject: bool) -> i
 		return FIRE_SHIELDED
 	var lb := maxi(launch_beat(t, chart.tempo_map), _last_beat + 1)
 	_pending.append({"seat": seat, "to": to, "reward": reward, "launch_beat": lb,
-		"inject": inject, "reflected": false, "debris": Reward.is_debris(reward)})
+		"inject": inject, "reflected": false, "debris": Reward.is_debris(reward), "wreck": wreck})
 	_emit(GameEvent.FIRE_QUEUED, t, {"seat": seat, "reward": reward, "to": to, "launch_beat": lb})
 	return FIRE_OK
 
@@ -662,6 +672,8 @@ func _commit_launch(q: Dictionary, b: int, tb: float) -> void:
 	_emit(GameEvent.TORPEDO_LAUNCH, tb, fields)
 	if not q["inject"]:
 		_by_seat[seat].meter.use()
+	if q.get("wreck", false):
+		_consume_debris(seat)
 
 
 func _resolve_arrivals(b: int) -> void:
@@ -1221,6 +1233,72 @@ func _resolve_duel(d: Dictionary, t: float) -> void:
 	# queue_prize emits REWARD_EARNED "duel" / REWARD_QUEUED through the meter signals.
 	if w.meter.held == -1 or w.meter.queued == -1:
 		w.meter.queue_prize(w.bag.draw())
+
+
+# --- Wreck debris (MATCH-03, TORP-06, D-24, D-25) ----------------------------------------------
+
+## Perfect +1, Miss resets, Good nothing (Overclock was lost with the hull). At the threshold
+## the debris is SILT on an even debris count, GROAN on an odd one. After
+## debris_max_per_wreck launches the meter is disabled (no more fills).
+func _debris_judged(seat: int, judgment: int) -> void:
+	if not _debris.has(seat):
+		return
+	var d: Dictionary = _debris[seat]
+	if int(d["used"]) >= cfg.debris_max_per_wreck:
+		return
+	match judgment:
+		InputJudge.Judgment.PERFECT:
+			if int(d["held"]) != -1:
+				return
+			d["progress"] = int(d["progress"]) + 1
+			if int(d["progress"]) >= threshold:
+				d["progress"] = threshold
+				d["held"] = Reward.Id.SILT if int(d["used"]) % 2 == 0 else Reward.Id.GROAN
+				_emit_debris_meter(seat)
+				_emit(GameEvent.REWARD_EARNED, _now,
+					{"seat": seat, "reward": d["held"], "source": "debris"})
+			else:
+				_emit_debris_meter(seat)
+		InputJudge.Judgment.GOOD:
+			pass
+		_:
+			if int(d["progress"]) != 0:
+				d["progress"] = 0
+				_emit_debris_meter(seat)
+
+
+## D-25: auto-target only, the living leader by depth (never the lowest-depth sub with 3+
+## alive); shields, races and Decoy as for disruptors; no warheads, bounty or collision.
+func _fire_debris(seat: int, t: float) -> int:
+	var d: Dictionary = _debris.get(seat, {})
+	if d.is_empty() or int(d["held"]) == -1:
+		_refuse(seat, "nothing")
+		return FIRE_NOTHING
+	if _has_pending(seat):
+		return FIRE_PENDING
+	var to := _deepest_alive(seat)
+	if to == -1:
+		_refuse(seat, "no_target")
+		return FIRE_NO_TARGET
+	return _queue_launch(seat, to, int(d["held"]), t, true, true)
+
+
+## The debris left the tube: empty the meter and count it (PlayerState.debris_used for views).
+func _consume_debris(seat: int) -> void:
+	if not _debris.has(seat):
+		return
+	var d: Dictionary = _debris[seat]
+	d["held"] = -1
+	d["progress"] = 0
+	d["used"] = int(d["used"]) + 1
+	_by_seat[seat].debris_used = d["used"]
+	_emit_debris_meter(seat)
+
+
+func _emit_debris_meter(seat: int) -> void:
+	var d: Dictionary = _debris[seat]
+	_emit(GameEvent.METER, _now, {"seat": seat, "progress": d["progress"],
+		"threshold": threshold, "held": d["held"], "queued": -1, "debris": true})
 
 
 # --- Events ----------------------------------------------------------------------------------
