@@ -241,22 +241,22 @@ Plans:
   5. Eliminated players keep playing as wreck ghosts with capped debris attacks, and a results screen shows winner, depth, accuracy, and torpedoes landed and reflected
   6. In Solo Dive, player practices any song with chosen training payloads
 
-**Plans:** 15 plans (5 waves)
+**Plans:** 13/15 plans executed
 
 Plans:
-- [ ] 03-01-PLAN.md — Wave 1: D-29 pin move (perfect_regen 0.25, 3 commits + gate re-baseline), VersusConfig, Reward table, RewardMeter, RewardBag, MatchSetup + Settings
-- [ ] 03-02-PLAN.md — Wave 1: visual primitives (Palette HUD_GLASS_ALPHA/JAM_GREY, 25 UiIcons glyphs, NotePainter ghost/depth-charge/jam gems + warhead ring)
-- [ ] 03-03-PLAN.md — Wave 2: GameEvent schema, EventChannel/Loopback, PlayerState, MatchSim (fire, beat snap, shields, immunity, collision, buffs, targeting, bounty, standings, determinism)
-- [ ] 03-04-PLAN.md — Wave 2: VersusJudge/VersusHull subclasses, PayloadNotes (spacing invariants), VersusAutoplay, PayloadStack modifiers
-- [ ] 03-05-PLAN.md — Wave 2: Solo Dive rename (7 test files), 9-item main menu with Versus Bots, Song Select training stepper + versus pick mode
-- [ ] 03-06-PLAN.md — Wave 3: MatchSim Return to Sender, Solo Duel, wreck debris
-- [ ] 03-07-PLAN.md — Wave 3: SubRig, bots (seeded Gaussian + fire policy), MatchHarness, strong-bot frequency check, TrainingDrone
-- [ ] 03-08-PLAN.md — Wave 3: board visuals (Pressure Crack, Crossed Wires slide + input remap, ghosts, depth charges, jam, warheads, Ink Cloud layers)
-- [ ] 03-09-PLAN.md — Wave 3: own-sub HUD (reward socket, target readout, reward popup, chip stack, wreck caption, GHOST/Overclock popups)
-- [ ] 03-10-PLAN.md — Wave 3: periscope panels + target reticle, killfeed
-- [ ] 03-11-PLAN.md — Wave 3: incoming alert, edge flash, event banner (duel / last hull / implosion), versus SFX
-- [ ] 03-12-PLAN.md — Wave 3: MedalRules, versus results screen, versus pause copy
-- [ ] 03-13-PLAN.md — Wave 3: match setup screen + scene
+- [x] 03-01-PLAN.md — Wave 1: D-29 pin move (perfect_regen 0.25, 3 commits + gate re-baseline), VersusConfig, Reward table, RewardMeter, RewardBag, MatchSetup + Settings
+- [x] 03-02-PLAN.md — Wave 1: visual primitives (Palette HUD_GLASS_ALPHA/JAM_GREY, 25 UiIcons glyphs, NotePainter ghost/depth-charge/jam gems + warhead ring)
+- [x] 03-03-PLAN.md — Wave 2: GameEvent schema, EventChannel/Loopback, PlayerState, MatchSim (fire, beat snap, shields, immunity, collision, buffs, targeting, bounty, standings, determinism)
+- [x] 03-04-PLAN.md — Wave 2: VersusJudge/VersusHull subclasses, PayloadNotes (spacing invariants), VersusAutoplay, PayloadStack modifiers
+- [x] 03-05-PLAN.md — Wave 2: Solo Dive rename (7 test files), 9-item main menu with Versus Bots, Song Select training stepper + versus pick mode
+- [x] 03-06-PLAN.md — Wave 3: MatchSim Return to Sender, Solo Duel, wreck debris
+- [x] 03-07-PLAN.md — Wave 3: SubRig, bots (seeded Gaussian + fire policy), MatchHarness, strong-bot frequency check, TrainingDrone
+- [x] 03-08-PLAN.md — Wave 3: board visuals (Pressure Crack, Crossed Wires slide + input remap, ghosts, depth charges, jam, warheads, Ink Cloud layers)
+- [x] 03-09-PLAN.md — Wave 3: own-sub HUD (reward socket, target readout, reward popup, chip stack, wreck caption, GHOST/Overclock popups)
+- [x] 03-10-PLAN.md — Wave 3: periscope panels + target reticle, killfeed
+- [x] 03-11-PLAN.md — Wave 3: incoming alert, edge flash, event banner (duel / last hull / implosion), versus SFX
+- [x] 03-12-PLAN.md — Wave 3: MedalRules, versus results screen, versus pause copy
+- [x] 03-13-PLAN.md — Wave 3: match setup screen + scene
 - [ ] 03-14-PLAN.md — Wave 4: VersusController integration in Gameplay (bots, training, fire/target input, wreck path, results), keep-out + effect contracts
 - [ ] 03-15-PLAN.md — Wave 5: final gates, frequency report, versus screenshots + p95, friend zip v0.6.0, HUMAN-UAT (non-blocking checkpoint)
 
@@ -305,6 +305,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Timing Core & Calibration | 10/10 | Complete   | 2026-10-07 |
 | 2. Chart Import & Songs | 5/6 | In Progress|  |
-| 3. Offline Versus | 0/15 | Planned | - |
+| 3. Offline Versus | 13/15 | In Progress|  |
 | 4. Online Play | 0/TBD | Not started | - |
 | 5. Polish & Packaging | 0/TBD | Not started | - |
