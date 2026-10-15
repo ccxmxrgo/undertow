@@ -14,7 +14,7 @@ and refuses any file whose size or hash differs. Until this release exists, the 
 The release tag is separate from game versions: game builds pin the pack version (PackSpec).
 
 Assets (4 part zips + SHA256SUMS.txt, 400.1 MB in total):
-  undertow-ac-v1-app.zip         65,953 bytes  a8cb54fba3d6370a272d0b119da78056771cca7350bd7e96f866a65a62c9ecf5
+  undertow-ac-v1-app.zip         67,041 bytes  19d1f2e28c9f429e99486cd6184886ab36c00eadf6441841247f66c8fb071dcc
   undertow-ac-v1-rt-core.zip    143,200,163 bytes  66b52b9ee85e0f513b4ef4b71e61fd7262f4b0854ccc38ed0ff979ad5ee88e25
   undertow-ac-v1-rt-torch.zip   103,720,410 bytes  cc34f8ba90fa553146f0a0950071f8dccb8667e3f7fca18c1f79e0b8377fbdc1
   undertow-ac-v1-models.zip     153,119,849 bytes  32d6877201483171abac9d2e7c6fbece372d6cf2a03050aaff9ab15d0b68c9a8
@@ -87,6 +87,8 @@ The exact release bytes are archived outside the repo in
 
 (4 zips, SHA256SUMS.txt, RELEASE_NOTES.md, pack_manifest.json and a copy of this file). release_pack.ps1 refuses to overwrite an
 archive whose SHA256SUMS.txt differs. Keep a second copy of this folder somewhere safe.
+The first staging (app part a8cb54fb..., before the 02.2.2 code-review fixes) was never published; it
+is kept as autocharter-pack-v1.superseded-2026-10-15 next to the current archive. Never publish it.
 
 The pack build is checked for reproducibility (plan 06 built it twice with identical SHA256SUMS), but a
 rebuild that produces NON-IDENTICAL bytes REQUIRES A NEW GAME BUILD with new pins: every game already
