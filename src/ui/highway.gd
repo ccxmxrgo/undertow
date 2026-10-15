@@ -101,6 +101,19 @@ const MAX_RECEPTOR_HALO := 0.20
 const MAX_FLASH_SEC := 0.20
 const RAIL_FLASH_W := 26.0
 
+## Crossed Wires cues (03 UI-SPEC 7.7).
+const CROSS_EDGE_W := 2.0
+const CROSS_EDGE_ALPHA := 0.50
+const CROSS_DASH := 12.0
+const CROSS_GAP := 8.0
+const CROSS_DASH_CAP := 64
+const GUIDE_W := 2.0
+const GUIDE_ALPHA := 0.70
+const GUIDE_HEAD := 8.0
+const GUIDE_DROP := 40.0
+const GUIDE_BULGE := 22.0
+const GUIDE_SAMPLES := 16
+
 const S_PENDING := 0
 const S_HIT := 1
 const S_MISSED := 2
@@ -162,6 +175,27 @@ var receptor_alpha: float = 1.0  # multiplies receptor and lane-number alpha
 ## False until the conductor lead-in starts: before that the idle clock reads song_time 0 and
 ## early notes would sit on the board, then jump away when the lead-in begins (WR-03).
 var notes_enabled: bool = true
+
+## Phase 3 versus (03-08, UI-SPEC 7): this highway's modifier stack, overlay judge and config,
+## read every frame; the view never decides rules (D-28). All null in solo dives, where every
+## draw path is exactly the Phase 2 one.
+var payloads: PayloadStack = null
+var overlay_judge: VersusJudge = null
+var vcfg: VersusConfig = null
+## Frame snapshot of the modifiers (set in _update_window).
+var _jam_k: float = 0.0
+var _rail_k: float = 0.0
+## Lane columns (Crossed Wires, UI-SPEC 7.7): up to 2 drawn positions per lane (Trench.lane_f
+## space) with alpha; 2 only while a Reduce motion cross-fade runs. _lane_x is the primary x.
+var _lane_x := PackedFloat32Array([-1.5, -0.5, 0.5, 1.5])
+var _cols_f := PackedFloat32Array([-1.5, 0.0, -0.5, 0.0, 0.5, 0.0, 1.5, 0.0])
+var _cols_a := PackedFloat32Array([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0])
+var _cols_n := PackedInt32Array([1, 1, 1, 1])
+var _strip_cols := PackedFloat32Array()
+var _keys_down: Array[bool] = [false, false, false, false]
+var _dbg_gem_type := PackedInt32Array([-1, -1, -1, -1])
+var _dbg_warheads: int = 0
+var _dbg_guides: int = 0
 
 
 ## True while a note is inside the Good window (inclusive); NaN/inf are never ready.
@@ -377,6 +411,17 @@ func setup(p_chart: ChartData, p_conductor: Conductor, p_cfg: JudgeConfig = null
 	_rebuild_strips()
 
 
+## Versus binding (03-08): the target's PayloadStack, its VersusJudge (overlay notes) and the
+## VersusConfig (pressure_crack_max_speed, ink band). Any argument may be null.
+func bind_versus(stack: PayloadStack, judge: VersusJudge, cfg: VersusConfig) -> void:
+	payloads = stack
+	overlay_judge = judge
+	vcfg = cfg if cfg != null else VersusConfig.new()
+	_strip_key = Vector3(-1.0, -1.0, -1.0)
+	if chart != null and conductor != null:
+		_update_window()
+
+
 ## Effect contract: re-read settings (lane labels follow rebinds; strips are re-tinted).
 func apply_effect_settings() -> void:
 	_refresh_labels()
@@ -426,6 +471,24 @@ func on_lane_pressed(lane: int, _ticks: int) -> void:
 	if lane < 0 or lane >= LANES:
 		return
 	_press_ticks[lane] = Time.get_ticks_usec()
+	_keys_down[lane] = true
+
+
+## Connect to LaneInput.lane_released (InkTopLayer press fill while a lane is held).
+func on_lane_released(lane: int, _ticks: int) -> void:
+	if lane >= 0 and lane < LANES:
+		_keys_down[lane] = false
+
+
+## True while a lane's key is down, its press pulse runs or a sustain is held.
+func lane_lit(lane: int, now_usec: int = -1) -> bool:
+	if lane < 0 or lane >= LANES:
+		return false
+	if _keys_down[lane] or _holding[lane] >= 0:
+		return true
+	var now := Time.get_ticks_usec() if now_usec < 0 else now_usec
+	var tick := _press_ticks[lane]
+	return tick >= 0 and now - tick >= 0 and now - tick < RECEPTOR_PULSE_USEC
 
 
 ## Connect to InputJudge.sustain_end. Early release dims the tail; completion consumes it.
@@ -459,6 +522,16 @@ func _update_window() -> void:
 	_st = conductor.song_time()
 	_vt = _st + Settings.visual_offset
 	_approach = Trench.approach_for(Settings.scroll_speed)
+	if payloads != null:
+		# Pressure Crack (D-09): faster approach only; depth 0 is still the note time.
+		var cap := vcfg.pressure_crack_max_speed if vcfg != null else Settings.scroll_speed
+		_approach = Trench.approach_for(PayloadStack.effective_speed(Settings.scroll_speed, payloads.scroll_mult(_st), cap))
+		_jam_k = payloads.jam_amount(_vt)
+		_rail_k = payloads.rail_tint(_vt)
+	else:
+		_jam_k = 0.0
+		_rail_k = 0.0
+	_update_columns()
 	var notes := chart.notes
 	# Moving window: skip notes whose head AND tail are well past the line (and the ghost fade).
 	var past_time := _vt - 0.06 * _approach - GHOST_FADE_SEC - 0.1
@@ -475,6 +548,86 @@ func _update_window() -> void:
 		i += 1
 	_fill_beat_lines(_vt, _approach)
 	_update_sweep()
+	if payloads != null or _strip_cols.size() > 0:
+		_rebuild_strips()  # crossed strips follow their lane this frame
+
+
+## Crossed Wires columns this frame (UI-SPEC 7.7): the slide moves the swapped lanes along
+## payloads.lane_pos; under Reduce motion they cross-fade between the two positions instead.
+func _update_columns() -> void:
+	var rm: bool = Settings.reduce_motion
+	var pair := payloads.crossed_pair(_vt) if payloads != null else Vector2i(-1, -1)
+	for lane in range(LANES):
+		var f := Trench.lane_f(lane)
+		var p := f if payloads == null else payloads.lane_pos(lane, _vt)
+		_cols_n[lane] = 1
+		_cols_f[2 * lane] = p
+		_cols_a[2 * lane] = 1.0
+		_lane_x[lane] = p
+		if not rm or p == f or (lane != pair.x and lane != pair.y):
+			continue
+		var fo := Trench.lane_f(pair.y if lane == pair.x else pair.x)
+		var c := clampf((p - f) / (fo - f), 0.0, 1.0)
+		if c >= 1.0 - 1e-6:
+			_cols_f[2 * lane] = fo
+			_lane_x[lane] = fo
+			continue
+		_cols_n[lane] = 2
+		_cols_f[2 * lane] = f
+		_cols_a[2 * lane] = 1.0 - c
+		_cols_f[2 * lane + 1] = fo
+		_cols_a[2 * lane + 1] = c
+		_lane_x[lane] = fo if c >= 0.5 else f
+
+
+## Drawn columns of a lane: Vector2(lane_f-space x, alpha) each (tests and board layers).
+func lane_columns(lane: int) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	if lane < 0 or lane >= LANES:
+		return out
+	for j in range(_cols_n[lane]):
+		out.append(Vector2(_cols_f[2 * lane + j], _cols_a[2 * lane + j]))
+	return out
+
+
+## Primary lane_f-space x of a lane this frame (Trench.lane_f(lane) without Crossed Wires).
+func lane_x_f(lane: int) -> float:
+	return _lane_x[clampi(lane, 0, LANES - 1)]
+
+
+## Sonar Jam (D-15): the painter type a gem of `type` is drawn with this frame. Ghosts stay
+## hollow ghosts; at full jam every real gem is the plain NOTE_JAM circle.
+func gem_paint_type(type: int) -> int:
+	var t := NotePainter.resolve_type(type)
+	if t == NotePainter.NOTE_GHOST:
+		return t
+	if _jam_k >= 1.0:
+		return NotePainter.NOTE_JAM
+	return t
+
+
+## Outer-rail colour (UI-SPEC 7.5): SONAR blended toward WARNING_RED by 0.6 x rail_tint.
+func rail_color() -> Color:
+	if payloads == null:
+		return Palette.SONAR
+	return Palette.SONAR.lerp(Palette.WARNING_RED, 0.6 * _rail_k)
+
+
+## Test/debug view of the payload-driven drawing state.
+func debug_payload_state() -> Dictionary:
+	var pair := payloads.crossed_pair(_vt) if payloads != null else Vector2i(-1, -1)
+	return {
+		"approach": _approach,
+		"lane_x": _lane_x.duplicate(),
+		"rail_color": rail_color(),
+		"rail_k": _rail_k,
+		"jam_k": _jam_k,
+		"crossed": pair,
+		"sliding": payloads != null and payloads.sliding(_vt),
+		"last_gem_type": _dbg_gem_type.duplicate(),
+		"warheads_drawn": _dbg_warheads,
+		"swap_guides": _dbg_guides,
+	}
 
 
 func _draw() -> void:
@@ -482,6 +635,8 @@ func _draw() -> void:
 		return
 	var phase := BeatClock.phase(_st, chart.tempo_map)
 	_draw_rails()
+	if payloads != null:
+		_draw_crossed_edges()
 	if notes_enabled:
 		_draw_beat_lines()
 	_draw_hit_line(phase)
@@ -489,6 +644,8 @@ func _draw() -> void:
 		_draw_sustains(phase)
 		_draw_chord_bars()
 	_draw_receptors()
+	if payloads != null:
+		_draw_swap_guides()
 	if show_spike_readout:
 		_draw_spike_readout()
 
@@ -527,9 +684,11 @@ func strip_color(lane: int, y: float, tint: float) -> Color:
 func _rebuild_strips() -> void:
 	var tint := strip_tint_alpha()
 	var key := Vector3(clampf(cable_grow, 0.0, 1.0), tint, Palette.HIGHWAY_ALPHA)
-	if key == _strip_key:
+	var ck := _columns_key()
+	if key == _strip_key and ck == _strip_cols:
 		return
 	_strip_key = key
+	_strip_cols = ck
 	surface.visible = key.x > 0.0
 	if key.x <= 0.0:
 		surface.polygons = []
@@ -551,21 +710,38 @@ func _rebuild_strips() -> void:
 	var cols := PackedColorArray()
 	var polys: Array = []
 	for lane in range(LANES):
-		var f := Trench.lane_f(lane)
-		var base := verts.size()
-		for r in range(nr):
-			var y := _rows[r]
-			var col := strip_color(lane, y, tint)
-			verts.append(Vector2(edge_x(f - 0.5, y), y))
-			verts.append(Vector2(edge_x(f + 0.5, y), y))
-			cols.append(col)
-			cols.append(col)
-		for r in range(nr - 1):
-			var i := base + 2 * r
-			polys.append(PackedInt32Array([i, i + 1, i + 3, i + 2]))
+		for j in range(_cols_n[lane]):
+			var f := _cols_f[2 * lane + j]
+			var ca := _cols_a[2 * lane + j]
+			var base := verts.size()
+			for r in range(nr):
+				var y := _rows[r]
+				var col := strip_color(lane, y, tint)
+				if ca < 1.0:
+					col.a *= ca
+				verts.append(Vector2(edge_x(f - 0.5, y), y))
+				verts.append(Vector2(edge_x(f + 0.5, y), y))
+				cols.append(col)
+				cols.append(col)
+			for r in range(nr - 1):
+				var i := base + 2 * r
+				polys.append(PackedInt32Array([i, i + 1, i + 3, i + 2]))
 	surface.polygon = verts
 	surface.vertex_colors = cols
 	surface.polygons = polys
+
+
+## Strip cache key part for the lane columns; empty in solo (no payloads).
+func _columns_key() -> PackedFloat32Array:
+	var k := PackedFloat32Array()
+	if payloads == null:
+		return k
+	for lane in range(LANES):
+		k.append(_cols_n[lane])
+		for j in range(_cols_n[lane]):
+			k.append(_cols_f[2 * lane + j])
+			k.append(_cols_a[2 * lane + j])
+	return k
 
 
 ## Full effects: the sonar_surface material with every colour from Palette. Low effects: no
@@ -643,13 +819,14 @@ func _draw_rails() -> void:
 	glow = maxf(glow, BRIGHT_RAIL_GLOW * clampf(cable_bright, 0.0, 1.0))
 	var max_a := 1.0 if tier == 4 else (fade if _drop_from_tier == 4 else 0.0)
 	var flash := rail_flash_alpha(now)
+	var rc := rail_color()  # Pressure Crack tint (UI-SPEC 7.5); SONAR otherwise
 	for f in [-2.0, 2.0]:
 		if glow > 0.0 and not low:
-			_draw_fading_line(f, y1, Palette.alpha(Palette.SONAR, RAIL_GLOW_ALPHA * glow), RAIL_GLOW_W)
-			_draw_fading_line(f, y1, Palette.alpha(Palette.SONAR, RAIL_GLOW_NEAR_ALPHA * glow), RAIL_GLOW_NEAR_W)
+			_draw_fading_line(f, y1, Palette.alpha(rc, RAIL_GLOW_ALPHA * glow), RAIL_GLOW_W)
+			_draw_fading_line(f, y1, Palette.alpha(rc, RAIL_GLOW_NEAR_ALPHA * glow), RAIL_GLOW_NEAR_W)
 		if flash > 0.0 and not low:
 			_draw_fading_line(f, y1, Palette.alpha(Palette.SONAR_PALE, 0.35 * flash), RAIL_FLASH_W)
-		_draw_fading_line(f, y1, Palette.alpha(Palette.SONAR, RAIL_ALPHA), RAIL_W)
+		_draw_fading_line(f, y1, Palette.alpha(rc, RAIL_ALPHA), RAIL_W)
 		if max_a > 0.0:
 			_draw_fading_line(f, y1, Palette.alpha(Palette.SONAR_PALE, max_a), MAX_RAIL_W)
 			_draw_max_dashes(f, max_a)
@@ -798,30 +975,36 @@ func _draw_sustains(phase: float) -> void:
 			continue
 		var d_head := Trench.depth_for(float(n["time"]), _vt, _approach)
 		var d_tail := Trench.depth_for(float(n["time"]) + dur, _vt, _approach)
-		_draw_sustain(int(n["lane"]), d_head, d_tail, _state[idx], phase)
+		var lane := int(n["lane"])
+		for j in range(_cols_n[lane]):
+			_draw_sustain(lane, d_head, d_tail, _state[idx], phase, _cols_f[2 * lane + j], _cols_a[2 * lane + j])
 
 
 ## Glowing tube along the lane centre between head and tail depth (UI-SPEC 7.4 row 6): a soft
 ## lane-colour glow (Full), the 45% fill (held: pulsing to 75% with the beat), thin edges and a
-## bright core line. Early release / missed tails: TEXT_LO 25%, no core.
-func _draw_sustain(lane: int, d_head: float, d_tail: float, state: int, phase: float) -> void:
+## bright core line. Early release / missed tails: TEXT_LO 25%, no core. f / ca: the lane
+## column (Crossed Wires). Sonar Jam (UI-SPEC 7.6): the tube lerps to JAM_GREY and the core
+## line to TEXT_HI 70%.
+func _draw_sustain(lane: int, d_head: float, d_tail: float, state: int, phase: float, f: float = NAN, ca: float = 1.0) -> void:
 	var span := ribbon_span(d_head, d_tail, state == S_HOLDING)
 	var d0 := span.x
 	var d1 := span.y
-	if d1 <= d0 + 0.001:
+	if d1 <= d0 + 0.001 or ca <= 0.0:
 		return
+	if is_nan(f):
+		f = Trench.lane_f(lane)
 	var lane_col := Palette.lane_color(lane)
+	var tube_col := lane_col.lerp(Palette.JAM_GREY, _jam_k) if _jam_k > 0.0 else lane_col
 	var core := sustain_has_core(state)
-	var base := lane_col if core else Palette.TEXT_LO
+	var base := tube_col if core else Palette.TEXT_LO
 	var fill_a := sustain_fill_alpha(state, phase)
-	var f := Trench.lane_f(lane)
 	var low: bool = Settings.low_effects
 	if core and not low:
 		_tube_edges(f, d0, d1, TUBE_GLOW_HALF_W)
-		_fill_ribbon(Palette.alpha(lane_col, TUBE_GLOW_ALPHA * (fill_a / TUBE_FILL)), d0, d1, true)
+		_fill_ribbon(Palette.alpha(tube_col, TUBE_GLOW_ALPHA * (fill_a / TUBE_FILL) * ca), d0, d1, true)
 	_tube_edges(f, d0, d1, TUBE_HALF_W)
-	_fill_ribbon(Palette.alpha(base, fill_a), d0, d1, false)
-	var edge := Palette.alpha(base, TUBE_EDGE_ALPHA if core else TUBE_DEAD_FILL)
+	_fill_ribbon(Palette.alpha(base, fill_a * ca), d0, d1, false)
+	var edge := Palette.alpha(base, (TUBE_EDGE_ALPHA if core else TUBE_DEAD_FILL) * ca)
 	_fade_edge_cols(edge, d0, d1)
 	draw_polyline_colors(_edge_l, _edge_cols, 1.5, true)
 	draw_polyline_colors(_edge_r, _edge_cols, 1.5, true)
@@ -829,10 +1012,14 @@ func _draw_sustain(lane: int, d_head: float, d_tail: float, state: int, phase: f
 		for k in range(RIBBON_SAMPLES + 1):
 			_edge_l[k] = Trench.point(f, lerpf(d0, d1, float(k) / float(RIBBON_SAMPLES)))
 		var w := 3.0 * Trench.scale_at(d0)
-		_fade_edge_cols(Palette.alpha(Palette.mix(lane_col, Palette.WHITE, 0.5), TUBE_CORE_ALPHA), d0, d1)
+		var core_col := Palette.alpha(Palette.mix(lane_col, Palette.WHITE, 0.5), TUBE_CORE_ALPHA)
+		if _jam_k > 0.0:
+			core_col = core_col.lerp(Palette.alpha(Palette.TEXT_HI, 0.70), _jam_k)
+		core_col.a *= ca
+		_fade_edge_cols(core_col, d0, d1)
 		draw_polyline_colors(_edge_l, _edge_cols, maxf(w, 1.0), true)
 	if state == S_HOLDING and not low:
-		draw_circle(Trench.hit_point(lane), RECEPTOR_R * 0.9, Palette.alpha(lane_col, 0.18 + 0.12 * BeatClock.pulse(phase)))
+		draw_circle(Trench.point(f, 0.0), RECEPTOR_R * 0.9, Palette.alpha(lane_col, (0.18 + 0.12 * BeatClock.pulse(phase)) * ca))
 
 
 ## Fills _edge_l / _edge_r with the ribbon edges at half-width k * note radius.
@@ -885,8 +1072,8 @@ func _draw_chord_bars() -> void:
 			continue
 		if prev >= 0 and absf(float(notes[idx]["time"]) - float(notes[prev]["time"])) < 0.001:
 			var d := Trench.depth_for(float(notes[idx]["time"]), _vt, _approach)
-			var a := Trench.point(Trench.lane_f(int(notes[prev]["lane"])), d)
-			var b := Trench.point(Trench.lane_f(int(notes[idx]["lane"])), d)
+			var a := Trench.point(_lane_x[int(notes[prev]["lane"])], d)
+			var b := Trench.point(_lane_x[int(notes[idx]["lane"])], d)
 			var ca := Trench.note_fade(d)
 			if ca >= 0.01:
 				NotePainter.draw_chord_bar(self, a, b, Trench.scale_at(d), ca)
@@ -904,35 +1091,40 @@ func _draw_receptors() -> void:
 	# x4 constant receptor halo (kept in Low effects, UI-SPEC 7.6); fades with the extras.
 	var max_halo := MAX_RECEPTOR_HALO * (1.0 if tier == 4 else (_fade_part(now) if _drop_from_tier == 4 else 0.0))
 	for lane in range(LANES):
-		var col := Palette.lane_color(lane)
-		var kind := NoteShape.kind_for_lane(lane)
-		var center := receptor_center(lane)
-		var tick := _press_ticks[lane]
-		var age := now - tick if tick >= 0 else RECEPTOR_PULSE_USEC
-		var pressed := age >= 0 and age < RECEPTOR_PULSE_USEC
-		var held := _holding[lane] >= 0
-		var sq := receptor_scale(lane, now)
-		var kx := RECEPTOR_R * sq.x
-		var ky := RECEPTOR_R * sq.y
-		if max_halo > 0.0:
-			var hr := Palette.GLOW_MD[0] * RECEPTOR_R
-			draw_texture_rect(UiKit.glow_texture(), Rect2(center - Vector2(hr, hr), Vector2(2.0 * hr, 2.0 * hr)),
-				false, Palette.alpha(col, max_halo * ra))
-		if pressed and not low:
-			var reach := Palette.GLOW_SM[0] * RECEPTOR_R
-			draw_texture_rect(UiKit.glow_texture(), Rect2(center - Vector2(reach, reach), Vector2(2.0 * reach, 2.0 * reach)),
-				false, Palette.alpha(col, Palette.GLOW_SM[1] * ra))
-		var unit: PackedVector2Array = NotePainter.unit_shape(kind)["poly"]
-		draw_set_transform(center, 0.0, Vector2(kx, ky))
-		draw_colored_polygon(unit, Palette.alpha(Palette.ABYSS_900, RECEPTOR_GLASS_ALPHA * ra))
-		var fill_a := RECEPTOR_PRESS_FILL if pressed else (RECEPTOR_HELD_FILL if held else 0.0)
-		if fill_a > 0.0:
-			draw_colored_polygon(unit, Palette.alpha(col, fill_a * ra))
-		draw_set_transform_matrix(Transform2D.IDENTITY)
-		var out_a := 1.0 if (pressed or held) else RECEPTOR_OUTLINE_ALPHA
-		_pad_outline(kind, center, kx - 2.0, ky - 2.0, 4.0, Palette.alpha(col, out_a * ra))
-		var inner := RECEPTOR_INNER_R / RECEPTOR_R
-		_pad_outline(kind, center, kx * inner, ky * inner, 2.0, Palette.alpha(col, RECEPTOR_INNER_ALPHA * ra))
+		for j in range(_cols_n[lane]):
+			_draw_receptor(lane, Trench.point(_cols_f[2 * lane + j], 0.0), ra * _cols_a[2 * lane + j], now, low, max_halo)
+
+
+## One receptor pad at `center` (its lane column) with alpha multiplier ra.
+func _draw_receptor(lane: int, center: Vector2, ra: float, now: int, low: bool, max_halo: float) -> void:
+	var col := Palette.lane_color(lane)
+	var kind := NoteShape.kind_for_lane(lane)
+	var tick := _press_ticks[lane]
+	var age := now - tick if tick >= 0 else RECEPTOR_PULSE_USEC
+	var pressed := age >= 0 and age < RECEPTOR_PULSE_USEC
+	var held := _holding[lane] >= 0
+	var sq := receptor_scale(lane, now)
+	var kx := RECEPTOR_R * sq.x
+	var ky := RECEPTOR_R * sq.y
+	if max_halo > 0.0:
+		var hr := Palette.GLOW_MD[0] * RECEPTOR_R
+		draw_texture_rect(UiKit.glow_texture(), Rect2(center - Vector2(hr, hr), Vector2(2.0 * hr, 2.0 * hr)),
+			false, Palette.alpha(col, max_halo * ra))
+	if pressed and not low:
+		var reach := Palette.GLOW_SM[0] * RECEPTOR_R
+		draw_texture_rect(UiKit.glow_texture(), Rect2(center - Vector2(reach, reach), Vector2(2.0 * reach, 2.0 * reach)),
+			false, Palette.alpha(col, Palette.GLOW_SM[1] * ra))
+	var unit: PackedVector2Array = NotePainter.unit_shape(kind)["poly"]
+	draw_set_transform(center, 0.0, Vector2(kx, ky))
+	draw_colored_polygon(unit, Palette.alpha(Palette.ABYSS_900, RECEPTOR_GLASS_ALPHA * ra))
+	var fill_a := RECEPTOR_PRESS_FILL if pressed else (RECEPTOR_HELD_FILL if held else 0.0)
+	if fill_a > 0.0:
+		draw_colored_polygon(unit, Palette.alpha(col, fill_a * ra))
+	draw_set_transform_matrix(Transform2D.IDENTITY)
+	var out_a := 1.0 if (pressed or held) else RECEPTOR_OUTLINE_ALPHA
+	_pad_outline(kind, center, kx - 2.0, ky - 2.0, 4.0, Palette.alpha(col, out_a * ra))
+	var inner := RECEPTOR_INNER_R / RECEPTOR_R
+	_pad_outline(kind, center, kx * inner, ky * inner, 2.0, Palette.alpha(col, RECEPTOR_INNER_ALPHA * ra))
 
 
 ## Closed lane-shape outline scaled by (kx, ky) about center, into a reused buffer.
@@ -944,6 +1136,96 @@ func _pad_outline(kind: int, center: Vector2, kx: float, ky: float, width: float
 	for i in range(n):
 		_ring[i] = center + Vector2(ring[i].x * kx, ring[i].y * ky)
 	draw_polyline(_ring, col, width, true)
+
+
+# ---- Crossed Wires cues (UI-SPEC 7.7) ----------------------------------------------------------
+
+## Amount 0..1 the crossed pair is swapped this frame (0 none, 1 fully crossed).
+func _crossed_amount(pair: Vector2i) -> float:
+	if pair.x < 0 or pair.y < 0 or pair.x == pair.y:
+		return 0.0
+	var fa := Trench.lane_f(pair.x)
+	var fb := Trench.lane_f(pair.y)
+	return clampf((payloads.lane_pos(pair.x, _vt) - fa) / (fb - fa), 0.0, 1.0)
+
+
+## 2 px dashed SONAR_PALE 50% edges (12 px dash, 8 px gap) on both sides of the two crossed
+## strips while crossed; they fade with the slide.
+func _draw_crossed_edges() -> void:
+	var pair := payloads.crossed_pair(_vt)
+	var amt := _crossed_amount(pair)
+	if amt <= 0.0:
+		return
+	var y1 := _strip_end_y()
+	var col := Palette.alpha(Palette.SONAR_PALE, CROSS_EDGE_ALPHA * amt)
+	var edges: Array[float] = []
+	for lane in [pair.x, pair.y]:
+		for e in [Trench.lane_f(lane) - 0.5, Trench.lane_f(lane) + 0.5]:
+			if not edges.has(e):
+				edges.append(e)
+	for f in edges:
+		_dashed_lane_line(f, y1, col)
+
+
+## A dashed lane line from the far end to y_end; each dash fades with Trench.line_fade.
+func _dashed_lane_line(f: float, y_end: float, col: Color) -> void:
+	var a := Vector2(edge_x(f, Trench.VP.y), Trench.VP.y)
+	var b := Vector2(edge_x(f, y_end), y_end)
+	var length := a.distance_to(b)
+	if length < 1.0:
+		return
+	var dir := (b - a) / length
+	var s := 0.0
+	var n := 0
+	while s < length and n < CROSS_DASH_CAP:
+		var e := minf(s + CROSS_DASH, length)
+		var p := a + dir * s
+		var q := a + dir * e
+		var c := col
+		c.a *= Trench.line_fade(depth_at_y((p.y + q.y) * 0.5))
+		if c.a >= 0.01:
+			draw_line(p, q, c, CROSS_EDGE_W, true)
+		s += CROSS_DASH + CROSS_GAP
+		n += 1
+
+
+## Swap guides during a slide: two curved 2 px SONAR_PALE 70% arrows with 8 px heads between
+## the swapped receptors, 40 px below the hit line, fading out over the last quarter of the
+## slide. Static geometry, so Reduce motion draws them the same way.
+func _draw_swap_guides() -> void:
+	_dbg_guides = 0
+	if not payloads.sliding(_vt):
+		return
+	var pair := payloads.crossed_pair(_vt)
+	if pair.x < 0 or pair.y < 0:
+		return
+	var k := payloads.slide_k(_vt)
+	var a := GUIDE_ALPHA * (1.0 - smoothstep(0.75, 1.0, k))
+	if a <= 0.0:
+		return
+	var col := Palette.alpha(Palette.SONAR_PALE, a)
+	var pa := Vector2(Trench.hit_point(pair.x).x, Trench.HIT_Y + GUIDE_DROP)
+	var pb := Vector2(Trench.hit_point(pair.y).x, Trench.HIT_Y + GUIDE_DROP)
+	_guide_arrow(pa, pb, GUIDE_BULGE, col)
+	_guide_arrow(pb, pa, -GUIDE_BULGE, col)
+	_dbg_guides = 2
+
+
+## Quadratic arc from p0 to p1 bulging `bulge` px vertically, with a filled head at p1.
+func _guide_arrow(p0: Vector2, p1: Vector2, bulge: float, col: Color) -> void:
+	var ctrl := (p0 + p1) * 0.5 + Vector2(0.0, bulge)
+	var pts := PackedVector2Array()
+	for i in range(GUIDE_SAMPLES + 1):
+		var t := float(i) / float(GUIDE_SAMPLES)
+		pts.append(p0.lerp(ctrl, t).lerp(ctrl.lerp(p1, t), t))
+	# Stop the shaft at the head's base so the stroke does not poke through the tip.
+	var tip := pts[GUIDE_SAMPLES]
+	var dir := (tip - pts[GUIDE_SAMPLES - 1]).normalized()
+	pts[GUIDE_SAMPLES] = tip - dir * GUIDE_HEAD * 0.8
+	draw_polyline(pts, col, GUIDE_W, true)
+	var side := Vector2(-dir.y, dir.x) * GUIDE_HEAD * 0.5
+	var base := tip - dir * GUIDE_HEAD
+	draw_colored_polygon(PackedVector2Array([tip, base + side, base - side]), col)
 
 
 # ---- Shared positions (02.2-26, G1): drawing and tests use these, so they cannot drift ------
@@ -959,11 +1241,18 @@ func gem_depth(note_index: int) -> float:
 
 ## The exact centre draw_notes_into / draw_halos_into pass to NotePainter for this note.
 func gem_center(note_index: int) -> Vector2:
-	return Trench.point(Trench.lane_f(int(chart.notes[note_index]["lane"])), gem_depth(note_index))
+	return Trench.point(_lane_x[int(chart.notes[note_index]["lane"])], gem_depth(note_index))
 
 
-## Un-squashed receptor pad centre (on the hit line); _draw_receptors and the lane numbers use it.
+## Un-squashed receptor pad centre (on the hit line) at the lane's current column; equals
+## Trench.hit_point(lane) unless Crossed Wires moved the lane.
 func receptor_center(lane: int) -> Vector2:
+	return Trench.point(_lane_x[clampi(lane, 0, LANES - 1)], 0.0)
+
+
+## Key label anchor: fixed screen position (UI-SPEC 7.7: labels never slide, input follows
+## screen position, so the label is always the key that hits the receptor above it).
+func lane_label_center(lane: int) -> Vector2:
 	return Trench.hit_point(lane)
 
 
@@ -971,6 +1260,7 @@ func receptor_center(lane: int) -> Vector2:
 
 ## Gems far to near, missed remnants and lane numbers, drawn into the HighwayNotes layer.
 func draw_notes_into(ci: CanvasItem) -> void:
+	_dbg_warheads = 0
 	if chart == null or conductor == null:
 		return
 	if notes_enabled:
@@ -993,13 +1283,37 @@ func draw_notes_into(ci: CanvasItem) -> void:
 			elif note_is_ready(float(n["time"]) - _st, _good_window):
 				paint = NotePainter.STATE_READY
 			var d := gem_depth(idx)
-			var c := gem_center(idx)
 			var r := Trench.note_radius(Trench.scale_at(d))
 			var na := 1.0 if paint == NotePainter.STATE_MISSED else Trench.note_fade(d)
 			if na < 0.01:
 				continue
-			NotePainter.draw_note(ci, int(n.get("type", NotePainter.NOTE_NORMAL)), lane, c, r, paint, _st, fade, na)
+			var type := int(n.get("type", NotePainter.NOTE_NORMAL))
+			if payloads == null:
+				NotePainter.draw_note(ci, type, lane, gem_center(idx), r, paint, _st, fade, na)
+				continue
+			var ws := payloads.warhead_state(idx)
+			for j in range(_cols_n[lane]):
+				var ca := _cols_a[2 * lane + j]
+				var c := Trench.point(_cols_f[2 * lane + j], d)
+				_draw_gem(ci, type, lane, c, r, paint, fade, na * ca)
+				# Warhead ring over the gem (UI-SPEC 7.1); the Perfect flash is drawn by
+				# _draw_warhead_flashes once the note is hit. Unchanged under Sonar Jam.
+				if ws == PayloadStack.OPEN or ws == PayloadStack.DEAD:
+					var wa := (fade if paint == NotePainter.STATE_MISSED else na) * ca
+					NotePainter.draw_warhead_ring(ci, c, r, ws, 0.0, true, wa)
+					_dbg_warheads += 1
 	_draw_lane_numbers(ci)
+
+
+## One gem through the Sonar Jam cross-fade (UI-SPEC 7.6): 0 < k < 1 keeps the lane shape
+## with a jam_mix core; k >= 1 is the NOTE_JAM circle. Ghosts are never jammed.
+func _draw_gem(ci: CanvasItem, type: int, lane: int, c: Vector2, r: float, paint: int, fade: float, alpha: float) -> void:
+	var t := gem_paint_type(type)
+	_dbg_gem_type[clampi(lane, 0, LANES - 1)] = t
+	if _jam_k > 0.0 and _jam_k < 1.0 and t != NotePainter.NOTE_GHOST:
+		NotePainter.draw_jam_fade(ci, lane, c, r, paint, _st, _jam_k, fade, alpha, t == NotePainter.NOTE_DISRUPTOR)
+	else:
+		NotePainter.draw_note(ci, t, lane, c, r, paint, _st, fade, alpha)
 
 
 ## Additive halos of ready gems (Full effects); drawn into HighwayNotes' Halos child.
@@ -1016,17 +1330,31 @@ func draw_halos_into(ci: CanvasItem) -> void:
 			continue
 		var lane: int = n["lane"]
 		var d := gem_depth(idx)
-		NotePainter.draw_halo(ci, lane, gem_center(idx), Trench.note_radius(Trench.scale_at(d)), Trench.note_fade(d))
+		if payloads == null:
+			NotePainter.draw_halo(ci, lane, gem_center(idx), Trench.note_radius(Trench.scale_at(d)), Trench.note_fade(d))
+			continue
+		_halo_columns(ci, lane, d)
+
+
+## Halo of a ready real gem in each lane column; fades out with Sonar Jam (no halo when jammed).
+func _halo_columns(ci: CanvasItem, lane: int, d: float) -> void:
+	if _jam_k >= 1.0:
+		return
+	var r := Trench.note_radius(Trench.scale_at(d))
+	for j in range(_cols_n[lane]):
+		var a := Trench.note_fade(d) * _cols_a[2 * lane + j] * (1.0 - _jam_k)
+		NotePainter.draw_halo(ci, lane, Trench.point(_cols_f[2 * lane + j], d), r, a)
 
 
 ## Bound key under each receptor (Label 20, lane colour 90%), cached per settings change.
-func _draw_lane_numbers(ci: CanvasItem) -> void:
-	var ra := clampf(receptor_alpha, 0.0, 1.0)
+## alpha_mul: InkTopLayer redraws the labels above the ink band with its fade.
+func _draw_lane_numbers(ci: CanvasItem, alpha_mul: float = 1.0) -> void:
+	var ra := clampf(receptor_alpha, 0.0, 1.0) * alpha_mul
 	if ra <= 0.0:
 		return
 	var font := Palette.font()
 	for lane in range(LANES):
-		var center := receptor_center(lane)
+		var center := lane_label_center(lane)
 		ci.draw_string(font, Vector2(center.x - 50.0, center.y + 60.0), _lane_labels[lane], HORIZONTAL_ALIGNMENT_CENTER,
 			100.0, Palette.SIZE_LABEL, Palette.alpha(Palette.lane_color(lane), LANE_LABEL_ALPHA * ra))
 

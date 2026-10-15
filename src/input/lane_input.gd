@@ -17,6 +17,10 @@ const RELEASE_THRESHOLD := 0.4
 
 var conductor: Conductor
 var judge: InputJudge
+## Crossed Wires (D-10): this highway's modifier stack. When set, a physical lane action is
+## mapped through payloads.input_map(song time) to the judged lane at press time; the release
+## always releases the lane recorded at press (RESEARCH Pitfall 3). null = identity (solo).
+var payloads: PayloadStack = null
 ## Pause/countdown suppress note input (UI-SPEC). Disabling releases anything still held.
 var enabled: bool = true:
 	set(v):
@@ -28,6 +32,11 @@ var _held: Array[bool] = [false, false, false, false]  # union of the two source
 # Per-source state (WR-04): a lane's key/button and its trigger axis must not release each other.
 var _key_held: Array[bool] = [false, false, false, false]
 var _axis_held: Array[bool] = [false, false, false, false]
+## Judged lane each physical action pressed (-1 = up), and how many actions hold each judged
+## lane: a lane is pressed on its 0 -> 1 edge and released on 1 -> 0, so two keys mapped onto
+## one lane across a remap never double-press or release each other.
+var _pressed_lane: Array[int] = [-1, -1, -1, -1]
+var _lane_holders: Array[int] = [0, 0, 0, 0]
 
 
 func _ready() -> void:
@@ -87,22 +96,46 @@ func _set_source(lane: int, source: Array[bool], down: bool, ticks: int) -> void
 		_release(lane, ticks)
 
 
-func _press(lane: int, ticks: int) -> void:
-	if _held[lane]:
+## `action` is the physical lane action index; signals and the judge get the judged lane.
+func _press(action: int, ticks: int) -> void:
+	if _held[action]:
 		return
-	_held[lane] = true
+	_held[action] = true
+	var lane := _map_action(action, ticks)
+	_pressed_lane[action] = lane
+	_lane_holders[lane] += 1
+	if _lane_holders[lane] > 1:
+		return  # another key already holds this judged lane
 	if conductor != null and judge != null:
 		judge.press(lane, conductor.song_time_at(ticks))
 	lane_pressed.emit(lane, ticks)
 
 
-func _release(lane: int, ticks: int) -> void:
-	if not _held[lane]:
+func _release(action: int, ticks: int) -> void:
+	if not _held[action]:
 		return
-	_held[lane] = false
+	_held[action] = false
+	var lane := _pressed_lane[action]
+	_pressed_lane[action] = -1
+	if lane < 0:
+		return
+	_lane_holders[lane] = maxi(_lane_holders[lane] - 1, 0)
+	if _lane_holders[lane] > 0:
+		return
 	if conductor != null and judge != null:
 		judge.release(lane, conductor.song_time_at(ticks))
 	lane_released.emit(lane, ticks)
+
+
+## Physical action -> judged lane (identity without payloads or a conductor).
+func _map_action(action: int, ticks: int) -> int:
+	if payloads == null or conductor == null:
+		return action
+	var m := payloads.input_map(conductor.song_time_at(ticks))
+	if action >= m.size():
+		return action
+	var lane := m[action]
+	return lane if lane >= 0 and lane < ACTIONS.size() else action
 
 
 func _release_all(ticks: int) -> void:
