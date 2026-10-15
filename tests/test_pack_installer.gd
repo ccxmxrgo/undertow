@@ -302,6 +302,35 @@ func test_update_part_sharing_a_root_refetches_its_sibling() -> void:
 	assert_bool(_inst.is_installed()).is_true()
 
 
+## WR-07: a staging rename that fails a few times (antivirus scan) is retried, not fatal.
+func test_finalize_retries_a_locked_rename() -> void:
+	var fails := [2]
+	_inst.rename_retry_ms = 1
+	_inst.rename_fn = func(from: String, to: String) -> int:
+		if fails[0] > 0:
+			fails[0] -= 1
+			return ERR_FILE_CANT_WRITE
+		return DirAccess.rename_absolute(from, to)
+	await _install_three()
+	assert_array(_failed).is_empty()
+	assert_int(_installed).is_equal(1)
+	assert_int(fails[0]).is_equal(0)
+	assert_bool(_inst.is_installed()).is_true()
+
+
+func test_finalize_gives_up_after_the_last_rename_try() -> void:
+	var calls := [0]
+	_inst.rename_attempts = 3
+	_inst.rename_retry_ms = 1
+	_inst.rename_fn = func(_from: String, _to: String) -> int:
+		calls[0] += 1
+		return ERR_FILE_CANT_WRITE
+	await _install_three()
+	assert_int(calls[0]).is_equal(3)
+	assert_str(_failed[0][0]).is_equal("extract")
+	_assert_nothing_installed()
+
+
 func test_update_rt_full_reinstall() -> void:
 	await _install_three()
 	var parts := _three("v1", 2)

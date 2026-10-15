@@ -36,6 +36,12 @@ var free_space: Callable = Callable()
 var source_dir: String = ""
 ## Tests only: passed through to PackExtractor.extract_all (e.g. progress_every).
 var extract_limits: Dictionary = {}
+## WR-07: a staging rename that fails (antivirus scanning fresh DLLs, a brief sharing
+## violation) is retried this many times, rename_retry_ms apart, before the install fails.
+var rename_attempts := 10
+var rename_retry_ms := 500
+## Tests only: func(from: String, to: String) -> Error; default DirAccess.rename_absolute.
+var rename_fn: Callable = Callable()
 
 var _state := "idle"
 var _gen := 0
@@ -462,8 +468,8 @@ func _finalize_task(gen: int, full: bool, roots: Array, pins: Dictionary) -> voi
 			result = "remove_failed"
 		elif _is_cancelled():
 			result = "cancelled"
-		elif DirAccess.rename_absolute(staging, vdir) != OK:
-			result = "rename_failed"
+		else:
+			result = _rename_with_retry(staging, vdir)
 	else:
 		for root in roots:
 			var src := staging.path_join(root)
@@ -477,8 +483,8 @@ func _finalize_task(gen: int, full: bool, roots: Array, pins: Dictionary) -> voi
 			if _is_cancelled():
 				result = "cancelled"
 				break
-			if DirAccess.rename_absolute(src, dst) != OK:
-				result = "rename_failed"
+			result = _rename_with_retry(src, dst)
+			if result != "ok":
 				break
 		if DirAccess.dir_exists_absolute(staging):
 			AutochartPaths.rm_tree(staging)
@@ -500,6 +506,20 @@ func _finalize_task(gen: int, full: bool, roots: Array, pins: Dictionary) -> voi
 			f.store_string(JSON.stringify(data, "\t"))
 			f.close()
 	_push({"t": "finalized", "gen": gen, "result": result})
+
+
+## Worker thread. "ok", "cancelled" (cancel seen between tries) or "rename_failed" (WR-07).
+func _rename_with_retry(from: String, to: String) -> String:
+	var tries := maxi(1, rename_attempts)
+	for i in tries:
+		var err: int = rename_fn.call(from, to) if rename_fn.is_valid() else DirAccess.rename_absolute(from, to)
+		if err == OK:
+			return "ok"
+		if i + 1 < tries:
+			if _is_cancelled():
+				return "cancelled"
+			OS.delay_msec(maxi(0, rename_retry_ms))
+	return "rename_failed"
 
 
 # ---- main-thread drain ----
