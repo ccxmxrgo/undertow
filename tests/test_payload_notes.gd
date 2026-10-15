@@ -59,7 +59,7 @@ func _on_grid(chart: ChartData, t: float) -> bool:
 func _base_in(chart: ChartData, s: float, e: float) -> int:
 	var n := 0
 	for note in chart.notes:
-		if note["time"] >= s and note["time"] < e:
+		if note["time"] >= s - 1e-6 and note["time"] < e - 1e-6:  # same tolerance as the generator
 			n += 1
 	return n
 
