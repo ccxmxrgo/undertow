@@ -117,11 +117,27 @@ def _assign_to_job(proc) -> bool:
     return bool(k32.AssignProcessToJobObject(job, int(proc._handle)))
 
 
+CREATE_SUSPENDED = 0x00000004
+
+
+def _resume(proc) -> bool:
+    """Resume a child created with CREATE_SUSPENDED (every thread of the process; Windows only)."""
+    import ctypes
+    from ctypes import wintypes
+
+    ntdll = ctypes.WinDLL("ntdll")
+    ntdll.NtResumeProcess.argtypes = (wintypes.HANDLE,)
+    ntdll.NtResumeProcess.restype = ctypes.c_long
+    return ntdll.NtResumeProcess(int(proc._handle)) == 0
+
+
 def _run_worker(cmd: list, stem_wav: Path, in_job: bool):
-    """(returncode, stdout + stderr) of the bp_worker.py child; a timeout raises AutochartError."""
+    """(returncode, stdout + stderr) of the bp_worker.py child; a timeout raises AutochartError.
+    IN-07: in a job object the worker starts suspended and only runs after it was assigned, so a kill of
+    this process can never leave an unassigned (orphaned) worker behind."""
     p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         text=True)
-    if in_job and not _assign_to_job(p):
+                         text=True, creationflags=CREATE_SUSPENDED if in_job else 0)
+    if in_job and not (_assign_to_job(p) and _resume(p)):
         p.kill()
         p.communicate()
         raise AutochartError("pitch", "cannot put the Basic Pitch worker into a job object")

@@ -55,3 +55,38 @@ class AttachTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(sys.platform == "win32", "job objects are Windows only")
+class WorkerJobTest(unittest.TestCase):
+    """IN-07: the worker starts suspended, is put into the kill-on-close job, then resumed."""
+
+    def test_worker_runs_after_assignment_and_resume(self):
+        cmd = [sys.executable, "-I", "-c", "print('BP_WORKER_RAN')"]
+        code, text = pitch_bp._run_worker(cmd, Path("x.wav"), in_job=True)
+        self.assertEqual(code, 0, text)
+        self.assertIn("BP_WORKER_RAN", text)
+
+    def test_suspended_worker_is_killed_when_assignment_fails(self):
+        from unittest import mock
+
+        cmd = [sys.executable, "-I", "-c", "print('BP_WORKER_RAN')"]
+        with mock.patch.object(pitch_bp, "_assign_to_job", return_value=False), \
+                mock.patch.object(pitch_bp, "_resume") as resume:
+            with self.assertRaises(pitch_bp.AutochartError):
+                pitch_bp._run_worker(cmd, Path("x.wav"), in_job=True)
+        resume.assert_not_called()
+
+    def test_popen_is_created_suspended_in_a_job(self):
+        from unittest import mock
+
+        seen = {}
+        real = pitch_bp.subprocess.Popen
+
+        def spy(*a, **k):
+            seen["flags"] = k.get("creationflags", 0)
+            return real(*a, **k)
+        cmd = [sys.executable, "-I", "-c", "pass"]
+        with mock.patch.object(pitch_bp.subprocess, "Popen", side_effect=spy):
+            pitch_bp._run_worker(cmd, Path("x.wav"), in_job=True)
+        self.assertTrue(seen["flags"] & pitch_bp.CREATE_SUSPENDED)
