@@ -17,13 +17,14 @@ static func _abs(p: String) -> String:
 	return g.replace("\\", "/").simplify_path()
 
 
-## limits (tests): max_entries, max_total, max_entry. progress(written, total).
+## limits (tests): max_entries, max_total, max_entry, progress_every. progress(written, total).
 ## should_cancel() -> bool is checked before every file. Returns {ok, error, written}.
 static func extract_all(zip_path: String, dest_dir: String, progress: Callable = Callable(),
 		limits: Dictionary = {}, should_cancel: Callable = Callable()) -> Dictionary:
 	var max_entries: int = limits.get("max_entries", MAX_ENTRIES)
 	var max_total: int = limits.get("max_total", MAX_TOTAL_BYTES)
 	var max_entry: int = limits.get("max_entry", MAX_ENTRY_BYTES)
+	var every: int = maxi(1, int(limits.get("progress_every", PROGRESS_EVERY)))
 	var sizes: Variant = ZipExtractor._central_sizes(zip_path)
 	if sizes == null:
 		return _fail("zip_unreadable")
@@ -81,7 +82,7 @@ static func extract_all(zip_path: String, dest_dir: String, progress: Callable =
 		f.store_buffer(zr.read_file(p[0]))
 		f.close()
 		written += 1
-		if progress.is_valid() and written % PROGRESS_EVERY == 0 and written < file_count:
+		if progress.is_valid() and written % every == 0 and written < file_count:
 			progress.call(written, file_count)
 	zr.close()
 	if progress.is_valid():
