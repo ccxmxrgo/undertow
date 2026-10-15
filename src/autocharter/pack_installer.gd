@@ -211,15 +211,18 @@ func _next_part() -> void:
 	if not _safe_part_name(pname):
 		_fail("not_available", NOT_AVAILABLE_TEXT)
 		return
+	var dest := AutochartPaths.dl_dir().path_join(pname)
 	if source_dir != "":
 		var src := _abs(source_dir).path_join(pname)
 		if not FileAccess.file_exists(src):
 			_fail("not_available", "Part %s was not found in the chosen folder." % pname)
 			return
+		# CR-01: never extract from the chosen folder. The worker copies the part into dl/ and
+		# hashes exactly the bytes it writes, so extraction reads only the pinned copy.
 		_reused = false
-		_begin_verify(src)
+		DirAccess.make_dir_recursive_absolute(dest.get_base_dir())
+		_begin_verify(dest, src)
 		return
-	var dest := AutochartPaths.dl_dir().path_join(pname)
 	if FileAccess.file_exists(dest):
 		_reused = true  # complete leftover from an earlier failed run: verify before refetching
 		_begin_verify(dest)
@@ -261,12 +264,13 @@ func _on_fetched(ok: bool, http_code: int, err: String, gen: int, index: int) ->
 	_begin_verify(dest)
 
 
-func _begin_verify(path: String) -> void:
+## copy_from != "": the part is copied from there into path while it is hashed (CR-01).
+func _begin_verify(path: String, copy_from: String = "") -> void:
 	_set_state("verifying")
 	var part: Dictionary = _todo[_index]
 	progress_changed.emit(_index, _todo.size(), "Checking part %d / %d" % [_index + 1, _todo.size()])
-	_run_task(_verify_task.bind(_gen, path, int(part["size"]), String(part["sha256"]).to_lower()),
-		"PackInstaller verify")
+	_run_task(_verify_task.bind(_gen, path, int(part["size"]), String(part["sha256"]).to_lower(),
+		copy_from), "PackInstaller verify")
 
 
 func _on_verified(msg: Dictionary) -> void:
@@ -279,7 +283,9 @@ func _on_verified(msg: Dictionary) -> void:
 		"cancelled":
 			pass
 		_:
-			var in_dl := source_dir == "" and _abs(path).begins_with(AutochartPaths.dl_dir() + "/")
+			# Every verified path is under dl/ (folder installs verify their dl/ copy); the
+			# player's own folder is never touched.
+			var in_dl := _abs(path).begins_with(AutochartPaths.dl_dir() + "/")
 			if in_dl:
 				_delete_file(path)  # never extract a part that fails its pin
 			if _reused and in_dl:
@@ -337,25 +343,49 @@ func _on_finalized(msg: Dictionary) -> void:
 
 # ---- worker bodies (no nodes, no signals) ----
 
-func _verify_task(gen: int, path: String, size: int, sha: String) -> void:
+## Hashes path. With copy_from, reads copy_from instead, writes every hashed chunk to
+## path + ".part" and renames it to path only when size and hash match, so the bytes that
+## get extracted are the bytes that were hashed (CR-01).
+func _verify_task(gen: int, path: String, size: int, sha: String, copy_from: String = "") -> void:
 	var result := "ok"
-	var f := FileAccess.open(path, FileAccess.READ)
+	var src_path := copy_from if copy_from != "" else path
+	var tmp := path + ".part"
+	var out: FileAccess = null
+	var f := FileAccess.open(src_path, FileAccess.READ)
 	if f == null:
 		result = "mismatch"
 	elif f.get_length() != size:
 		result = "mismatch"
 		f.close()
 	else:
+		if copy_from != "":
+			if FileAccess.file_exists(path):
+				DirAccess.remove_absolute(path)
+			out = FileAccess.open(tmp, FileAccess.WRITE)
+			if out == null:
+				result = "mismatch"
 		var ctx := HashingContext.new()
 		ctx.start(HashingContext.HASH_SHA256)
-		while f.get_position() < f.get_length():
+		var read := 0
+		while result == "ok" and read < size:
 			if _is_cancelled():
 				result = "cancelled"
 				break
-			ctx.update(f.get_buffer(HASH_CHUNK))
+			var buf := f.get_buffer(mini(HASH_CHUNK, size - read))
+			read += buf.size()
+			ctx.update(buf)
+			if out != null and not out.store_buffer(buf):
+				result = "mismatch"
 		f.close()
+		if out != null:
+			out.close()
 		if result == "ok" and ctx.finish().hex_encode() != sha:
 			result = "mismatch"
+		if copy_from != "":
+			if result == "ok" and DirAccess.rename_absolute(tmp, path) != OK:
+				result = "mismatch"
+			if FileAccess.file_exists(tmp):
+				DirAccess.remove_absolute(tmp)
 	_push({"t": "verified", "gen": gen, "path": path, "result": result})
 
 

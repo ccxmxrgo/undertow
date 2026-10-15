@@ -326,6 +326,32 @@ func test_install_from_folder_hash_checked() -> void:
 	assert_bool(FileAccess.file_exists(SRC.path_join(parts[0]["name"]))).is_true()
 
 
+## CR-01: the bytes that are extracted are the bytes that were hashed. Swapping the files in
+## the chosen folder after they were checked must not change what gets installed.
+func test_install_from_folder_extracts_the_hashed_copy() -> void:
+	var parts := _three("genuine")
+	SongFixture.mkdir(SRC)
+	for p in parts:
+		DirAccess.copy_absolute(ProjectSettings.globalize_path(FX.path_join(p["name"])),
+			ProjectSettings.globalize_path(SRC.path_join(p["name"])))
+	var evil := D + "/evil.zip"
+	SongFixture.make_zip(evil, {"app/autochart.py": "EVIL", "NOTICES/LICENSE.txt": "lic"})
+	_inst.state_changed.connect(func(s: String) -> void:
+		if s == "extracting":
+			var dst := ProjectSettings.globalize_path(SRC.path_join("undertow-ac-v1-app.zip"))
+			DirAccess.remove_absolute(dst)
+			DirAccess.copy_absolute(ProjectSettings.globalize_path(evil), dst))
+	_inst.source_dir = ProjectSettings.globalize_path(SRC)
+	_inst.spec = _spec(parts)
+	_inst.start()
+	await _wait_end()
+	assert_array(_failed).is_empty()
+	assert_int(_installed).is_equal(1)
+	assert_str(FileAccess.get_file_as_string(_vdir() + "/app/autochart.py")).is_equal("genuine")
+	# The verified copies lived in dl/ and are gone after the install.
+	assert_bool(DirAccess.dir_exists_absolute(AutochartPaths.dl_dir())).is_false()
+
+
 func test_install_from_folder_missing_part() -> void:
 	var parts := _three()
 	SongFixture.mkdir(SRC)
