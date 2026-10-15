@@ -173,3 +173,57 @@ func test_library_list_caps_and_filters() -> void:
 	assert_str(s.library_folders[1]).is_equal("C:/f0")
 	assert_str(s.last_song_id).is_equal("")
 	assert_str(s.last_difficulty).is_equal("expert")
+
+
+func test_versus_defaults() -> void:
+	var s: Node = auto_free(SettingsScript.new())
+	s.versus_rivals = 1
+	s.versus_skill = "veteran"
+	s.training_payload = "all"
+	s.reset_defaults()
+	assert_int(s.versus_rivals).is_equal(3)
+	assert_str(s.versus_skill).is_equal("regular")
+	assert_str(s.versus_song_id).is_equal("")
+	assert_str(s.versus_difficulty).is_equal("")
+	assert_str(s.training_payload).is_equal("off")
+
+
+func test_versus_roundtrip() -> void:
+	var a: Node = auto_free(SettingsScript.new())
+	a.versus_rivals = 2
+	a.versus_skill = "veteran"
+	a.versus_song_id = "builtin:hrt"
+	a.versus_difficulty = "expert"
+	a.training_payload = "ink_cloud"
+	assert_int(a.save_to(PATH)).is_equal(OK)
+	var b: Node = auto_free(SettingsScript.new())
+	b.load_from(PATH)
+	assert_int(b.versus_rivals).is_equal(2)
+	assert_str(b.versus_skill).is_equal("veteran")
+	assert_str(b.versus_song_id).is_equal("builtin:hrt")
+	assert_str(b.versus_difficulty).is_equal("expert")
+	assert_str(b.training_payload).is_equal("ink_cloud")
+
+
+func test_versus_garbage_is_sanitised() -> void:
+	_write("[versus]\nrivals=9\nskill=\"boss\"\nsong_id=5\ndifficulty=\"nightmare\"\ntraining=\"lane_flip\"\n")
+	var s: Node = auto_free(SettingsScript.new())
+	s.load_from(PATH)
+	assert_int(s.versus_rivals).is_equal(3)
+	assert_str(s.versus_skill).is_equal("regular")
+	assert_str(s.versus_song_id).is_equal("")
+	assert_str(s.versus_difficulty).is_equal("")
+	assert_str(s.training_payload).is_equal("off")
+	_write("[versus]\nrivals=0\nskill=[1]\ntraining=7\n")
+	s.load_from(PATH)
+	assert_int(s.versus_rivals).is_equal(1)
+	assert_str(s.versus_skill).is_equal("regular")
+	assert_str(s.training_payload).is_equal("off")
+
+
+func test_old_config_without_versus_loads_defaults() -> void:
+	_write("[gameplay]\nscroll_speed=1.5\n")
+	var s: Node = auto_free(SettingsScript.new())
+	s.load_from(PATH)
+	assert_int(s.versus_rivals).is_equal(3)
+	assert_str(s.training_payload).is_equal("off")
