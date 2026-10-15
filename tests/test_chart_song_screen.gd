@@ -218,10 +218,12 @@ func test_install_failure_returns_to_pack_missing_with_red_footer() -> void:
 
 
 func test_installed_signal_moves_to_pick() -> void:
-	var s := _screen(_spec([_part("a.zip")]))
+	var spec := _spec([_part("a.zip")])
+	var s := _screen(spec)
 	await get_tree().process_frame
 	s.download_button.pressed.emit()
 	s.installer.cancel()
+	_fake_install(spec, true)  # selftest already passed: no test run (plan 09 gate)
 	s.installer.installed.emit()
 	assert_str(s.state()).is_equal("pick")
 	assert_str(s.heading_text()).is_equal("PICK A SONG")
