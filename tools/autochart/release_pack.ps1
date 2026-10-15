@@ -10,7 +10,8 @@
 #      requires size + SHA-256 equality with pack_spec.gd (mismatch -> throw "... rebuild")
 #   4. writes SHA256SUMS.txt ("<hex>  <name>", sorted by name, LF) and RELEASE_NOTES.md
 #   5. D-16: copies the staged folder (+ pack_manifest.json, PACK-RELEASE.txt) to
-#      C:\Users\User\UNDERTOW-release-archive\autocharter-pack-v1 (outside the repo). An existing archive
+#      <repo parent>\UNDERTOW-release-archive\autocharter-pack-v1 (outside the repo; -ArchiveRoot overrides
+#      the folder). An existing archive
 #      with a different SHA256SUMS.txt is an error, never overwritten. The archive copy is re-hashed.
 #   6. prints the publish command and RELEASE_STAGE_OK
 # -VerifyPublished: downloads every part from BASE_URL + name with curl.exe into build/release/verify/,
@@ -20,12 +21,14 @@
 
 param(
     [switch]$VerifyPublished,
-    [string]$ArchiveRoot = "C:\Users\User\UNDERTOW-release-archive"
+    [string]$ArchiveRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+# IN-06: the archive sits next to the repo (no hardcoded profile path).
+if (-not $ArchiveRoot) { $ArchiveRoot = Join-Path (Split-Path -Parent $root) "UNDERTOW-release-archive" }
 $specPath = Join-Path $root "src/autocharter/pack_spec.gd"
 $outDir = Join-Path $root "build/pack/out"
 $utf8 = New-Object System.Text.UTF8Encoding($false)
