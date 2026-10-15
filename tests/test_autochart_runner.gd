@@ -218,8 +218,7 @@ func test_cancel_kills_once_and_emits_cancelled_only() -> void:
 ## the run finishes with the installed song.
 func test_cancel_after_exit_with_done_still_finishes() -> void:
 	_start()
-	_fake.chunks.append('{"ev":"done","folder":"C:/s/x","slug":"x"}
-')
+	_fake.chunks.append('{"ev":"done","folder":"C:/s/x","slug":"x"}\n')
 	_fake.running = false
 	_fake.code = 0
 	_runner.cancel()
@@ -232,8 +231,7 @@ func test_cancel_after_exit_with_done_still_finishes() -> void:
 ## WR-01: the kill lands after done was printed (install finished): done wins over the cancel.
 func test_done_wins_over_a_cancel_that_raced_it() -> void:
 	_start()
-	_fake.chunks.append('{"ev":"done","folder":"C:/s/x","slug":"x"}
-')
+	_fake.chunks.append('{"ev":"done","folder":"C:/s/x","slug":"x"}\n')
 	_frame()
 	_runner.cancel()
 	assert_int(_fake.kill_count).is_equal(1)
