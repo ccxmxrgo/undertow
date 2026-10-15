@@ -256,10 +256,9 @@ your UNDERTOW Songs folder:
   powershell -NoProfile -File tools/autochart/extract_song.ps1 -Audio "C:\Music\song.mp3" -Name "My Song" -Mode lanes
   (same as: build/autochart/venvA/Scripts/python.exe -I -B tools/autochart/autochart.py extract --src <file> ...)
 
-Why a command and not an in-game button: the separator stack (about 1.5 GB of venvs and models) is
-not packaged for friends' PCs (CONTEXT "Deferred Ideas"), so a button would only work on the dev PC.
-An in-game screen and friend packaging are deferred. The game needs no changes: the folder lands
-where the library already scans.
+Players do this in the game now (main menu > Chart a Song, with the Autocharter pack: see IN-GAME
+CHART A SONG below). This `extract` command still works and stays the dev path (dev venvs, no pack);
+the folder it writes lands where the library already scans.
 
 Modes:
   -Mode single (default)  one instrument over the 4 lanes, lanes follow its melody contour
@@ -290,6 +289,64 @@ Generated charts are written as 4-lane `N 0..3`; the importer maps gems 0..3 to 
 (identity), no 5->4 folding is involved (SPEC req 9). A generated folder is an ordinary library song:
 tests/test_generated_song_library.gd copies a bundled song into a Songs folder and checks status ok,
 the same fingerprints and the identity mapping.
+
+IN-GAME CHART A SONG (Phase 02.2.2)
+-----------------------------------
+Main menu > Chart a Song charts an audio file the player owns, on the player's PC, with the same
+pipeline as `extract`. It needs the Autocharter pack, an optional download kept outside the game.
+
+The pack (v1, tag autocharter-pack-v1, 400.1 MB download, 938.3 MB installed, 9,507 files):
+  undertow-ac-v1-app.zip        0.1 MB   app/ (autochart.py, stem_rank.py, bp_worker.py, stages/), NOTICES/
+  undertow-ac-v1-rt-core.zip  143.2 MB   rt/ (python-build-standalone CPython 3.12.15, numpy/scipy/..., VC++ DLLs)
+  undertow-ac-v1-rt-torch.zip 103.7 MB   rt/ (torch CPU)
+  undertow-ac-v1-models.zip   153.1 MB   models/ (htdemucs, beat_this)
+  Installed to %LOCALAPPDATA%\UNDERTOW\ac\v1 (fallback user://autocharter), never next to the exe or
+  in the Songs folder. Work cache (stems of the last 3 songs): %LOCALAPPDATA%\UNDERTOW\ac\work.
+  Every part's size and SHA-256 are compiled into the game (src/autocharter/pack_spec.gd, generated);
+  PackInstaller hashes each part (download or "Install from Folder") before extracting it and writes
+  installed.json last. No manifest is ever downloaded.
+
+Commands the game runs (fixed argv, everything else in job.json; AutochartJob.build_args):
+  <ac>/v1/rt/python.exe -I -X utf8 -u <ac>/v1/app/autochart.py selftest
+  <ac>/v1/rt/python.exe -I -X utf8 -u <ac>/v1/app/autochart.py job <work>/jobs/<id>/job.json
+  job.json: version, src, name, artist, genre, mode (auto|single|lanes), stem, target_nps, songs_root,
+  work_root, models_root, threads, replace. stdout carries only ASCII JSON events, one per line:
+  start {pid}, work {dir}, stage {k, n, name} (decode separate beats onsets pitch rank chart install),
+  progress {frac}, warn {msg}, rank {recommended, ranking}, error {code, stage, msg, log},
+  selftest {ok, seconds}, done {folder, slug, stem, mode, expert_nps, reused, ranking, log}.
+  Everything else (tqdm, library warnings, tracebacks) goes to <job dir>/log.txt. Exit codes: 0 ok,
+  2 error event printed, 3 MemoryError, 4 the game is gone (stdin EOF watchdog), other = crash.
+  A second instrument for the same file reuses the stems (keyed by the file's SHA-256).
+
+Building the pack (dev PC; outputs in build/pack/out, gitignored):
+  powershell -NoProfile -File tools/autochart/build_pack.ps1            full build, writes pack_spec.gd
+  powershell -NoProfile -File tools/autochart/build_pack.ps1 -AppOnly   only the app part; run it after ANY
+      change to autochart.py, stem_rank.py, bp_worker.py or stages/*.py and commit pack_spec.gd
+  powershell -NoProfile -File tools/autochart/build_pack.ps1 -OutDir build/pack/out2   reproducibility
+      check (byte-identical SHA256SUMS; never touches the game's pins)
+
+End-to-end check with the game's own classes (installs into build/pack/e2e_ac, never LOCALAPPDATA):
+  & $env:GODOT_BIN --headless --path . -s res://tools/autochart/pack_e2e.gd -- `
+      --source build/pack/out --root build/pack/e2e_ac --songs build/pack/e2e_songs --threads 8 `
+      [--only install|selftest|job|rechart|lanes|cancel|scan]
+  Steps: install from folder, selftest, auto job on synth_wave_april (CC0), re-chart with the second
+  ranked stem (must reuse stems, < 20 s), lanes, cancel 3 s into separate (the PID must leave the
+  process table), SongScanner scan (status ok, 4 difficulties, lanes 0..3). Last line E2E_OK.
+  Printout: reports/pack_e2e.txt. Delete build/pack/e2e_ac and e2e_songs afterwards (about 1 GB).
+
+Results on the dev PC (2026-10-15, 8 logical cores, reports/pack_e2e.txt):
+  install from folder (hash 400 MB + extract 9,507 files)    87 s
+  selftest (warm; about 19 s cold, 02.2.2-06)                  8 s
+  auto job, 128 s song, fresh work dir:  threads 8 35.9 s | threads 4 39.4 s | threads 2 53.5 s
+    (separation is most of it: 19.0 / 24.8 / 37.2 s)
+  re-chart another instrument (stems reused)                 2.6 s;  lanes 2.8 s
+  cancel: the child is gone 0.1 s after the runner reports cancelled
+  Sync gate (D-07) on the pack-made chart (reports/pack_synth_wave_april.sync.json):
+    pack chart       414 notes  mix 90.2% (chance 8.6%)  stem 100.0%  median +0.3 ms  tempo 0.0/0.0  live +1.33 ms  delay 58  GATE PASS
+    committed chart  416 notes  mix 89.7% (chance 9.8%)  stem 100.0%  median +0.3 ms                                delay 58  GATE PASS
+  Charts made with threads 2 and 8 are byte-identical; threads 4 moved 2 notes to the next lane in
+  Hard and Expert (same times; float reductions in torch differ by thread count). The gate is
+  timing-only, so the result holds for every thread count.
 
 LANE RULE
 ---------

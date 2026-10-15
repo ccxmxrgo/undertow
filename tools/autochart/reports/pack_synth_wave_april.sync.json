@@ -1,0 +1,83 @@
+{
+  "verdict": "PASS",
+  "difficulty": "expert",
+  "source": "godot ChartImporter dump",
+  "chart": "<repo>\\build\\pack\\e2e_songs\\synth_wave_april\\notes.chart",
+  "chart_sha256": "f04c25fad4a32ac3d48de894c76feab03d20484d9d58e2dd2559a6795078d0f6",
+  "notes_json": null,
+  "notes_json_sha256": null,
+  "ini_delay_ms": 58,
+  "decoded_wav": "<repo>\\build\\playtest\\align_synth_wave_april_decoded.wav",
+  "extra_mix": [],
+  "decoded_length_ms": 128053,
+  "note_count": 414,
+  "unique_note_times": 376,
+  "mix_onsets": 556,
+  "median_mix_ms": 0.2505000000008195,
+  "iqr_mix_ms": [
+    -7.789000000006041,
+    8.446000000006393
+  ],
+  "mix_pct": 90.1595744680851,
+  "mix_chance_pct": 8.603723404255318,
+  "stems": [
+    "<repo>\\build\\pack\\e2e_ac\\work\\w_3de448b4715b9078\\stems\\other.wav"
+  ],
+  "median_stem_ms": -0.43399999999849115,
+  "iqr_stem_ms": [
+    -5.657500000001647,
+    5.323999999994555
+  ],
+  "stem_pct": 100.0,
+  "stem_chance_pct": 30.9840425531915,
+  "tempo": {
+    "refined": {
+      "n": 256,
+      "median_abs_ms": 0.0010484208416983165,
+      "p90_abs_ms": 0.001859144227012166
+    },
+    "raw": {
+      "n": 256,
+      "median_abs_ms": 6.286857570980686,
+      "p90_abs_ms": 12.071846719543089
+    }
+  },
+  "live_lag_ms": 1.333926796913147,
+  "suggested_delay_ms": 58,
+  "fixed_misses": [],
+  "baseline_misses": [],
+  "thresholds": {
+    "fixed": {
+      "median_mix_abs_ms": 5.0,
+      "stem_pct": 90.0,
+      "mix_pct": 80.0,
+      "tempo_median_ms": 10.0,
+      "tempo_p90_ms": 20.0,
+      "live_lag_abs_ms": 3.0
+    },
+    "baseline": {
+      "median_mix_abs_ms": 5.9,
+      "stem_pct": 54.5,
+      "mix_pct": 73.5,
+      "mix_chance_max_pct": 45.0,
+      "tempo_median_ms": 10.0,
+      "tempo_p90_ms": 20.0,
+      "live_lag_abs_ms": 3.0
+    }
+  },
+  "detector": {
+    "name": "D3",
+    "delta": 0.1,
+    "hop": 64,
+    "back_ms": 30
+  },
+  "error_sign": "note - onset (negative = note before the sound)",
+  "versions": {
+    "python": "3.12.15",
+    "numpy": "2.5.3",
+    "librosa": "1.0.0",
+    "soundfile": "0.14.0",
+    "scipy": "1.18.1",
+    "soxr": "1.1.0"
+  }
+}
