@@ -143,7 +143,7 @@ func _give_at(seat: int, id: int, t: float) -> void:
 
 func test_disruptor_fired_1_to_8_beats_after_earning() -> void:
 	for seed in [1, 2, 3, 4, 5, 6, 7, 8]:
-		_setup(_plain_chart(400))
+		_setup(_plain_chart(1))  # idle bot: one missed note, never wrecked
 		var bot := _bot(_idle(), seed)
 		_run(bot, -1.0, 2.0)
 		_give_at(0, Reward.Id.INK_CLOUD, 2.0)
@@ -157,7 +157,7 @@ func test_disruptor_fired_1_to_8_beats_after_earning() -> void:
 
 
 func test_shielded_target_retried_every_beat() -> void:
-	_setup(_plain_chart(400))
+	_setup(_plain_chart(1))  # idle bot: one missed note, never wrecked
 	var bot := _bot(_idle(), 3)
 	_players[1].immune_until = 7.0
 	_run(bot, -1.0, 2.0)
@@ -176,7 +176,7 @@ func test_shielded_target_retried_every_beat() -> void:
 
 func test_decoy_and_overclock_fired_when_earned() -> void:
 	for id in [Reward.Id.DECOY_FLARE, Reward.Id.OVERCLOCK]:
-		_setup(_plain_chart(400))
+		_setup(_plain_chart(1))  # idle bot: one missed note, never wrecked
 		var bot := _bot(_idle(), 4)
 		_run(bot, -1.0, 2.0)
 		_give_at(0, id, 2.0)
