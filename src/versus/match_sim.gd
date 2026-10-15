@@ -7,7 +7,13 @@ extends RefCounted
 ## Rules covered: firing and beat-snapped flight (TORP-02, D-04), the >= 1 beat telegraph
 ## (TORP-04), shields and immunity (TORP-05, D-06, D-07), head-on collisions (spec req 9),
 ## buffs (spec req 6), targeting (D-01..D-03), bounty (spec req 10, D-31), elimination,
-## standings and last standing (MATCH-02, D-22, D-23).
+## standings and last standing (MATCH-02, D-22, D-23), Return to Sender (PAY-06, D-16, D-17),
+## Solo Duel (spec req 11) and wreck debris (MATCH-03, D-24, D-25).
+##
+## Landed stat (MATCH-05, CONTEXT default "a reflected shot does not count as landed"): the
+## shooter's `landed` is incremented at LANDED for disruptors that are neither reflected nor
+## debris, and decremented again if the target later reflects that payload. Reflected and debris
+## landings never count as landed for anyone.
 ##
 ## Determinism (Pitfall 6): a Fire press only records a pending launch for the next whole beat.
 ## update(t) walks beat boundaries and timed expiries in song-time order; launches resolve per
@@ -65,6 +71,10 @@ var _pending_bounty := {}
 var _status_cache := {}
 var _last_standing_done := false
 var _finished := false
+## torpedo id -> {from, to, reward, warheads, k, cleared}: open warhead sets (D-16).
+var _heads := {}
+## Vector2i(target seat, note index) -> torpedo id, for O(1) warhead lookup.
+var _head_notes := {}
 
 
 func _init(p_chart: ChartData, p_cfg: VersusConfig, p_jcfg: JudgeConfig,
@@ -341,9 +351,15 @@ func on_failed(seat: int, t: float) -> void:
 			{"seat": seat, "reward": Reward.Id.OVERCLOCK, "reason": "lost"})
 	var keep: Array[Dictionary] = []
 	for q in _pending:
-		if q["seat"] != seat:
+		if q["seat"] != seat or q.get("reflected", false):
 			keep.append(q)
 	_pending = keep
+	# A wreck cannot reflect: open warhead sets on it are decided (the payload took effect).
+	var ids := _heads.keys()
+	ids.sort()
+	for id in ids:
+		if _heads[id]["to"] == seat:
+			_kill_heads(id, t)
 	_check_targets()
 	_update_bounty(t)
 
@@ -410,7 +426,11 @@ func _process_expiry(ex: Dictionary) -> void:
 			p.active = {}
 			p.immune_until = time_after_bars(t, cfg.immunity_bars, chart)
 			_emit(GameEvent.PAYLOAD_END, t, {"id": rec["id"], "seat": seat,
-				"reward": rec["reward"], "reason": "expired", "immune_until": p.immune_until})
+				"reward": rec["reward"], "reason": rec.get("end_reason", "expired"),
+				"immune_until": p.immune_until})
+			# Warheads still open when the payload runs out: the reflect chance is gone.
+			if _heads.has(rec["id"]):
+				_kill_heads(rec["id"], t)
 		_EX_DECOY:
 			p.decoy_until = -INF
 			_emit(GameEvent.BUFF_ENDED, t,
@@ -449,9 +469,10 @@ func _queue_launch(seat: int, to: int, reward: int, t: float, inject: bool) -> i
 	return FIRE_OK
 
 
+## Reflected relaunches are not the seat's own fire, so they never block it.
 func _has_pending(seat: int) -> bool:
 	for q in _pending:
-		if q["seat"] == seat:
+		if q["seat"] == seat and not q.get("reflected", false):
 			return true
 	return false
 
@@ -467,7 +488,10 @@ func _resolve_launches(b: int, tb: float) -> void:
 	if due.is_empty():
 		return
 	_pending = keep
-	due.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return x["seat"] < y["seat"])
+	due.sort_custom(func(x: Dictionary, y: Dictionary) -> bool:
+		if x["seat"] != y["seat"]:
+			return x["seat"] < y["seat"]
+		return x.get("reflected", false) and not y.get("reflected", false))
 	var travel := cfg.torpedo_travel_beats
 	var gone := {}
 	# 1. Head-on pairs (spec req 9): opposite disruptors whose flights overlap.
@@ -518,6 +542,7 @@ func _collide(a: Dictionary, c: Dictionary, flight_id: int, tb: float,
 		other_reward = f["reward"]
 		id_c = flight_id
 		_flights.erase(f)
+		_forget_heads(flight_id)
 		var victim: PlayerState = _by_seat[f["to"]]
 		if victim.incoming_id == flight_id:
 			victim.incoming_id = -1
@@ -548,6 +573,14 @@ func _commit_launch(q: Dictionary, b: int, tb: float) -> void:
 	var seat: int = q["seat"]
 	var to: int = q["to"]
 	var target: PlayerState = _by_seat.get(to)
+	if q.get("reflected", false):
+		# D-17: a reflected torpedo fizzles when the sender is gone or shielded (no refusal,
+		# no race: nobody pressed Fire).
+		if target == null or (not target.alive and not target.is_drone) \
+				or target.is_shielded(tb):
+			_emit(GameEvent.FIZZLED, tb, {"id": q.get("orig_id", -1), "from": seat, "to": to,
+				"reward": q["reward"]})
+			return
 	if target == null or (not target.alive and not target.is_drone):
 		_refuse(seat, "no_target")
 		return
@@ -570,6 +603,11 @@ func _commit_launch(q: Dictionary, b: int, tb: float) -> void:
 	rec["arrive_beat"] = arrive_beat
 	_flights.append(rec)
 	target.incoming_id = id
+	if not warheads.is_empty():
+		_heads[id] = {"from": seat, "to": to, "reward": q["reward"], "warheads": warheads,
+			"k": 0, "cleared": false}
+		for n in warheads:
+			_head_notes[Vector2i(to, n)] = id
 	if not reflected and not debris:
 		target.last_attacker = seat
 	_emit(GameEvent.TORPEDO_LAUNCH, tb, fields)
@@ -603,6 +641,7 @@ func _arrive(f: Dictionary) -> void:
 	if target.decoy_until > t:
 		target.decoy_until = -INF
 		target.absorbed += 1
+		_forget_heads(id)
 		_emit(GameEvent.ABSORBED, t,
 			{"id": id, "from": f["from"], "to": f["to"], "reward": f["reward"]})
 		_emit(GameEvent.BUFF_ENDED, t,
@@ -615,9 +654,13 @@ func _arrive(f: Dictionary) -> void:
 	var rec := fields.duplicate()
 	rec["warheads"] = f["warheads"]
 	target.active = rec
-	_by_seat[f["from"]].landed += 1
+	if not f["reflected"] and not f["debris"]:
+		_by_seat[f["from"]].landed += 1
 	_emit(GameEvent.LANDED, t, fields)
 	_on_landed_bounty(rec, t)
+	# Every warhead was already judged Perfect before the torpedo arrived (early judgments).
+	if _heads.has(id) and _heads[id]["cleared"]:
+		_reflect(id, t)
 
 
 # --- Buffs -----------------------------------------------------------------------------------
@@ -886,11 +929,89 @@ func _drop_bounty(id: int) -> void:
 	_pending_bounty.erase(id)
 
 
-# --- Hooks for 03-06 -------------------------------------------------------------------------
+# --- Return to Sender (PAY-06, D-16, D-17) ---------------------------------------------------
 
-## Warheads and Solo Duel (filled by plan 03-06).
-func _on_judged_hook(_seat: int, _note_index: int, _judgment: int, _t: float) -> void:
-	pass
+## Called for every base judgment on every seat (wrecks and drones included), after the meter.
+func _on_judged_hook(seat: int, note_index: int, judgment: int, t: float) -> void:
+	_warhead_judged(seat, note_index, judgment, t)
+
+
+## A judged warhead note: raw PERFECT advances k (Overclock never counts); anything else ends
+## the reflect chance, which decides a pending bounty claim (spec req 10 with D-17).
+func _warhead_judged(seat: int, note_index: int, judgment: int, t: float) -> void:
+	var key := Vector2i(seat, note_index)
+	if not _head_notes.has(key):
+		return
+	var id: int = _head_notes[key]
+	_head_notes.erase(key)
+	if not _heads.has(id):
+		return
+	var h: Dictionary = _heads[id]
+	var n: int = h["warheads"].size()
+	if judgment != InputJudge.Judgment.PERFECT:
+		_emit(GameEvent.WARHEAD, t,
+			{"id": id, "seat": seat, "note": note_index, "k": h["k"], "n": n, "ok": false})
+		_kill_heads(id, t)
+		return
+	h["k"] = int(h["k"]) + 1
+	_emit(GameEvent.WARHEAD, t,
+		{"id": id, "seat": seat, "note": note_index, "k": h["k"], "n": n, "ok": true})
+	if int(h["k"]) < n:
+		return
+	var target: PlayerState = _by_seat[seat]
+	if target.active.get("id", -1) == id:
+		_reflect(id, t)
+	elif _in_flight(id):
+		h["cleared"] = true  # reflect the moment it lands
+	else:
+		_kill_heads(id, t)
+
+
+func _in_flight(id: int) -> bool:
+	for f in _flights:
+		if f["id"] == id:
+			return true
+	return false
+
+
+## D-17: the payload ends on the target at the next whole beat (1-beat ease out, then immunity)
+## and relaunches at the sender on that beat with no warheads. The original shot stops counting
+## as landed; a pending bounty claim is dropped.
+func _reflect(id: int, t: float) -> void:
+	var h: Dictionary = _heads[id]
+	_forget_heads(id)
+	var by: int = h["to"]
+	var sender: int = h["from"]
+	var p: PlayerState = _by_seat[by]
+	var rec := p.active
+	p.reflected += 1
+	_by_seat[sender].landed = maxi(0, _by_seat[sender].landed - 1)
+	_drop_bounty(id)
+	var lb := maxi(launch_beat(t, chart.tempo_map), _last_beat + 1)
+	var te := BeatClock.time_at_beat(float(lb), chart.tempo_map)
+	if te < float(rec["end_t"]):
+		rec["end_t"] = te
+	rec["end_reason"] = "reflected"
+	_emit(GameEvent.REFLECTED, t, {"id": id, "by": by, "to": sender, "reward": h["reward"]})
+	_pending.append({"seat": by, "to": sender, "reward": h["reward"], "launch_beat": lb,
+		"inject": true, "reflected": true, "debris": false, "orig_id": id})
+
+
+## The reflect chance died: forget the warheads and claim any pending bounty now.
+func _kill_heads(id: int, t: float) -> void:
+	_forget_heads(id)
+	_claim_bounty(id, t)
+
+
+func _forget_heads(id: int) -> void:
+	if not _heads.has(id):
+		return
+	var h: Dictionary = _heads[id]
+	for n in h["warheads"]:
+		var key := Vector2i(int(h["to"]), int(n))
+		if _head_notes.get(key, -1) == id:
+			_head_notes.erase(key)
+	_heads.erase(id)
 
 
 # --- Events ----------------------------------------------------------------------------------

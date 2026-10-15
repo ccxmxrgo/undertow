@@ -1,6 +1,6 @@
 extends GdUnitTestSuite
 ## 03-06 Task 1: Return to Sender (PAY-06, D-16, D-17, spec req 10 with D-17).
-## click_chart(120): one note per beat, 0.5 s per beat, 2 s per bar. Seat 1 fires Ink Cloud at
+## click_chart(120, 1000): one note per beat, 0.5 s per beat, 2 s per bar, threshold 120. Seat 1 fires Ink Cloud at
 ## 1.1 -> launch beat 3 (1.5 s), lands on seat 0 at 2.0 s with warheads = notes 4..7.
 
 const P := InputJudge.Judgment.PERFECT
@@ -14,7 +14,7 @@ var _players: Array[PlayerState] = []
 var _chart: ChartData
 
 
-func _sim(beats: int = 256, bounty: bool = false) -> MatchSim:
+func _sim(beats: int = 1000, bounty: bool = false) -> MatchSim:
 	_chart = TestCharts.click_chart(120.0, beats, 1000)
 	_players = []
 	for s in range(4):
@@ -185,7 +185,7 @@ func test_reflected_fizzles_when_sender_shielded() -> void:
 
 
 func test_reflection_on_bounty_holder_never_claims() -> void:
-	var sim := _sim(256, true)
+	var sim := _sim(1000, true)
 	assert_int(sim.bounty_holder).is_equal(0)
 	_land_on_0(sim)
 	var before := _players[1].meter.progress
@@ -198,7 +198,7 @@ func test_reflection_on_bounty_holder_never_claims() -> void:
 
 
 func test_failed_warhead_claims_bounty_for_holder_at_landing() -> void:
-	var sim := _sim(256, true)
+	var sim := _sim(1000, true)
 	_land_on_0(sim)
 	# The lead changes after landing: the claim still names the holder at landing.
 	sim.report_status(2, 100.0, 2000.0, 0.9, 10, 2.1)
@@ -216,7 +216,7 @@ func test_failed_warhead_claims_bounty_for_holder_at_landing() -> void:
 
 
 func test_reflected_landing_on_holder_no_bounty_and_landed_stats() -> void:
-	var sim := _sim(256, true)
+	var sim := _sim(1000, true)
 	# Seat 1 holds the bounty; seat 0 (trailing) fires at it, seat 1 reflects.
 	sim.report_status(1, 100.0, 5000.0, 0.9, 10, 0.3)
 	sim.report_status(0, 100.0, 100.0, 0.9, 10, 0.3)
