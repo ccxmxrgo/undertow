@@ -30,7 +30,7 @@ var players: Array[PlayerState] = []
 ## seat -> SubRig (playing seats only; the drone has none).
 var rigs := {}
 var bots: Array[BotPlayer] = []
-var drone: RefCounted  # TrainingDrone (Task 3)
+var drone: TrainingDrone
 var human_seat: int = -1
 var drone_seat: int = -1
 var seed: int = 0
@@ -155,7 +155,8 @@ func _init(p_chart: ChartData, opts: Dictionary = {}) -> void:
 		bots.append(b)
 		_actors.append(b)
 	if training != -1:
-		pass  # TrainingDrone added in Task 3
+		drone = TrainingDrone.new(sim, chart, cfg, drone_seat, human_seat, training)
+		_actors.append(drone)
 	var last := 0.0
 	for n in chart.notes:
 		last = maxf(last, float(n["time"]) + float(n["duration"]))
