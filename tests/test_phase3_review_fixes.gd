@@ -71,3 +71,33 @@ func test_popups_unchanged_without_payloads() -> void:
 	assert_float(fb.ink_fade()).is_equal(1.0)
 	fb.highway = _crossed_highway()
 	assert_float(fb.ink_fade()).is_equal(1.0)
+
+
+# ---- WR-06 (V-2): periscope callsign budget includes the +2 px glyph spacing ---------------
+
+func test_nine_letter_callsign_fits_next_to_the_place() -> void:
+	var p: PeriscopePanel = auto_free(PeriscopePanel.new())
+	p.setup(1, "barracuda")
+	p.on_event(GameEvent.make(GameEvent.STATUS, 1.0, {"seat": 1, "hull": 100.0, "depth": 10,
+		"alive": true, "place": 2}))
+	assert_str(p.place_text()).is_equal("2ND")
+	assert_str(p.shown_callsign()).is_equal("BARRACUDA")
+	var w := PeriscopePanel.spaced_font().get_string_size("BARRACUDA", HORIZONTAL_ALIGNMENT_LEFT, -1,
+		Palette.SIZE_LABEL).x
+	assert_float(w).is_greater(PeriscopePanel.CALL_MAX)  # the old fixed budget cut it
+	assert_float(w).is_less_equal(p.call_max())
+	# The callsign never runs into the place text.
+	var pw := Palette.font().get_string_size("2ND", HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL).x
+	assert_float(p.callsign_x() + p.call_max()).is_less_equal(PeriscopePanel.PLACE_RIGHT - pw)
+
+
+func test_callsign_cache_follows_bounty_shift() -> void:
+	var p: PeriscopePanel = auto_free(PeriscopePanel.new())
+	p.setup(1, "averyveryverylongcallsign")
+	var plain := p.shown_callsign()
+	p.on_event(GameEvent.make(GameEvent.BOUNTY_MOVED, 1.0, {"from_seat": -1, "to_seat": 1}))
+	var shifted := p.shown_callsign()
+	assert_int(shifted.length()).is_less_equal(plain.length())
+	var w := PeriscopePanel.spaced_font().get_string_size(shifted, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		Palette.SIZE_LABEL).x
+	assert_float(w).is_less_equal(p.call_max())

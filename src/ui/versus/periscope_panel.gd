@@ -40,10 +40,11 @@ const BOUNTY_RECT := Rect2(96.0, 14.0, 16.0, 16.0)
 const CALL_X := 96.0
 const CALL_X_BOUNTY := 120.0
 const CALL_BASE := 30.0
-const CALL_MAX := 112.0
+const CALL_MAX := 112.0  # UI-SPEC 6.2 nominal; the real budget is call_max() (WR-06)
 const CALL_SPACING := 2
 const PLACE_RIGHT := 272.0
 const PLACE_BOX := 64.0
+const PLACE_GAP := 8.0  # callsign to place text
 const HULL_X := 96.0
 const HULL_Y := 40.0
 const HULL_W := 176.0
@@ -123,6 +124,9 @@ var _rng := RandomNumberGenerator.new()
 var _low: bool = false
 var _reduce: bool = false
 var _box: StyleBoxFlat
+var _call_key: String = ""
+var _call_max: float = CALL_MAX
+var _shown_call: String = ""
 
 
 func _ready() -> void:
@@ -460,8 +464,26 @@ func callsign_x() -> float:
 	return CALL_X_BOUNTY if _bounty else CALL_X
 
 
+## Callsign width budget (WR-06): from callsign_x() to PLACE_GAP left of the place text, measured
+## with the real font (the +2 px glyph spacing included), so "BARRACUDA" fits without the bounty
+## marker. A fixed 112 px ignored the spacing and cut 9-letter names.
+func call_max() -> float:
+	var place := place_text()
+	var pw := 0.0
+	if place != "":
+		pw = Palette.font().get_string_size(place, HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL).x
+	return PLACE_RIGHT - pw - PLACE_GAP - callsign_x()
+
+
+## Truncated callsign, cached: recomputed only when the name, bounty or place changes (never
+## per frame, WR-06 / WR-08).
 func shown_callsign() -> String:
-	return ProgressTrack.truncate_px(callsign, spaced_font(), Palette.SIZE_LABEL, CALL_MAX)
+	var key := "%s|%d|%d" % [callsign, int(_bounty), _place]
+	if key != _call_key:
+		_call_key = key
+		_call_max = call_max()
+		_shown_call = ProgressTrack.truncate_px(callsign, spaced_font(), Palette.SIZE_LABEL, _call_max)
+	return _shown_call
 
 
 func edge_color() -> Color:
@@ -580,7 +602,7 @@ func _draw_text() -> void:
 		UiIcons.draw(self, "bounty", BOUNTY_RECT, Palette.REWARD_GOLD)
 	var call_col := Palette.TEXT_LO if _wreck else Palette.TEXT_HI
 	draw_string(spaced_font(), Vector2(callsign_x(), CALL_BASE), shown_callsign(), HORIZONTAL_ALIGNMENT_LEFT,
-		CALL_MAX, fs, call_col)
+		_call_max, fs, call_col)
 	var place := place_text()
 	if place != "":
 		draw_string(Palette.font(), Vector2(PLACE_RIGHT - PLACE_BOX, CALL_BASE), place, HORIZONTAL_ALIGNMENT_RIGHT,

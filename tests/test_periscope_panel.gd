@@ -109,7 +109,7 @@ func test_names_clamped_and_unknown_seat() -> void:
 	assert_int(p.callsign.length()).is_less_equal(PeriscopePanel.MAX_NAME_CHARS)
 	var w := PeriscopePanel.spaced_font().get_string_size(p.shown_callsign(), HORIZONTAL_ALIGNMENT_LEFT, -1,
 		Palette.SIZE_LABEL).x
-	assert_float(w).is_less_equal(PeriscopePanel.CALL_MAX)
+	assert_float(w).is_less_equal(p.call_max())
 	p.free()
 
 
