@@ -2218,14 +2218,16 @@ func sc_polish() -> void:
 	check("menu: AbyssBackdrop (title) is the first child", m.get_child(0) is AbyssBackdrop
 		and (m.get_child(0) as AbyssBackdrop).variant == "title", m.get_child(0))
 	var sonar_px := 0
-	var ex := 128.0
-	while ex < 640.0:
-		for ey in [417.0, 478.0]:
+	# 03-05: the 9-item menu moved the column, so read the focused button's own rect.
+	var sr := m.start_button.get_global_rect()
+	var ex := sr.position.x
+	while ex < sr.end.x:
+		for ey in [sr.position.y + 1.0, sr.end.y - 2.0]:
 			var px_c := _img_px(last_img, Vector2(ex, ey))
 			if px_c.b > 0.55 and px_c.g > 0.45 and px_c.r < 0.35:
 				sonar_px += 1
 		ex += 4.0
-	check("menu: SONAR edge pixels on the focused Start Dive button (x 128..640, y 416..480)", sonar_px > 20, sonar_px)
+	check("menu: SONAR edge pixels on the focused Start Dive button (its own rect)", sonar_px > 20, [sonar_px, sr])
 	var logo_lum := 0.0
 	var ly := 180.0
 	while ly < 310.0:
