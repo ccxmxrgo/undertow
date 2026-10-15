@@ -1,0 +1,114 @@
+UNDERTOW Autocharter pack - third-party software and licences
+==============================================================
+
+The Autocharter pack is an optional download for the game UNDERTOW. It contains a Python
+runtime, unmodified third-party Python packages and native libraries, two machine-learning
+model files and the UNDERTOW autocharter scripts (folder app/). This file summarises the
+third-party components and their licences. The full licence texts ship next to the
+components they cover; NOTICES/INDEX.txt lists every licence file in this pack.
+
+The pack contains no audio files (no music, no samples). Charts are made from audio the
+player chooses on their own computer.
+
+Every third-party component is redistributed unmodified, in the form its upstream project
+publishes (python-build-standalone archive, PyPI / download.pytorch.org wheels, model files
+from the upstream projects).
+
+
+LGPL components (unmodified dynamic libraries; you may replace them with your own builds)
+-----------------------------------------------------------------------------------------
+
+libsndfile (inside python-soundfile: rt/Lib/site-packages/_soundfile_data/libsndfile_x64.dll)
+  Licence: GNU Lesser General Public License 2.1 (LGPL-2.1-or-later)
+  The DLL also contains these libraries, linked statically by the soundfile project:
+    mpg123     LGPL-2.1        https://www.mpg123.de/  (source: https://www.mpg123.de/download.shtml)
+    libvorbis  BSD-3-Clause    https://github.com/xiph/vorbis
+    libogg     BSD-3-Clause    https://github.com/xiph/ogg
+    FLAC       BSD-3-Clause    https://github.com/xiph/flac
+    opus       BSD-3-Clause    https://github.com/xiph/opus
+    LAME       LGPL-2.0-or-later  https://lame.sourceforge.io/
+  Source: https://github.com/libsndfile/libsndfile
+  Binary build: https://github.com/bastibe/libsndfile-binaries
+  Licence text: rt/Lib/site-packages/_soundfile_data/COPYING
+
+soxr (libsoxr, inside python-soxr: rt/Lib/site-packages/soxr/soxr_ext.pyd)
+  Licence: LGPL-2.1-or-later
+  Source: https://sourceforge.net/projects/soxr/ (python bindings: https://github.com/dofuuz/python-soxr)
+  Licence text: rt/Lib/site-packages/soxr-*.dist-info/licenses/
+
+lameenc (LAME MP3 encoder, rt/Lib/site-packages/lameenc*.pyd)
+  Licence: LGPL-3.0-or-later
+  Source: https://lame.sourceforge.io/ (bindings: https://github.com/chrisstaite/lameenc)
+  Licence text: rt/Lib/site-packages/lameenc-*.dist-info/licenses/LICENSE
+
+
+Models
+------
+
+htdemucs (Hybrid Transformer Demucs) weights
+  models/hf/hub/models--adefossez--HTDemucs/ (955717e8.safetensors, htdemucs.yaml)
+  From the demucs project, released under the MIT License.
+  Source: https://github.com/adefossez/demucs and https://huggingface.co/adefossez/HTDemucs
+
+beat_this final0 checkpoint
+  models/torch/hub/checkpoints/beat_this-final0.ckpt
+  "The code and the published model weights are released under the MIT license."
+  Source: https://github.com/CPJKU/beat_this
+
+Basic Pitch ICASSP 2022 model (nmp.onnx, inside the basic-pitch package)
+  Licence: Apache License 2.0 (LICENSE and NOTICE kept in basic_pitch-*.dist-info)
+  Source: https://github.com/spotify/basic-pitch
+
+
+Main Python packages
+--------------------
+
+demucs          MIT              https://github.com/adefossez/demucs
+beat_this       MIT              https://github.com/CPJKU/beat_this
+basic-pitch     Apache-2.0       https://github.com/spotify/basic-pitch
+torch           BSD-3-Clause     https://github.com/pytorch/pytorch
+                (the wheel bundles Intel OpenMP, libiomp5md.dll, under its own licence;
+                 see torch-*.dist-info/licenses and torch/lib)
+torchaudio      BSD-2-Clause     https://github.com/pytorch/audio
+onnxruntime     MIT              https://github.com/microsoft/onnxruntime
+numpy           BSD-3-Clause     https://github.com/numpy/numpy
+scipy           BSD-3-Clause     https://github.com/scipy/scipy
+scikit-learn    BSD-3-Clause     https://github.com/scikit-learn/scikit-learn
+numba           BSD-2-Clause     https://github.com/numba/numba
+llvmlite        BSD-2-Clause (+ LLVM Apache-2.0 with LLVM exceptions)  https://github.com/numba/llvmlite
+librosa         ISC              https://github.com/librosa/librosa
+python-soundfile BSD-3-Clause    https://github.com/bastibe/python-soundfile
+certifi         MPL-2.0          https://github.com/certifi/python-certifi
+tqdm            MPL-2.0 and MIT  https://github.com/tqdm/tqdm
+sphn            Apache-2.0       https://github.com/kyutai-labs/sphn
+All other packages in rt/Lib/site-packages are under permissive licences (MIT, BSD,
+Apache-2.0, PSF, ISC); each package's licence is in its *.dist-info folder.
+
+
+Python runtime
+--------------
+
+CPython 3.12.15 (python-build-standalone 20261009, x86_64-pc-windows-msvc install_only_stripped)
+  Licence: Python Software Foundation License; bundled libraries (OpenSSL Apache-2.0,
+  libffi MIT, zlib, bzip2, xz, sqlite public domain, and others) keep their licences.
+  Licence text: rt/LICENSE.txt and the files listed in NOTICES/INDEX.txt
+  Source: https://www.python.org/ and https://github.com/astral-sh/python-build-standalone
+
+
+Microsoft Visual C++ runtime
+----------------------------
+
+rt/msvcp140.dll, rt/msvcp140_1.dll, rt/msvcp140_2.dll, rt/vcruntime140.dll,
+rt/vcruntime140_1.dll, rt/concrt140.dll
+  Microsoft Visual C++ 2015-2022 Redistributable (x64) runtime files, redistributed
+  unmodified under the Microsoft Visual C++ Redistributable licence terms (the
+  "Distributable Code" of Microsoft Visual Studio). Copyright Microsoft Corporation.
+  https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
+  If the autocharter reports a missing runtime, install the official Microsoft Visual C++
+  Redistributable (x64) from that page.
+
+
+UNDERTOW autocharter scripts (app/)
+-----------------------------------
+
+The files in app/ are part of UNDERTOW.
