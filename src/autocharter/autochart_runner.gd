@@ -4,8 +4,9 @@ extends Node
 ## quit (D-05). Polls both pipes every frame without blocking; maps failures to the player-facing
 ## error table (D-01).
 ##
-## Result rule (W1): a cancelled run emits only cancelled(). Otherwise exit 0 with a done event
-## -> finished(done). Any other outcome is a failure: the last error event's code/log win;
+## Result rule (W1): a done event without an error event -> finished(done), when the exit code
+## is 0 or a cancel raced the end of the job (the song is installed; WR-01). Otherwise a
+## cancelled run emits only cancelled(). Any other outcome is a failure: the last error event's code/log win;
 ## without one, the exit code decides (0 -> internal, 3 -> memory, 4 -> internal, other -> crash).
 
 signal stage_changed(k: int, n: int, stage_name: String)
@@ -61,8 +62,10 @@ func start(python_exe: String, args: PackedStringArray) -> bool:
 	return true
 
 
+## Only a live child is cancelled: once it has exited (a done event may already be buffered)
+## the run finishes normally on the next frame (WR-01).
 func cancel() -> void:
-	if not _running or _cancelled:
+	if not _running or _cancelled or not adapter.is_running():
 		return
 	_cancelled = true
 	adapter.kill()
@@ -161,11 +164,14 @@ func _finish(code: int) -> void:
 	_running = false
 	set_process(false)
 	adapter.close()
+	# WR-01: a done event means the song was installed; it wins over a cancel that raced it
+	# (the kill may land after done was printed, so the exit code is not checked then).
+	var done := not _done_ev.is_empty() and _error_ev.is_empty()
+	if done and (code == AutochartJob.EXIT_OK or _cancelled):
+		finished.emit(_done_ev)
+		return
 	if _cancelled:
 		cancelled.emit()
-		return
-	if code == AutochartJob.EXIT_OK and not _done_ev.is_empty() and _error_ev.is_empty():
-		finished.emit(_done_ev)
 		return
 	if not _error_ev.is_empty():
 		_fail(_str(_error_ev.get("code"), "internal"), _str(_error_ev.get("log")),

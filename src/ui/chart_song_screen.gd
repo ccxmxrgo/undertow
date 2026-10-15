@@ -1075,6 +1075,7 @@ func _on_start_requested(job: Dictionary) -> void:
 	_update_elapsed()
 	elapsed_timer.start()
 	set_footer("")
+	cancel_job_button.disabled = false  # disabled again at the install stage (WR-01)
 	show_state("running")
 	_stop_menu_music()
 	_run_mode = "job"
@@ -1106,6 +1107,12 @@ func _on_runner_stage(_k: int, _n: int, stage_name: String) -> void:
 		return
 	_current_row = maxi(_current_row, int(STAGE_TO_ROW[stage_name]))
 	_refresh_stage_rows()
+	if stage_name == "install" and not cancel_job_button.disabled:
+		# WR-01: the song is being moved into the library; a stop now could land after the
+		# install, so Cancel (and an open stop dialog) goes away for this last short stage.
+		cancel_job_button.disabled = true
+		_close_dialog()
+		_link_focus()
 
 
 func _on_runner_progress(frac: float) -> void:
@@ -1165,7 +1172,7 @@ func _on_runner_cancelled() -> void:
 
 
 func _confirm_stop_job() -> void:
-	if dialog != null or _state != "running":
+	if dialog != null or _state != "running" or cancel_job_button.disabled:
 		return
 	_open_dialog("STOP CHARTING?", "The chart for %s will not be saved." % String(_ran.get("name", "")),
 		"Stop", "Keep Charting",

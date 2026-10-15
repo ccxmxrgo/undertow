@@ -647,6 +647,28 @@ func test_cancel_confirmed_kills_child_and_removes_unfinished_work_dir() -> void
 	assert_str(s.name_edit.text).is_equal("song")
 
 
+## WR-01: once the install stage starts, Cancel is disabled, an open stop dialog closes and Esc
+## no longer asks, so a stop cannot land after the song was moved into the library.
+func test_cancel_is_disabled_during_the_install_stage() -> void:
+	var s: ChartSongScreen = await _running_screen()
+	s.cancel_job_button.pressed.emit()
+	assert_object(s.dialog).is_not_null()
+	_push(s, [{"ev": "stage", "k": 8, "n": 8, "name": "install"}])
+	assert_bool(s.cancel_job_button.disabled).is_true()
+	assert_object(s.dialog).is_null()
+	await _cancel()
+	assert_object(s.dialog).is_null()
+	assert_int(_fake.kill_count).is_equal(0)
+	_push(s, [_done()])
+	_exit(s, 0)
+	assert_str(s.state()).is_equal("result")
+	# The next job starts with Cancel enabled again.
+	s.chart_another_button.pressed.emit()
+	s.start_button.pressed.emit()
+	assert_str(s.state()).is_equal("running")
+	assert_bool(s.cancel_job_button.disabled).is_false()
+
+
 func test_ui_cancel_while_running_asks_and_keep_continues() -> void:
 	var s: ChartSongScreen = await _running_screen()
 	await _cancel()

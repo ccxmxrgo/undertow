@@ -214,6 +214,38 @@ func test_cancel_kills_once_and_emits_cancelled_only() -> void:
 	assert_array(_finished).is_empty()
 
 
+## WR-01: the child already exited after printing done; a cancel pressed now does nothing and
+## the run finishes with the installed song.
+func test_cancel_after_exit_with_done_still_finishes() -> void:
+	_start()
+	_fake.chunks.append('{"ev":"done","folder":"C:/s/x","slug":"x"}
+')
+	_fake.running = false
+	_fake.code = 0
+	_runner.cancel()
+	assert_int(_fake.kill_count).is_equal(0)
+	_frame()
+	assert_int(_cancelled).is_equal(0)
+	assert_int(_finished.size()).is_equal(1)
+
+
+## WR-01: the kill lands after done was printed (install finished): done wins over the cancel.
+func test_done_wins_over_a_cancel_that_raced_it() -> void:
+	_start()
+	_fake.chunks.append('{"ev":"done","folder":"C:/s/x","slug":"x"}
+')
+	_frame()
+	_runner.cancel()
+	assert_int(_fake.kill_count).is_equal(1)
+	_fake.running = false
+	_fake.code = 1
+	_frame()
+	assert_int(_cancelled).is_equal(0)
+	assert_array(_failed).is_empty()
+	assert_int(_finished.size()).is_equal(1)
+	assert_str(_finished[0]["slug"]).is_equal("x")
+
+
 func test_cancel_with_exit_four_is_not_failure() -> void:
 	_start()
 	_runner.cancel()
