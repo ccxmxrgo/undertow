@@ -9,7 +9,7 @@
 #   3. creates a fresh build/release/autocharter-pack-v1/ with every part zip, re-hashes each copy and
 #      requires size + SHA-256 equality with pack_spec.gd (mismatch -> throw "... rebuild")
 #   4. writes SHA256SUMS.txt ("<hex>  <name>", sorted by name, LF) and RELEASE_NOTES.md
-#   5. D-16: copies the staged folder (+ pack_manifest.json) to
+#   5. D-16: copies the staged folder (+ pack_manifest.json, PACK-RELEASE.txt) to
 #      C:\Users\User\UNDERTOW-release-archive\autocharter-pack-v1 (outside the repo). An existing archive
 #      with a different SHA256SUMS.txt is an error, never overwritten. The archive copy is re-hashed.
 #   6. prints the publish command and RELEASE_STAGE_OK
@@ -172,6 +172,8 @@ Copy-Item -LiteralPath (Join-Path $stage "SHA256SUMS.txt") -Destination $archive
 Copy-Item -LiteralPath (Join-Path $stage "RELEASE_NOTES.md") -Destination $archive -Force
 $manifest = Join-Path $outDir "pack_manifest.json"
 if (Test-Path -LiteralPath $manifest) { Copy-Item -LiteralPath $manifest -Destination $archive -Force }
+# The publish instructions travel with the archived bytes (not uploaded: kept out of the staging folder).
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "PACK-RELEASE.txt") -Destination $archive -Force
 Write-Host "re-hashing the archive copy"
 Assert-Parts $archive "the archive $archive"
 if ([System.IO.File]::ReadAllText($archSums).Replace("`r`n", "`n") -ne $sumsText) {

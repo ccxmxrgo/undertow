@@ -85,7 +85,7 @@ The exact release bytes are archived outside the repo in
 
   C:\Users\User\UNDERTOW-release-archive\autocharter-pack-v1
 
-(4 zips, SHA256SUMS.txt, RELEASE_NOTES.md, pack_manifest.json). release_pack.ps1 refuses to overwrite an
+(4 zips, SHA256SUMS.txt, RELEASE_NOTES.md, pack_manifest.json and a copy of this file). release_pack.ps1 refuses to overwrite an
 archive whose SHA256SUMS.txt differs. Keep a second copy of this folder somewhere safe.
 
 The pack build is checked for reproducibility (plan 06 built it twice with identical SHA256SUMS), but a
