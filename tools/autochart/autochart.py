@@ -183,14 +183,29 @@ def band_flags(per: dict) -> list:
 
 
 def cmd_chart(args) -> int:
-    from stages import lanes, quantize
-    from stages.tempo_map import build_tempo_map
-
     work = work_dir(args.id)
     out_dir = _out_dir(args.out)
     stats_dir = Path(args.stats_dir).resolve()
     if not _inside(stats_dir, [ROOT.resolve()]):
         raise AutochartError("args", f"--stats-dir {stats_dir} must be inside the repo {ROOT}")
+    return _chart_core(work, out_dir, stats_dir, args.stem, args.fill_stem, args.fill_mode, args.target_nps,
+                       args.name, args.artist, args.genre, args.delay_ms, args.song_length_ms, args.godot_wav,
+                       getattr(args, "mode", "single"), args.id)
+
+
+def _chart_core(work: Path, out_dir: Path, stats_dir: Path, stem: str, fill_stem, fill_mode: str,
+                target_nps: float, name: str, artist: str, genre: str, delay_ms, song_length_ms, godot_wav,
+                mode: str, song_id: str) -> int:
+    """The chart stage shared by `chart` (dev, paths checked by cmd_chart) and `job` (pack, paths from the
+    validated job.json). Writes out_dir/notes.chart + song.ini and stats_dir/<song_id>.chart_stats.json."""
+    import argparse as _ap
+
+    from stages import lanes, quantize
+    from stages.tempo_map import build_tempo_map
+
+    args = _ap.Namespace(id=song_id, stem=stem, fill_stem=fill_stem, fill_mode=fill_mode, target_nps=target_nps,
+                         name=name, artist=artist, genre=genre, delay_ms=delay_ms,
+                         song_length_ms=song_length_ms, godot_wav=godot_wav, mode=mode)
     if args.fill_stem and args.fill_stem == args.stem:
         raise AutochartError("args", f"--fill-stem {args.fill_stem} must differ from --stem")
     if not 0.5 <= args.target_nps <= 8.0:
