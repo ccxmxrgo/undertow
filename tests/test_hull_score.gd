@@ -20,12 +20,23 @@ func _hit(h: HullScore, j: int, n: int = 1) -> void:
 		h.on_judged(0, 0, j, 0.0)
 
 
-func test_miss_costs_eight_perfect_restores_one() -> void:
+func test_miss_costs_eight_perfect_restores_quarter() -> void:
 	var h := _make()
 	_hit(h, M)
 	assert_float(h.hull).is_equal(92.0)
 	_hit(h, P)
-	assert_float(h.hull).is_equal(93.0)
+	assert_float(h.hull).is_equal(92.25)
+
+
+## 03-SPEC req 14: a quarter per Perfect, so 32 Perfects undo one Miss.
+func test_thirty_two_perfects_undo_a_miss() -> void:
+	var h := _make()
+	_hit(h, M)
+	assert_float(h.hull).is_equal(92.0)
+	_hit(h, P, 31)
+	assert_float(h.hull).is_equal(99.75)
+	_hit(h, P)
+	assert_float(h.hull).is_equal(100.0)
 
 
 func test_perfect_at_full_stays_capped_and_good_is_neutral() -> void:
