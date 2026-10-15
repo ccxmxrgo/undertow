@@ -352,6 +352,23 @@ func test_install_from_folder_extracts_the_hashed_copy() -> void:
 	assert_bool(DirAccess.dir_exists_absolute(AutochartPaths.dl_dir())).is_false()
 
 
+## WR-02: a read that stops returning data (unplugged stick, dropped share) fails the check
+## instead of spinning forever.
+func test_hash_stream_short_read_fails_instead_of_spinning() -> void:
+	SongFixture.write_text(D + "/short.bin", "0123456789")
+	var f := FileAccess.open(D + "/short.bin", FileAccess.READ)
+	var sha := FileAccess.get_sha256(D + "/short.bin")
+	assert_str(PackInstaller.hash_stream(f, 10, sha)).is_equal("ok")
+	f.seek(0)
+	# Claims more bytes than the file can deliver: the old loop never advanced past EOF.
+	assert_str(PackInstaller.hash_stream(f, 20, sha)).is_equal("mismatch")
+	f.seek(0)
+	assert_str(PackInstaller.hash_stream(f, 10, "0".repeat(64))).is_equal("mismatch")
+	f.seek(0)
+	assert_str(PackInstaller.hash_stream(f, 10, sha, null, func() -> bool: return true)).is_equal("cancelled")
+	f.close()
+
+
 func test_install_from_folder_missing_part() -> void:
 	var parts := _three()
 	SongFixture.mkdir(SRC)

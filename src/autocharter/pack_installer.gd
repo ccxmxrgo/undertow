@@ -364,29 +364,38 @@ func _verify_task(gen: int, path: String, size: int, sha: String, copy_from: Str
 			out = FileAccess.open(tmp, FileAccess.WRITE)
 			if out == null:
 				result = "mismatch"
-		var ctx := HashingContext.new()
-		ctx.start(HashingContext.HASH_SHA256)
-		var read := 0
-		while result == "ok" and read < size:
-			if _is_cancelled():
-				result = "cancelled"
-				break
-			var buf := f.get_buffer(mini(HASH_CHUNK, size - read))
-			read += buf.size()
-			ctx.update(buf)
-			if out != null and not out.store_buffer(buf):
-				result = "mismatch"
+		if result == "ok":
+			result = hash_stream(f, size, sha, out, _is_cancelled)
 		f.close()
 		if out != null:
 			out.close()
-		if result == "ok" and ctx.finish().hex_encode() != sha:
-			result = "mismatch"
 		if copy_from != "":
 			if result == "ok" and DirAccess.rename_absolute(tmp, path) != OK:
 				result = "mismatch"
 			if FileAccess.file_exists(tmp):
 				DirAccess.remove_absolute(tmp)
 	_push({"t": "verified", "gen": gen, "path": path, "result": result})
+
+
+## Reads `size` bytes from f in HASH_CHUNK steps, hashes them (and copies them to out when
+## given). Returns "ok", "mismatch" or "cancelled". A read that returns nothing or reports an
+## error (unplugged stick, dropped share) fails instead of spinning (WR-02).
+static func hash_stream(f: FileAccess, size: int, sha: String, out: FileAccess = null,
+		should_cancel: Callable = Callable()) -> String:
+	var ctx := HashingContext.new()
+	ctx.start(HashingContext.HASH_SHA256)
+	var read := 0
+	while read < size:
+		if should_cancel.is_valid() and bool(should_cancel.call()):
+			return "cancelled"
+		var buf := f.get_buffer(mini(HASH_CHUNK, size - read))
+		if buf.is_empty() or f.get_error() not in [OK, ERR_FILE_EOF]:
+			return "mismatch"
+		read += buf.size()
+		ctx.update(buf)
+		if out != null and (not out.store_buffer(buf) or out.get_error() != OK):
+			return "mismatch"
+	return "ok" if ctx.finish().hex_encode() == sha else "mismatch"
 
 
 func _extract_task(gen: int, zips: Array, staging: String) -> void:
