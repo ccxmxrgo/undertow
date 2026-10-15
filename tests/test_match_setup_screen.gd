@@ -265,4 +265,18 @@ func test_layout_rects() -> void:
 	assert_that(MatchSetupScreen.tile_rect("rivals", 0)).is_equal(Rect2(400, 392, 96, 48))
 	assert_that(MatchSetupScreen.tile_rect("rivals", 2)).is_equal(Rect2(608, 392, 96, 48))
 	assert_that(MatchSetupScreen.tile_rect("skill", 1)).is_equal(Rect2(568, 464, 160, 48))
-	assert_that(MatchSetupScreen.roster_row_rect(3)).is_equal(Rect2(1008, 712, 848 - 32, 56))
+	assert_that(MatchSetupScreen.roster_row_rect(3)).is_equal(Rect2(1008, 712, 816, 56))
+
+
+func test_drawing_every_state_runs_without_errors() -> void:
+	# _draw runs on the next frames; script errors there show in the runner log.
+	var s := _cal_screen()
+	for row in ["song", "difficulty", "rivals", "skill", "start"]:
+		s.focus_row_for_test(row)
+		s.press_key_for_test(KEY_RIGHT)
+		await get_tree().process_frame
+	var e := _screen(_lib([]))
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert_str(e.debug_state()["focused"]).is_equal("song")
+	assert_bool(s.is_inside_tree()).is_true()
