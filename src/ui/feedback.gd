@@ -44,6 +44,9 @@ var clock_usec: int = -1
 ## Overclock active (03-UI-SPEC 5.3): GOOD popups born while true draw in SONAR_PALE; the
 ## word stays "GOOD". Set by the versus wiring; false (solo behaviour) by default.
 var overclock: bool = false
+## The highway whose receptors popups sit over (set by Gameplay). Under Crossed Wires the judged
+## lane is drawn at the other column, so popups use Highway.receptor_center (WR-04).
+var highway: Highway
 
 var _ghost_seq: int = 0
 
@@ -104,6 +107,13 @@ func now() -> int:
 	return clock_usec if clock_usec >= 0 else Time.get_ticks_usec()
 
 
+## Screen x of the judged lane's receptor right now (static column without a highway).
+func lane_x(lane: int) -> float:
+	if highway != null and is_instance_valid(highway):
+		return highway.receptor_center(lane).x
+	return Trench.hit_point(lane).x
+
+
 func floating_count() -> int:
 	return _floating.size()
 
@@ -126,7 +136,7 @@ func on_judged(lane: int, note_index: int, judgment: int, error_s: float) -> voi
 	var t := now()
 	var j := clampi(judgment, 0, 2)
 	if lane >= 0 and lane < Highway.LANES:
-		_add_popup(_note_key(note_index), j, Trench.hit_point(lane).x, t)
+		_add_popup(_note_key(note_index), j, lane_x(lane), t)
 	if j == InputJudge.Judgment.MISS:
 		_ind_on = false
 	else:
@@ -149,7 +159,7 @@ func on_ghost_hit(lane: int, _payload_id: int = -1) -> void:
 	if lane < 0 or lane >= Highway.LANES:
 		return
 	_ghost_seq += 1
-	_add_popup(-1.0e6 - float(_ghost_seq), InputJudge.Judgment.MISS, Trench.hit_point(lane).x, now(),
+	_add_popup(-1.0e6 - float(_ghost_seq), InputJudge.Judgment.MISS, lane_x(lane), now(),
 		{"text": GHOST_TEXT, "color": Palette.WARNING_RED})
 	queue_redraw()
 

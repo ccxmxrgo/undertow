@@ -186,6 +186,7 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	highway.hold_changed.connect(fx_layer.on_sustain_state)
 	feedback = Feedback.new()
 	feedback.chart = chart  # chord popups group by note time
+	feedback.highway = highway  # popups follow the Crossed Wires receptor (WR-04)
 	board_root.add_child(feedback)
 	feedback.connect_judge(judge)
 	highway_notes = HighwayNotes.new()

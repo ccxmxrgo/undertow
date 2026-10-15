@@ -211,7 +211,7 @@ func _sustain_emitter(lane: int) -> CPUParticles2D:
 	var p := CPUParticles2D.new()
 	p.name = "Sustain%d" % lane
 	_spark_common(p, Palette.mix(Palette.lane_color(lane), Palette.WHITE, SUSTAIN_WHITE_MIX))
-	p.position = Trench.hit_point(lane)
+	p.position = lane_point(lane)
 	p.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
 	p.emission_sphere_radius = 10.0
 	p.direction = Vector2.UP
@@ -237,6 +237,14 @@ func bind(highway: Highway, board_root: Control) -> void:
 
 func now() -> int:
 	return clock_usec if clock_usec >= 0 else Time.get_ticks_usec()
+
+
+## Where `lane` (the judged lane) is drawn right now: under Crossed Wires the judged lane sits
+## at the other column (Highway.receptor_center), so bursts, rings, sparks follow it (WR-04).
+func lane_point(lane: int) -> Vector2:
+	if _highway != null and is_instance_valid(_highway):
+		return _highway.receptor_center(lane)
+	return Trench.hit_point(lane)
 
 
 func burst_emitters() -> Array[CPUParticles2D]:
@@ -321,7 +329,7 @@ func on_judged(lane: int, _note_index: int, judgment: int, _error_s: float) -> v
 func _emit(e: CPUParticles2D, lane: int, amt: int) -> void:
 	if amt <= 0:
 		return
-	e.position = Trench.hit_point(lane)
+	e.position = lane_point(lane)
 	e.restart(true)
 
 
@@ -426,6 +434,10 @@ func _exit_tree() -> void:
 func _process(_delta: float) -> void:
 	var t := now()
 	advance_shake(t)
+	# Held sustain sparks follow their receptor through a Crossed Wires slide (WR-04).
+	for lane in range(LANES):
+		if _held[lane]:
+			sustain_emitters[lane].position = lane_point(lane)
 	if rings.live_count() > 0:
 		rings.expire(t)
 		rings.queue_redraw()
@@ -498,7 +510,7 @@ class BurstRings:
 			var a := age(i)
 			if a < 0.0 or a >= HitBurst.life(k):
 				continue
-			var hit := Trench.hit_point(lanes[i])
+			var hit := layer.lane_point(lanes[i])
 			var lane_col := Palette.lane_color(lanes[i])
 			if k == FxLayer.FX_CRACK:
 				var fade := 1.0 - a / HitBurst.life(k)
@@ -549,7 +561,7 @@ class BurstFlashes:
 			if a < 0.0 or a >= lf:
 				continue
 			var fade := 1.0 - a / lf
-			var hit := Trench.hit_point(rings.lanes[i])
+			var hit := rings.layer.lane_point(rings.lanes[i])
 			if k == FxLayer.FX_BLOOM:
 				var sz := FxLayer.BLOOM_PX * (0.8 + 0.4 * (a / lf))
 				draw_texture_rect(tex, Rect2(hit - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false,
