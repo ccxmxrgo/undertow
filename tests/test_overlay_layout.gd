@@ -273,14 +273,14 @@ func test_results_new_record_and_previous_best() -> void:
 func test_results_ineligible_and_non_record_copy() -> void:
 	var r := _results({"eligible": false, "new_record": false, "previous_depth": -1.0, "best_depth": -1.0}, true)
 	assert_object(r.record_banner).is_null()
-	assert_bool(_texts(r).has("Not recorded. Practice, Autoplay and No-Fail dives do not set records.")).is_true()
-	assert_bool(r.flags.has("PRACTICE DIVE")).is_true()
+	assert_bool(_texts(r).has("Not recorded. Solo, Autoplay and No-Fail dives do not set records.")).is_true()
+	assert_bool(r.flags.has("SOLO DIVE")).is_true()
 	var b := _results({"eligible": true, "new_record": false, "previous_depth": 100.0, "best_depth": 2500.0})
 	assert_bool(_texts(b).has("PREVIOUS BEST 2,500 M")).is_true()
 	assert_object(b.record_banner).is_null()
 	var a := _results({"eligible": false}, false, true)
 	assert_bool(a.flags.has("AUTOPLAY USED")).is_true()
-	assert_bool(a.flags.has("PRACTICE DIVE")).is_false()
+	assert_bool(a.flags.has("SOLO DIVE")).is_false()
 
 
 # --- VIS-05 / D-20: results never show the main menu behind them ---------------------------------
@@ -544,8 +544,8 @@ func test_results_previous_best_line_variants() -> void:
 func test_results_practice_shows_not_recorded_chip() -> void:
 	var r := _results_run(_score(10, 2, 3), {"eligible": false, "new_record": false, "previous_depth": -1.0, "best_depth": -1.0}, {}, true)
 	assert_bool(r.header_chips.has("NOT RECORDED")).is_true()
-	assert_bool(r.header_chips.has("PRACTICE DIVE")).is_true()
-	assert_bool(r.flags.has("PRACTICE DIVE")).is_true()
+	assert_bool(r.header_chips.has("SOLO DIVE")).is_true()
+	assert_bool(r.flags.has("SOLO DIVE")).is_true()
 	assert_object(r.note_label).is_not_null()
 	assert_bool(r.note_label.text.begins_with("Not recorded")).is_true()
 	assert_object(r.record_banner).is_null()

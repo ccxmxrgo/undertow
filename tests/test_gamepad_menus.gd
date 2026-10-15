@@ -33,9 +33,11 @@ func before_test() -> void:
 	Gameplay.pending_practice = false
 	SongSelect.run_autoplay = false
 	SongSelect.run_practice = false
+	MatchSetup.pending = null
 
 
 func after_test() -> void:
+	MatchSetup.pending = null
 	Settings.reduce_motion = _old_reduce
 	Settings.reset_defaults()
 	Settings.save_path = _old_settings_path
@@ -166,11 +168,11 @@ func test_main_menu_dpad_and_stick_move_focus_and_a_activates() -> void:
 	await _frames(1)
 	assert_object(_focus()).is_same(m.start_button)
 	await _tap(JOY_BUTTON_DPAD_DOWN)
-	assert_object(_focus()).is_same(m.practice_button)
+	assert_object(_focus()).is_same(m.versus_button)
 	await Pad.flick(get_viewport(), JOY_AXIS_LEFT_Y, 1.0)
-	assert_object(_focus()).is_same(m.chart_button)
+	assert_object(_focus()).is_same(m.practice_button)
 	await _tap(JOY_BUTTON_DPAD_DOWN)
-	assert_object(_focus()).is_same(m.calibrate_button)
+	assert_object(_focus()).is_same(m.chart_button)
 	await _tap(JOY_BUTTON_DPAD_UP)
 	await _tap(JOY_BUTTON_DPAD_UP)
 	await _tap(JOY_BUTTON_DPAD_UP)
@@ -196,6 +198,7 @@ func test_main_menu_a_on_every_item_uses_its_seam() -> void:
 	await _frames(1)
 	var expected := [
 		[m.start_button, MainMenu.SONG_SELECT_SCENE],
+		[m.versus_button, MainMenu.MATCH_SETUP_SCENE],
 		[m.practice_button, MainMenu.SONG_SELECT_SCENE],
 		[m.chart_button, MainMenu.CHART_SCENE],
 		[m.calibrate_button, MainMenu.CALIBRATION_SCENE],

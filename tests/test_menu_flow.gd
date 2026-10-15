@@ -30,6 +30,7 @@ func _rm_scores() -> void:
 func after_test() -> void:
 	SongSelect.run_autoplay = false
 	SongSelect.run_practice = false
+	MatchSetup.pending = null
 	ScoreStore.default_path = _old_scores_path
 	MainMenu.records_error_shown = false
 	_rm_scores()
@@ -211,13 +212,47 @@ func _main_menu() -> MainMenu:
 	return m
 
 
-func test_practice_button_directly_under_start() -> void:
+func test_versus_then_solo_dive_directly_under_start() -> void:
 	var m := _main_menu()
-	assert_str(m.practice_button.text).is_equal("Practice Dive (No-Fail)")
-	assert_int(m.practice_button.get_index()).is_equal(m.start_button.get_index() + 1)
-	assert_bool(m.start_button.get_node(m.start_button.focus_neighbor_bottom) == m.practice_button).is_true()
-	assert_bool(m.practice_button.get_node(m.practice_button.focus_neighbor_top) == m.start_button).is_true()
+	assert_str(m.versus_button.text).is_equal("Versus Bots")
+	assert_str(m.practice_button.text).is_equal("Solo Dive (No-Fail)")
+	assert_int(m.versus_button.get_index()).is_equal(m.start_button.get_index() + 1)
+	assert_int(m.practice_button.get_index()).is_equal(m.versus_button.get_index() + 1)
+	assert_bool(m.start_button.get_node(m.start_button.focus_neighbor_bottom) == m.versus_button).is_true()
+	assert_bool(m.versus_button.get_node(m.versus_button.focus_neighbor_bottom) == m.practice_button).is_true()
+	assert_bool(m.practice_button.get_node(m.practice_button.focus_neighbor_top) == m.versus_button).is_true()
+	# Focus wraps top <-> bottom.
+	assert_bool(m.start_button.get_node(m.start_button.focus_neighbor_top) == m.quit_button).is_true()
+	assert_bool(m.quit_button.get_node(m.quit_button.focus_neighbor_bottom) == m.start_button).is_true()
 	assert_bool(m.start_button.has_focus()).is_true()
+
+
+func test_versus_bots_opens_match_setup_with_pending_record() -> void:
+	var m := _main_menu()
+	var calls: Array = []
+	m.navigate = func(p: String) -> void: calls.append(p)
+	Settings.versus_rivals = 2
+	Settings.versus_skill = "veteran"
+	SongSelect.run_practice = true
+	SongSelect.run_autoplay = true
+	m.versus_button.pressed.emit()
+	assert_array(calls).is_equal([MainMenu.MATCH_SETUP_SCENE])
+	assert_str(MainMenu.MATCH_SETUP_SCENE).is_equal("res://scenes/match_setup.tscn")
+	assert_bool(SongSelect.run_practice).is_false()
+	assert_bool(SongSelect.run_autoplay).is_false()
+	assert_object(MatchSetup.pending).is_not_null()
+	assert_int(MatchSetup.pending.rivals).is_equal(2)
+	assert_str(MatchSetup.pending.skill).is_equal("veteran")
+
+
+func test_start_solo_and_autoplay_clear_pending_match() -> void:
+	var m := _main_menu()
+	m.navigate = func(_p: String) -> void: pass
+	for launcher: Callable in [func() -> void: m.launch(false), func() -> void: m.launch_practice(),
+			func() -> void: m.launch(true)]:
+		MatchSetup.pending = MatchSetup.new()
+		launcher.call()
+		assert_object(MatchSetup.pending).is_null()
 
 
 func test_launch_practice_sets_run_flags_and_keeps_no_fail_setting() -> void:
@@ -255,7 +290,7 @@ func test_launch_opens_song_select_and_does_not_preset_chart() -> void:
 
 func test_item_order_and_focus_ring_include_open_songs_folder() -> void:
 	var m := _main_menu()
-	var order: Array = [m.start_button, m.practice_button, m.chart_button, m.calibrate_button,
+	var order: Array = [m.start_button, m.versus_button, m.practice_button, m.chart_button, m.calibrate_button,
 		m.settings_button, m.autoplay_button, m.open_folder_button, m.quit_button]
 	assert_str(m.open_folder_button.text).is_equal("Open Songs Folder")
 	for i in order.size():
@@ -302,7 +337,8 @@ func test_best_label_not_focusable_and_after_practice() -> void:
 	var m := _main_menu()
 	assert_int(m.best_label.focus_mode).is_equal(Control.FOCUS_NONE)
 	assert_int(m.best_label.get_index()).is_equal(m.practice_button.get_index() + 1)
-	assert_int(m.practice_button.get_index()).is_equal(m.start_button.get_index() + 1)
+	assert_int(m.practice_button.get_index()).is_equal(m.versus_button.get_index() + 1)
+	assert_int(m.versus_button.get_index()).is_equal(m.start_button.get_index() + 1)
 	assert_bool(m.start_button.has_focus()).is_true()
 
 
@@ -322,13 +358,16 @@ func test_records_load_error_shown_once() -> void:
 
 # ---- 02.2 plan 06: living title screen ----------------------------------------------------
 
-const MENU_TEXTS: Array[String] = ["Start Dive", "Practice Dive (No-Fail)", "Chart a Song", "Calibrate Sonar",
-	"Settings", "Autoplay Dive (test)", "Open Songs Folder", "Quit Game"]
-const MENU_ICONS: Array[String] = ["dive", "lifebuoy", "chart", "sonar", "sliders", "auto", "folder", "power"]
-const MENU_TOPS: Array[float] = [416.0, 480.0, 544.0, 608.0, 672.0, 736.0, 800.0, 864.0]
+const MENU_TEXTS: Array[String] = ["Start Dive", "Versus Bots", "Solo Dive (No-Fail)", "Chart a Song",
+	"Calibrate Sonar", "Settings", "Autoplay Dive (test)", "Open Songs Folder", "Quit Game"]
+const MENU_ICONS: Array[String] = ["dive", "versus", "lifebuoy", "chart", "sonar", "sliders", "auto", "folder",
+	"power"]
+## 03 UI-SPEC 9.1: tops 392 + 64 * i for 9 items.
+const MENU_TOPS: Array[float] = [392.0, 456.0, 520.0, 584.0, 648.0, 712.0, 776.0, 840.0, 904.0]
 const MENU_DESCRIPTIONS: Array[String] = [
 	"Pick a song and dive. Your hull is on the line.",
-	"Dive without imploding. Records are not saved.",
+	"Race up to 3 bot subs down the trench. Last hull standing wins.",
+	"Dive without imploding, with optional training torpedoes. Records are not saved.",
 	"Turn an audio file you own into a playable chart.",
 	"Line up audio and visuals for tight timing.",
 	"Controls, scroll speed, effects and volume.",
@@ -339,7 +378,7 @@ const MENU_DESCRIPTIONS: Array[String] = [
 
 
 func _menu_buttons(m: MainMenu) -> Array:
-	return [m.start_button, m.practice_button, m.chart_button, m.calibrate_button, m.settings_button,
+	return [m.start_button, m.versus_button, m.practice_button, m.chart_button, m.calibrate_button, m.settings_button,
 		m.autoplay_button, m.open_folder_button, m.quit_button]
 
 
@@ -358,8 +397,11 @@ func test_menu_buttons_have_fixed_rects_icons_and_order() -> void:
 	assert_str(String(m.start_button.get_meta(&"ui_variant", ""))).is_equal("primary")
 	assert_str(String(m.quit_button.get_meta(&"ui_variant", ""))).is_equal("default")
 	assert_str(String(m.chart_button.get_meta(&"ui_variant", ""))).is_equal("default")
-	assert_int(m.menu_buttons().size()).is_equal(8)
-	# The last item ends above the focus description line (baseline 960).
+	assert_int(m.menu_buttons().size()).is_equal(9)
+	assert_float(MainMenu.DESC_BASELINE).is_equal(1000.0)
+	assert_float(MainMenu.STATUS_BASELINE).is_equal(1040.0)
+	assert_float(Palette.STAGGER_MENU).is_equal_approx(0.035, 0.0001)
+	# The last item ends above the focus description line (baseline 1000).
 	var last: Button = order[order.size() - 1]
 	assert_float(last.position.y + last.size.y).is_less(
 		MainMenu.DESC_BASELINE - Palette.font().get_ascent(Palette.SIZE_BODY))

@@ -1,7 +1,7 @@
 class_name MainMenu
 extends Control
-## Entry screen (02.2 UI-SPEC section 5, "living title screen"): an AbyssBackdrop (variant
-## title) behind the generated UNDERTOW wordmark, the tagline, eight icon buttons at fixed
+## Entry screen (02.2 UI-SPEC section 5, "living title screen", 03 UI-SPEC 9.1): an AbyssBackdrop (variant
+## title) behind the generated UNDERTOW wordmark, the tagline, nine icon buttons at fixed
 ## positions (order unchanged), one FocusMarker, a one-line description of the focused item
 ## and a status line for prompts and errors.
 ## First launch (Settings.calibration_done false) routes straight to the skippable wizard once per
@@ -13,15 +13,17 @@ const FOLDER_MSG_SEC := 6.0
 const CALIBRATION_SCENE := "res://scenes/calibration.tscn"
 const SETTINGS_SCENE := "res://scenes/settings.tscn"
 const CHART_SCENE := "res://scenes/chart_song.tscn"
+const MATCH_SETUP_SCENE := "res://scenes/match_setup.tscn"
 const DEVICE_CHANGED_COPY := "Output device changed. Calibrate Sonar again for accurate timing."
 const NO_RECORD_COPY := "No record yet. Finish a dive to set one."
 const RECORDS_ERROR_COPY := "Records could not be loaded. Starting with an empty record book."
 const NOT_CALIBRATED_BODY := "Timing may feel off until you calibrate. Choose Calibrate Sonar to fix it."
 const TAGLINE := "YOUR STREAK IS A TORPEDO"
-## Focus descriptions in button order (UI-SPEC 14).
+## Focus descriptions in button order (UI-SPEC 14; 03 UI-SPEC 9.1 / 14).
 const DESCRIPTIONS: Array[String] = [
 	"Pick a song and dive. Your hull is on the line.",
-	"Dive without imploding. Records are not saved.",
+	"Race up to 3 bot subs down the trench. Last hull standing wins.",
+	"Dive without imploding, with optional training torpedoes. Records are not saved.",
 	"Turn an audio file you own into a playable chart.",
 	"Line up audio and visuals for tight timing.",
 	"Controls, scroll speed, effects and volume.",
@@ -34,13 +36,13 @@ const DESCRIPTIONS: Array[String] = [
 const ITEM_X := 128.0
 const ITEM_W := 512.0
 const ITEM_H := 56
-const ITEM_TOP := 416.0
+const ITEM_TOP := 392.0
 const ITEM_PITCH := 64.0
 const TAGLINE_BASELINE := 360.0
 const TAGLINE_SPACING := 4
-const DESC_BASELINE := 960.0
+const DESC_BASELINE := 1000.0
 const DESC_W := 760.0
-const STATUS_BASELINE := 1000.0
+const STATUS_BASELINE := 1040.0
 const STATUS_W := 1180.0
 const GLYPH_W := 16.0
 const KEY_HINT_W := 120.0
@@ -70,6 +72,7 @@ var navigate: Callable = Callable()
 var open_folder: Callable = Callable()
 
 var start_button: Button
+var versus_button: Button
 var practice_button: Button
 var chart_button: Button
 var autoplay_button: Button
@@ -166,7 +169,8 @@ func _build() -> void:
 	_items.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_items)
 	start_button = _item("Start Dive", "dive", "primary", func() -> void: launch(false))
-	practice_button = _item("Practice Dive (No-Fail)", "lifebuoy", "default", func() -> void: launch_practice())
+	versus_button = _item("Versus Bots", "versus", "default", func() -> void: launch_versus())
+	practice_button = _item("Solo Dive (No-Fail)", "lifebuoy", "default", func() -> void: launch_practice())
 	_build_best_line(_items)
 	chart_button = _item("Chart a Song", "chart", "default", func() -> void: _go(CHART_SCENE))
 	calibrate_button = _item("Calibrate Sonar", "sonar", "default", func() -> void: _calibrate())
@@ -223,9 +227,9 @@ func _build() -> void:
 	_entrance()
 
 
-## The eight menu buttons in focus order.
+## The nine menu buttons in focus order (03 UI-SPEC 9.1).
 func menu_buttons() -> Array:
-	return [start_button, practice_button, chart_button, calibrate_button, settings_button, autoplay_button,
+	return [start_button, versus_button, practice_button, chart_button, calibrate_button, settings_button, autoplay_button,
 		open_folder_button, quit_button]
 
 
@@ -251,8 +255,8 @@ func _build_best_line(parent: Control) -> void:
 		records_error_label.text = RECORDS_ERROR_COPY
 
 
-## Menu button (UI-SPEC 4.2 / 5): 512 x 56 at x 128, tops 416 + 64 * index (8 items, the last
-## ends at 920, above the description baseline 960).
+## Menu button (UI-SPEC 4.2 / 5): 512 x 56 at x 128, tops 392 + 64 * index (9 items, the last
+## ends at 960, above the description baseline 1000).
 func _item(text: String, icon: String, variant: String, cb: Callable) -> Button:
 	var i := _item_count
 	_item_count += 1
@@ -479,16 +483,26 @@ func empty_state_visible() -> bool:
 
 ## Opens Song Select with the run flags; the chart is chosen there (D-13).
 func launch(autoplay: bool) -> void:
+	MatchSetup.pending = null
 	SongSelect.run_autoplay = autoplay
 	SongSelect.run_practice = false
 	_go(SONG_SELECT_SCENE)
 
 
-## D-09: No-Fail run that never touches the persisted Settings.no_fail.
+## D-09: Solo Dive, a No-Fail run that never touches the persisted Settings.no_fail.
 func launch_practice() -> void:
+	MatchSetup.pending = null
 	SongSelect.run_autoplay = false
 	SongSelect.run_practice = true
 	_go(SONG_SELECT_SCENE)
+
+
+## Versus Bots (03 UI-SPEC 9.1, MATCH-01): opens match setup with the last used choices.
+func launch_versus() -> void:
+	SongSelect.run_autoplay = false
+	SongSelect.run_practice = false
+	MatchSetup.pending = MatchSetup.from_settings()
+	_go(MATCH_SETUP_SCENE)
 
 
 ## D-05/D-20: works before any scan; shows a red line for 6 s when the file manager fails.

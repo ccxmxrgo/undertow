@@ -219,7 +219,7 @@ func test_practice_autoplay_nofail_finishes_write_nothing() -> void:
 	_manual_finish(gp, 5000)
 	assert_bool(gp.record_info.eligible).is_false()
 	assert_bool(FileAccess.file_exists(SCORES_TMP)).is_false()
-	assert_bool(gp.results.flags.has("PRACTICE DIVE")).is_true()
+	assert_bool(gp.results.flags.has("SOLO DIVE")).is_true()
 	# Retry from practice stays practice and stays ineligible.
 	gp.restart(false)
 	await get_tree().process_frame

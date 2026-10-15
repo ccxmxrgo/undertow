@@ -36,7 +36,7 @@ const BUTTON_W := 400.0
 const BUTTON_H := 64.0
 const BUTTON_X: Array[float] = [96.0, 520.0, 944.0]
 const HINT := "ENTER SELECT  ·  ESC BACK TO MENU"
-const NOT_RECORDED_TEXT := "Not recorded. Practice, Autoplay and No-Fail dives do not set records."
+const NOT_RECORDED_TEXT := "Not recorded. Solo, Autoplay and No-Fail dives do not set records."
 const TITLE_MAX_W := 1200.0
 const SHADE_ALPHA := 0.55
 const CAPTION_SPACING := 2
@@ -63,7 +63,7 @@ const ENTRANCE_SEC := FILL_AT + TimingHistogram.GROW_SEC  # 0.89 s, the longest 
 var retry_button: Button
 var song_select_button: Button
 var menu_button: Button
-## Flag texts shown, e.g. "NO-FAIL USED", "AUTOPLAY USED", "PRACTICE DIVE".
+## Flag texts shown, e.g. "NO-FAIL USED", "AUTOPLAY USED", "SOLO DIVE".
 var flags: Array[String] = []
 ## Header chip texts in display order (difficulty, flags, NOT RECORDED).
 var header_chips: Array[String] = []
@@ -71,7 +71,7 @@ var header_chips: Array[String] = []
 var rows: Array[Array] = []
 ## NEW RECORD chip label (null unless the run set a record).
 var record_banner: Label
-## The kept "Not recorded..." sentence for Practice / Autoplay / No-Fail runs (null otherwise).
+## The kept "Not recorded..." sentence for Solo / Autoplay / No-Fail runs (null otherwise).
 var note_label: Label
 var title_label: Label
 var previous_label: Label
@@ -156,7 +156,7 @@ func setup(score: HullScore, autoplay_used: bool, record_info: Dictionary = {},
 	if autoplay_used:
 		flags.append("AUTOPLAY USED")
 	if practice:
-		flags.append("PRACTICE DIVE")
+		flags.append("SOLO DIVE")
 	var not_recorded := not eligible
 
 	rows = [

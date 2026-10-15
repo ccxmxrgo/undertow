@@ -23,7 +23,7 @@ static var pending_practice: bool = false
 ## Intro mode for the next run. NOT reset in _ready: test suites set NONE so runs never wait.
 static var pending_intro: int = IntroTimeline.Mode.FULL
 
-## Practice Dive: No-Fail forced on for this run only (never written to Settings).
+## Solo Dive: No-Fail forced on for this run only (never written to Settings).
 var practice: bool = false
 var state: State = State.RUNNING
 var chart: ChartData
