@@ -29,7 +29,7 @@ class PruneTest(unittest.TestCase):
             sp = "Lib/site-packages/"
             removed = [
                 "Lib/test/test_os.py", "Lib/idlelib/x.py", "Lib/tkinter/__init__.py", "Lib/turtledemo/a.py",
-                "tcl/tcl8.6/init.tcl",
+                "tcl/tcl8.6/init.tcl", "Scripts/demucs.exe",
                 sp + "pip/__init__.py", sp + "pip-25.0.dist-info/RECORD",
                 sp + "torch/include/ATen/a.h", sp + "torch/lib/x.lib", sp + "torch/x.lib",
                 sp + "torch/testing/_internal/data/a.bin",

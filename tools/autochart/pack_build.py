@@ -60,8 +60,9 @@ PART_ORDER = ("app", "rt-core", "rt-torch", "models", "rt310")
 PART_ROOTS = {"app": ["app", "NOTICES"], "rt-core": ["rt"], "rt-torch": ["rt"], "models": ["models"],
               "rt310": ["rt310"]}
 
-# runtime paths removed by prune (relative to the interpreter root)
-PRUNE_DIRS = ("Lib/test", "Lib/idlelib", "Lib/tkinter", "Lib/turtledemo", "tcl",
+# runtime paths removed by prune (relative to the interpreter root). Scripts/ holds the console entry
+# points uv generated; they embed the absolute build path of python.exe (useless and a path leak).
+PRUNE_DIRS = ("Lib/test", "Lib/idlelib", "Lib/tkinter", "Lib/turtledemo", "tcl", "Scripts",
               "Lib/site-packages/torch/include", "Lib/site-packages/torch/testing/_internal/data")
 LICENCE_PREFIXES = ("license", "licence", "notice", "copying")
 
@@ -306,18 +307,23 @@ def render_spec(parts, unpacked: int) -> str:
 
 # ---------------------------------------------------------------- staging
 
+def copy_text(src: Path, dst: Path) -> None:
+    """Copy a text file with LF line endings, so the app part does not depend on git's autocrlf (D-16)."""
+    dst.write_bytes(src.read_bytes().replace(b"\r\n", b"\n"))
+
+
 def stage_app(stage: Path, src: Path = HERE) -> None:
     app = stage / "app"
     if app.exists():
         shutil.rmtree(app)
     app.mkdir(parents=True)
     for f in APP_FILES:
-        shutil.copyfile(src / f, app / f)
+        copy_text(src / f, app / f)
     for d in APP_DIRS:
         (app / d).mkdir()
         for p in sorted((src / d).iterdir()):
             if p.is_file() and p.suffix == ".py":
-                shutil.copyfile(p, app / d / p.name)
+                copy_text(p, app / d / p.name)
 
 
 def licence_index(stage: Path) -> list:
@@ -338,7 +344,10 @@ def stage_notices(stage: Path, src: Path = HERE / "NOTICES") -> None:
     dst = stage / "NOTICES"
     if dst.exists():
         shutil.rmtree(dst)
-    shutil.copytree(src, dst)
+    dst.mkdir(parents=True)
+    for p in sorted(src.iterdir()):
+        if p.is_file():
+            copy_text(p, dst / p.name)
     idx = licence_index(stage)
     text = ("Licence files shipped inside this pack (paths relative to the pack version folder).\n"
             "They stay next to the components they cover.\n\n" + "".join(p + "\n" for p in idx))

@@ -7,8 +7,13 @@ extends RefCounted
 const VERSION := 1
 const TAG := "autocharter-pack-v1"
 const BASE_URL := "https://github.com/ccxmxrgo/undertow/releases/download/autocharter-pack-v1/"
-const PARTS: Array[Dictionary] = []
-const UNPACKED_BYTES := 0
+const PARTS: Array[Dictionary] = [
+	{"name": "undertow-ac-v1-app.zip", "size": 65953, "sha256": "a8cb54fba3d6370a272d0b119da78056771cca7350bd7e96f866a65a62c9ecf5", "roots": ["app", "NOTICES"]},
+	{"name": "undertow-ac-v1-rt-core.zip", "size": 143200163, "sha256": "66b52b9ee85e0f513b4ef4b71e61fd7262f4b0854ccc38ed0ff979ad5ee88e25", "roots": ["rt"]},
+	{"name": "undertow-ac-v1-rt-torch.zip", "size": 103720410, "sha256": "cc34f8ba90fa553146f0a0950071f8dccb8667e3f7fca18c1f79e0b8377fbdc1", "roots": ["rt"]},
+	{"name": "undertow-ac-v1-models.zip", "size": 153119849, "sha256": "32d6877201483171abac9d2e7c6fbece372d6cf2a03050aaff9ab15d0b68c9a8", "roots": ["models"]},
+]
+const UNPACKED_BYTES := 938347609
 
 
 static func available() -> bool:

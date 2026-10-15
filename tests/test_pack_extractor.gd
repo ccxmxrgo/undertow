@@ -22,9 +22,8 @@ func _abs(p: String) -> String:
 
 # ---- PackSpec ----
 
-func test_spec_empty_build() -> void:
-	assert_bool(PackSpec.available()).is_false()
-	assert_int(PackSpec.download_bytes()).is_equal(0)
+func test_spec_contract() -> void:
+	# Plan 06 pins the real parts; the pinned values are checked in test_pack_spec.gd.
 	assert_str(PackSpec.TAG).is_equal("autocharter-pack-v1")
 	assert_str(PackSpec.url({"name": "undertow-ac-v1-app.zip"})).is_equal(
 		"https://github.com/ccxmxrgo/undertow/releases/download/autocharter-pack-v1/undertow-ac-v1-app.zip")
@@ -32,8 +31,8 @@ func test_spec_empty_build() -> void:
 	assert_int(d["version"]).is_equal(1)
 	assert_str(d["tag"]).is_equal(PackSpec.TAG)
 	assert_str(d["base_url"]).is_equal(PackSpec.BASE_URL)
-	assert_array(d["parts"]).is_empty()
-	assert_int(d["unpacked_bytes"]).is_equal(0)
+	assert_int((d["parts"] as Array).size()).is_equal(PackSpec.PARTS.size())
+	assert_int(d["unpacked_bytes"]).is_equal(PackSpec.UNPACKED_BYTES)
 
 
 # ---- AutochartPaths ----
