@@ -25,6 +25,7 @@ const CROWD_PX := 150.0
 ## ...halfway into its fade (about 30% opacity).
 const CROWD_SKIP_TO := POP_HOLD_END + 0.5 * (POP_LIFE - POP_HOLD_END)
 const POP_TEXT: Array[String] = ["PERFECT", "GOOD", "MISS"]
+const GHOST_TEXT := "GHOST"
 
 ## Early/late (UI-SPEC 7.3): Label 20 TEXT_MID + KEYLINE outline, 10x12 SONAR triangle.
 const INDICATOR_POS := Vector2(960.0, 1004.0)
@@ -40,6 +41,11 @@ var audio_enabled: bool = true
 var chart: ChartData
 ## Test clock override (microseconds); -1 = real time.
 var clock_usec: int = -1
+## Overclock active (03-UI-SPEC 5.3): GOOD popups born while true draw in SONAR_PALE; the
+## word stays "GOOD". Set by the versus wiring; false (solo behaviour) by default.
+var overclock: bool = false
+
+var _ghost_seq: int = 0
 
 var _floating: Array[Dictionary] = []  # {key, judgment, x_sum, n, born}
 var _ind_err_ms: float = 0.0
@@ -106,7 +112,7 @@ func floating_count() -> int:
 func popup(i: int) -> Dictionary:
 	var e: Dictionary = _floating[i]
 	var j := int(e["judgment"])
-	return {"text": POP_TEXT[j], "color": judgment_color(j), "x": float(e["x_sum"]) / float(e["n"]),
+	return {"text": _entry_text(e), "color": _entry_color(e), "x": float(e["x_sum"]) / float(e["n"]),
 		"judgment": j, "born": int(e["born"]), "key": float(e["key"])}
 
 
@@ -137,13 +143,41 @@ func on_stray(_lane: int) -> void:
 	pass
 
 
-func _add_popup(key: float, j: int, x: float, t: int) -> void:
+## Ghost Note hit (03-UI-SPEC 7.2): a "GHOST" popup in WARNING_RED with the normal 3 px KEYLINE
+## and timing. It never merges into a judgment popup. No hit sound here.
+func on_ghost_hit(lane: int, _payload_id: int = -1) -> void:
+	if lane < 0 or lane >= Highway.LANES:
+		return
+	_ghost_seq += 1
+	_add_popup(-1.0e6 - float(_ghost_seq), InputJudge.Judgment.MISS, Trench.hit_point(lane).x, now(),
+		{"text": GHOST_TEXT, "color": Palette.WARNING_RED})
+	queue_redraw()
+
+
+func _entry_text(e: Dictionary) -> String:
+	if e.has("text"):
+		return str(e["text"])
+	return POP_TEXT[int(e["judgment"])]
+
+
+func _entry_color(e: Dictionary) -> Color:
+	if e.has("color"):
+		return e["color"]
+	var j := int(e["judgment"])
+	if j == InputJudge.Judgment.GOOD and bool(e.get("oc", false)):
+		return Palette.SONAR_PALE
+	return judgment_color(j)
+
+
+func _add_popup(key: float, j: int, x: float, t: int, extra: Dictionary = {}) -> void:
 	expire()
 	for e in _floating:
 		if float(e["key"]) == key:
 			e["judgment"] = maxi(int(e["judgment"]), j)  # MISS > GOOD > PERFECT
 			e["x_sum"] = float(e["x_sum"]) + x
 			e["n"] = int(e["n"]) + 1
+			if overclock:
+				e["oc"] = true
 			return
 	# A new popup next to an older one (same lane area) pushes the older one into its fade,
 	# so two words never sit on top of each other at full opacity.
@@ -154,7 +188,9 @@ func _add_popup(key: float, j: int, x: float, t: int) -> void:
 				e["born"] = fade_born
 	while _floating.size() >= MAX_FLOATING:
 		_floating.pop_front()  # recycle the oldest
-	_floating.append({"key": key, "judgment": j, "x_sum": x, "n": 1, "born": t})
+	var entry := {"key": key, "judgment": j, "x_sum": x, "n": 1, "born": t, "oc": overclock}
+	entry.merge(extra, true)
+	_floating.append(entry)
 
 
 func expire() -> void:
@@ -204,7 +240,7 @@ func _draw() -> void:
 			continue
 		var s := popup_state(age, reduce)
 		var j := int(e["judgment"])
-		var text := POP_TEXT[j]
+		var text := _entry_text(e)
 		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, POP_SIZE).x
 		var cx := float(e["x_sum"]) / float(e["n"])
 		var cy := POP_Y - float(s["rise"])
@@ -213,7 +249,7 @@ func _draw() -> void:
 		draw_set_transform(Vector2(cx, cy), 0.0, Vector2.ONE * float(s["scale"]))
 		draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, POP_SIZE, OUTLINE_PX,
 			Palette.alpha(Palette.KEYLINE, Palette.KEYLINE.a * a))
-		draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, POP_SIZE, Palette.alpha(judgment_color(j), a))
+		draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, POP_SIZE, Palette.alpha(_entry_color(e), a))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if indicator_visible():
 		_draw_early_late()
