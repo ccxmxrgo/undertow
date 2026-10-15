@@ -814,12 +814,73 @@ func _click_row(i: int, local: Vector2) -> void:
 					return
 
 
-func _activate(_i: int) -> void:
-	pass
+## Accept: Song opens Song Select pick mode, Start Match starts the match; other rows ignore it.
+func _activate(i: int) -> void:
+	match i:
+		ROW_SONG:
+			open_song_pick()
+		ROW_START:
+			start_match()
 
 
+## Keeps the current choices in MatchSetup.pending (pick mode updates its song / difficulty)
+## and opens Song Select in pick mode (03 UI-SPEC 9.3).
+func open_song_pick() -> void:
+	if _starting:
+		return
+	MatchSetup.pending = _setup.clamped()
+	SongSelect.run_autoplay = false
+	SongSelect.run_practice = false
+	SongSelect.run_pick = true
+	_go(SONG_SELECT_SCENE)
+
+
+## Start Match (MATCH-01): builds the chart like Song Select's dive; a chart that fails to load
+## shows the audio error line and stays here (T-03-31). Guarded against double presses.
+func start_match() -> void:
+	if not _start_enabled():
+		return
+	var chart: ChartData = library.build_chart(_entry, _setup.difficulty) if library != null else null
+	if chart == null:
+		var bundled := _entry.source == "bundled" or _entry.source == "test"
+		_show_error(SongSelect.AUDIO_ERR_BUNDLED if bundled else SongSelect.AUDIO_ERR_USER)
+		UiSounds.play("error")
+		return
+	_starting = true
+	_show_error("")
+	var m := _setup.clamped()
+	m.mode = MatchSetup.MODE_VERSUS
+	m.seed = _setup.seed if _setup.seed != 0 else _fresh_seed()
+	m.save_to_settings()
+	MatchSetup.pending = m
+	SongSelect.run_autoplay = false
+	SongSelect.run_practice = false
+	SongSelect.run_pick = false
+	Gameplay.pending_chart = chart
+	Gameplay.pending_autoplay = false
+	Gameplay.pending_practice = false
+	start_button.disabled = true
+	var mm := get_node_or_null("/root/MenuMusic") if is_inside_tree() else null
+	if mm != null:
+		mm.stop(0.4)
+	# Sonar wipe; the goggles intro follows as for any dive.
+	_go(GAMEPLAY_SCENE)
+
+
+## Esc / B: saves the choices and drops the launch record so a later Start Dive or Solo Dive
+## never picks up a stale versus setup.
 func _back() -> void:
-	pass
+	if _starting:
+		return
+	_setup.save_to_settings()
+	MatchSetup.pending = null
+	_go(MENU_SCENE)
+
+
+func _show_error(text: String) -> void:
+	_error = text
+	error_label.text = text
+	error_label.visible = text != ""
 
 
 func _go(path: String) -> void:
