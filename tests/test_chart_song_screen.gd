@@ -904,6 +904,39 @@ func test_selftest_runs_first_and_passes_to_pick() -> void:
 	assert_str(s.state()).is_equal("pick")
 
 
+## WR-09: the selftest passes while STOP THE TEST? is open: the dialog closes with the run and
+## the passed test is kept (no jump to the menu, focus on the pick screen).
+func test_stop_test_dialog_closes_when_the_selftest_ends() -> void:
+	var s := _screen(_spec([_part("a.zip")]), true, false)
+	await get_tree().process_frame
+	s.cancel_install_button.pressed.emit()
+	assert_object(s.dialog).is_not_null()
+	assert_str(s.dialog.title_label.text).is_equal("STOP THE TEST?")
+	var stale: ConfirmDialog = s.dialog
+	_push(s, [{"ev": "selftest", "ok": true, "seconds": 6.3}])
+	_exit(s, 0)
+	assert_object(s.dialog).is_null()
+	assert_str(s.state()).is_equal("pick")
+	assert_bool(s.installer.selftest_ok()).is_true()
+	# A confirm that still reaches the old dialog does nothing.
+	stale.confirmed.emit()
+	assert_array(_calls).is_empty()
+	assert_str(s.state()).is_equal("pick")
+	await get_tree().process_frame
+	assert_object(_focus()).is_same(s.choose_file_button)
+
+
+## WR-09: the job fails while STOP CHARTING? is open: the dialog goes with the run.
+func test_stop_job_dialog_closes_when_the_job_fails() -> void:
+	var s: ChartSongScreen = await _running_screen("bass")
+	s.cancel_job_button.pressed.emit()
+	assert_object(s.dialog).is_not_null()
+	_exit(s, 9)
+	assert_object(s.dialog).is_null()
+	assert_str(s.state()).is_equal("error")
+	assert_int(_fake.kill_count).is_equal(0)
+
+
 func test_selftest_failure_shows_error_with_remove_pack() -> void:
 	var s := _screen(_spec([_part("a.zip")]), true, false)
 	await get_tree().process_frame

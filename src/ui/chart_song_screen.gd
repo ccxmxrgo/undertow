@@ -900,6 +900,8 @@ func _confirm_stop_install() -> void:
 		_open_dialog("STOP THE TEST?", "The Autocharter is tested again next time you open this screen.",
 			"Stop Test", "Keep Testing",
 			func() -> void:
+				if _run_mode != "selftest":
+					return  # WR-09: the test already ended; never discard its result
 				_kill_child()
 				_go(MENU_SCENE),
 			cancel_install_button)
@@ -907,6 +909,8 @@ func _confirm_stop_install() -> void:
 	_open_dialog("STOP THE INSTALL?", "The download so far is discarded. You can install again later.",
 		"Stop Install", "Keep Installing",
 		func() -> void:
+			if _state != "installing" or _run_mode != "":
+				return  # WR-09: the install already ended
 			installer.cancel()
 			show_state("pack_missing"),
 		cancel_install_button)
@@ -1131,6 +1135,9 @@ func _on_runner_event(ev: Dictionary) -> void:
 
 
 func _end_run() -> String:
+	# WR-09: a stop dialog opened for this run is stale once it ended; the next state focuses
+	# its own first control.
+	_close_dialog()
 	var mode := _run_mode
 	_run_mode = ""
 	elapsed_timer.stop()
