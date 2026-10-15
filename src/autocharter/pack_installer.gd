@@ -222,10 +222,27 @@ func mark_selftest(ok: bool) -> void:
 	if m.is_empty():
 		return
 	m["selftest"] = ok
-	var f := FileAccess.open(AutochartPaths.marker_path(_version()), FileAccess.WRITE)
-	if f != null:
-		f.store_string(JSON.stringify(m, "\t"))
-		f.close()
+	write_marker(AutochartPaths.marker_path(_version()), m)
+
+
+## IN-01: installed.json is written to a .tmp file and renamed over the marker, so a crash
+## mid-write never leaves an unparsable marker (which would force a full re-download).
+## Safe on worker threads. Returns true when the marker holds `data`.
+static func write_marker(path: String, data: Dictionary) -> bool:
+	var tmp := path + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string(JSON.stringify(data, "\t"))
+	var err := f.get_error()
+	f.close()
+	if err != OK:
+		DirAccess.remove_absolute(tmp)
+		return false
+	if DirAccess.rename_absolute(tmp, path) != OK:
+		DirAccess.remove_absolute(tmp)
+		return false
+	return true
 
 
 func selftest_ok() -> bool:
@@ -503,12 +520,8 @@ func _finalize_task(gen: int, full: bool, roots: Array, pins: Dictionary) -> voi
 			"installed_unix": Time.get_unix_time_from_system(),
 			"selftest": false,
 		}
-		var f := FileAccess.open(marker, FileAccess.WRITE)
-		if f == null:
+		if not write_marker(marker, data):
 			result = "marker_failed"
-		else:
-			f.store_string(JSON.stringify(data, "\t"))
-			f.close()
 	_push({"t": "finalized", "gen": gen, "result": result})
 
 

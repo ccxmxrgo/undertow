@@ -510,6 +510,22 @@ func test_start_twice_ignored() -> void:
 	assert_int(_fetches.size()).is_equal(3)
 
 
+## IN-01: the marker is written through a .tmp file and renamed over the old one, so a stale
+## or half-written .tmp never becomes the marker and nothing is left behind.
+func test_marker_is_written_via_tmp_and_rename() -> void:
+	await _install_three()
+	var marker := AutochartPaths.marker_path()
+	SongFixture.write_text(marker + ".tmp", "{ half")
+	_inst.mark_selftest(true)
+	assert_bool(FileAccess.file_exists(marker + ".tmp")).is_false()
+	assert_bool(_inst.selftest_ok()).is_true()
+	assert_bool(_inst.is_installed()).is_true()
+	assert_bool(PackInstaller.write_marker(marker, {"pack_version": 1, "parts": {}})).is_true()
+	assert_bool(FileAccess.file_exists(marker + ".tmp")).is_false()
+	var m: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(marker))
+	assert_dict(m["parts"]).is_empty()
+
+
 func test_selftest_marker() -> void:
 	await _install_three()
 	assert_bool(_inst.selftest_ok()).is_false()
