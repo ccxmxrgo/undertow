@@ -52,6 +52,12 @@ var library_folders: Array[String] = []
 ## Last played song id / difficulty (easy|medium|hard|expert|""). Song Select reopens on them.
 var last_song_id: String = ""
 var last_difficulty: String = ""
+## Phase 3 (D-18, D-27): last versus match setup and Solo Dive training choice. Persisted in [versus].
+var versus_rivals: int = 3
+var versus_skill: String = "regular"
+var versus_song_id: String = ""
+var versus_difficulty: String = ""
+var training_payload: String = "off"
 var bindings := BindingStore.new()
 ## Where set_* mutators persist to (tests override this).
 var save_path: String = DEFAULT_PATH
@@ -83,6 +89,11 @@ func reset_defaults() -> void:
 	library_folders = []
 	last_song_id = ""
 	last_difficulty = ""
+	versus_rivals = 3
+	versus_skill = "regular"
+	versus_song_id = ""
+	versus_difficulty = ""
+	training_payload = "off"
 	bindings.reset_defaults()
 
 
@@ -215,6 +226,11 @@ func save_to(path: String = DEFAULT_PATH) -> int:
 	cfg.set_value("library", "folders", PackedStringArray(library_folders))
 	cfg.set_value("library", "last_song_id", last_song_id)
 	cfg.set_value("library", "last_difficulty", last_difficulty)
+	cfg.set_value("versus", "rivals", versus_rivals)
+	cfg.set_value("versus", "skill", versus_skill)
+	cfg.set_value("versus", "song_id", versus_song_id)
+	cfg.set_value("versus", "difficulty", versus_difficulty)
+	cfg.set_value("versus", "training", training_payload)
 	bindings.to_config(cfg)
 	# Atomic save (WR-08): write a temp file, then rename over the target, so a crash mid-write
 	# cannot leave a truncated settings file.
@@ -266,6 +282,7 @@ func load_from(path: String = DEFAULT_PATH) -> void:
 	output_device_signature = sig.left(512) if typeof(sig) == TYPE_STRING else ""
 	calibration_done = _bool(cfg, "calibration", "done", false)
 	_load_library(cfg)
+	_load_versus(cfg)
 	apply_window()
 	apply_audio()
 	settings_changed.emit()
@@ -290,6 +307,25 @@ func _load_library(cfg: ConfigFile) -> void:
 	last_song_id = sid if typeof(sid) == TYPE_STRING and sid.length() <= MAX_PATH_LEN else ""
 	var diff: Variant = cfg.get_value("library", "last_difficulty", "")
 	last_difficulty = diff if typeof(diff) == TYPE_STRING and DIFFICULTIES.has(diff) else ""
+
+
+## T-03-02: every [versus] value is untrusted. Rivals clamped 1..3, skill and training whitelisted
+## (MatchSetup.SKILLS / TRAINING_VALUES), difficulty whitelisted, song id capped at MAX_PATH_LEN.
+func _load_versus(cfg: ConfigFile) -> void:
+	var r: Variant = cfg.get_value("versus", "rivals", 3)
+	if (typeof(r) == TYPE_INT or typeof(r) == TYPE_FLOAT) and is_finite(float(r)):
+		versus_rivals = clampi(int(r), MatchSetup.MIN_RIVALS, MatchSetup.MAX_RIVALS)
+	else:
+		versus_rivals = 3
+	var sk: Variant = cfg.get_value("versus", "skill", "regular")
+	versus_skill = sk if typeof(sk) == TYPE_STRING and MatchSetup.SKILLS.has(sk) else "regular"
+	var sid: Variant = cfg.get_value("versus", "song_id", "")
+	versus_song_id = sid if typeof(sid) == TYPE_STRING and sid.length() <= MAX_PATH_LEN else ""
+	var diff: Variant = cfg.get_value("versus", "difficulty", "")
+	versus_difficulty = diff if typeof(diff) == TYPE_STRING and DIFFICULTIES.has(diff) else ""
+	var tr: Variant = cfg.get_value("versus", "training", "off")
+	var tr_ok := typeof(tr) == TYPE_STRING and MatchSetup.TRAINING_VALUES.has(tr)
+	training_payload = tr if tr_ok else "off"
 
 
 ## Remembers the last played song/difficulty (called by SongLibrary); saves only on change.
