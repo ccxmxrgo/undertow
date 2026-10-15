@@ -1,0 +1,93 @@
+pack_e2e.gd printout (02.2.2-07, 2026-10-15, Godot 4.7.2, this PC: 8 logical cores)
+Pack v1 installed from build/pack/out through PackInstaller (Install from Folder), jobs through
+AutochartRunner + the real ProcessAdapter. Engine startup noise lines (Unicode NUL warnings from
+project load) removed; nothing else edited. Paths under the repo are printed as <repo>.
+
+== run 1: full, threads 8 (fresh pack root and songs root) ==
+$ & $env:GODOT_BIN --headless --path . -s res://tools/autochart/pack_e2e.gd -- --source build/pack/out --root build/pack/e2e_ac --songs build/pack/e2e_songs --threads 8
+E2E_CONFIG root=<repo>/build/pack/e2e_ac songs=<repo>/build/pack/e2e_songs threads=8 only=all
+E2E_INSTALL_STATE checking +0.0
+E2E_INSTALL_STATE verifying +0.0
+E2E_INSTALL_STATE extracting +0.8
+E2E_INSTALL_STATE finalizing +87.3
+E2E_INSTALL_STATE done +87.3
+E2E_INSTALL_OK 87.3 9507
+E2E_SELFTEST_OK 7.8 (child reported 7.4 s)
+E2E_RUN job mode=auto stem=other threads=8
+E2E_STAGE 1/8 decode +0.2
+E2E_STAGE 2/8 separate +0.3
+E2E_STAGE 3/8 beats +19.3
+E2E_STAGE 4/8 onsets +23.2
+E2E_STAGE 5/8 pitch +27.5
+E2E_STAGE 6/8 rank +30.9
+E2E_RANK recommended=other ranking=other,bass,vocals,drums
+E2E_STAGE 7/8 chart +32.3
+E2E_STAGE 8/8 install +35.7
+E2E_JOB_OK <repo>/build/pack/e2e_songs/synth_wave_april other 2.9385 35.9 threads=8 reused=false ranking=other,bass,vocals,drums
+E2E_WORK <repo>/build/pack/e2e_ac/work/w_3de448b4715b9078
+E2E_RUN rechart mode=single stem=bass threads=8
+E2E_WARN Reusing separated instruments
+E2E_STAGE 1/8 decode +0.2
+E2E_STAGE 2/8 separate +0.2
+E2E_STAGE 3/8 beats +0.2
+E2E_STAGE 4/8 onsets +0.2
+E2E_STAGE 5/8 pitch +0.2
+E2E_STAGE 6/8 rank +0.2
+E2E_RANK recommended=other ranking=other,bass,vocals,drums
+E2E_STAGE 7/8 chart +0.2
+E2E_STAGE 8/8 install +2.5
+E2E_RECHART_OK bass 2.6 folder=<repo>/build/pack/e2e_songs/synth_wave_april_2 expert_nps=3.3123
+E2E_RUN lanes mode=lanes stem=other threads=8
+E2E_WARN Reusing separated instruments
+E2E_STAGE 1/8 decode +0.2
+E2E_STAGE 2/8 separate +0.2
+E2E_STAGE 3/8 beats +0.2
+E2E_STAGE 4/8 onsets +0.2
+E2E_STAGE 5/8 pitch +0.2
+E2E_STAGE 6/8 rank +0.2
+E2E_RANK recommended=other ranking=other,bass,vocals,drums
+E2E_STAGE 7/8 chart +0.2
+E2E_STAGE 8/8 install +2.8
+E2E_LANES_OK 2.8 folder=<repo>/build/pack/e2e_songs/synth_wave_april_3 stem=lanes reused=true expert_nps=3.5072
+E2E_RUN cancel mode=auto stem=other threads=8
+E2E_STAGE 1/8 decode +0.2
+E2E_STAGE 2/8 separate +0.3
+E2E_CANCEL_REQUEST in separate +3.3
+E2E_CANCEL_OK pid=23508 cancel_requested=+3.3 cancelled=+3.3 gone_after=0.1 s (polls 1; tasklist: INFO: No tasks are running which match the specified criteria.)
+E2E_SCAN_SONG synth_wave_april status=ok delay=58 length=128.1 lanes=4 easy=166 medium=268 hard=395 expert=414
+E2E_SCAN_SONG synth_wave_april_2 status=ok delay=58 length=128.1 lanes=4 easy=177 medium=323 hard=445 expert=466
+E2E_SCAN_SONG synth_wave_april_3 status=ok delay=58 length=128.1 lanes=4 easy=160 medium=340 hard=612 expert=776
+E2E_SCAN_OK 3
+E2E_OK
+
+== run 2: job only, threads 4 (build/pack/e2e_ac/work deleted first) ==
+$ ... --threads 4 --only job
+E2E_CONFIG root=<repo>/build/pack/e2e_ac songs=<repo>/build/pack/e2e_songs threads=4 only=job
+E2E_RUN job mode=auto stem=other threads=4
+E2E_STAGE 1/8 decode +0.2
+E2E_STAGE 2/8 separate +0.3
+E2E_STAGE 3/8 beats +25.1
+E2E_STAGE 4/8 onsets +29.3
+E2E_STAGE 5/8 pitch +33.6
+E2E_STAGE 6/8 rank +36.9
+E2E_RANK recommended=other ranking=other,bass,vocals,drums
+E2E_STAGE 7/8 chart +38.3
+E2E_STAGE 8/8 install +39.2
+E2E_JOB_OK <repo>/build/pack/e2e_songs/synth_wave_april_4 other 2.9385 39.4 threads=4 reused=false ranking=other,bass,vocals,drums
+E2E_WORK <repo>/build/pack/e2e_ac/work/w_3de448b4715b9078
+
+== run 3: job only, threads 2 (build/pack/e2e_ac/work deleted first) ==
+$ ... --threads 2 --only job
+E2E_CONFIG root=<repo>/build/pack/e2e_ac songs=<repo>/build/pack/e2e_songs threads=2 only=job
+E2E_RUN job mode=auto stem=other threads=2
+E2E_STAGE 1/8 decode +0.2
+E2E_STAGE 2/8 separate +0.3
+E2E_STAGE 3/8 beats +37.5
+E2E_STAGE 4/8 onsets +43.3
+E2E_STAGE 5/8 pitch +47.7
+E2E_STAGE 6/8 rank +51.1
+E2E_RANK recommended=other ranking=other,bass,vocals,drums
+E2E_STAGE 7/8 chart +52.4
+E2E_STAGE 8/8 install +53.4
+E2E_JOB_OK <repo>/build/pack/e2e_songs/synth_wave_april_5 other 2.9385 53.5 threads=2 reused=false ranking=other,bass,vocals,drums
+E2E_WORK <repo>/build/pack/e2e_ac/work/w_3de448b4715b9078
