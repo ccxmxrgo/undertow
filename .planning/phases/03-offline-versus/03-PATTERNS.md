@@ -357,7 +357,7 @@ func _draw() -> void:
 	...
 	draw_arc(c, R_OUTER, 0.0, TAU, 64, Palette.alpha(Palette.SONAR, OUTER_ALPHA), Palette.EDGE_HAIR, true)
 ```
-hull_arc.gd public API style (lines 58-80): `reset(...)`, `set_x(value, delta)`, read-only getters `pct()`, `is_flashing()` for tests; `_process(delta)` drives timers (lines 195-209). Either draw on top of the existing socket (Hud keeps `torpedo_socket`, hud.gd:42-44) or make RewardSocket a child of `hud` at `TorpedoSocket.RECT` - D-33 radius 40 arc, `SONAR` / `SONAR_PALE` full pulse (static under Reduce motion), `REWARD_GOLD` queue pip. Icon via `UiIcons.draw(ci, name, rect, color)`. Add its rects to Hud-style `keepout_shapes()` or keep it a plain fixed-rect Control so the scanner checks its rect.
+hull_arc.gd public API style (lines 58-80): `reset(...)`, `set_x(value, delta)`, read-only getters `pct()`, `is_flashing()` for tests; `_process(delta)` drives timers (lines 195-209). Either draw on top of the existing socket (Hud keeps `torpedo_socket`, hud.gd:110-112) or make RewardSocket a child of `hud` at `TorpedoSocket.RECT` - D-33 radius 40 arc, `SONAR` / `SONAR_PALE` full pulse (static under Reduce motion), `REWARD_GOLD` queue pip. Icon via `UiIcons.draw(ci, name, rect, color)`. Add its rects to Hud-style `keepout_shapes()` or keep it a plain fixed-rect Control so the scanner checks its rect.
 
 ---
 
