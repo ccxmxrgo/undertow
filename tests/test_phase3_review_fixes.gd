@@ -37,3 +37,37 @@ func test_feedback_popup_sits_over_the_swapped_receptor() -> void:
 	assert_float(float(fb.popup(0)["x"])).is_equal_approx(Trench.hit_point(1).x, 1e-3)
 	fb.on_ghost_hit(1)
 	assert_float(float(fb.popup(1)["x"])).is_equal_approx(Trench.hit_point(2).x, 1e-3)
+
+
+# ---- WR-05 (V-5): judgment popups never show past the Ink Cloud band edge ------------------
+
+func _inked_highway(t: float) -> Highway:
+	var chart := TestCharts.click_chart(120.0, 64, 1000)
+	var cfg := VersusConfig.new()
+	var stack := PayloadStack.new(chart, cfg)
+	stack.install({"id": 1, "reward": Reward.Id.INK_CLOUD, "arrive_t": 2.0, "end_t": 10.0,
+		"seed": 3})
+	var hw: Highway = auto_free(Highway.new())
+	hw.payloads = stack
+	hw.vcfg = cfg
+	hw._vt = t
+	return hw
+
+
+func test_popups_fade_out_under_full_ink() -> void:
+	var fb: Feedback = auto_free(Feedback.new())
+	fb.audio_enabled = false
+	fb.highway = _inked_highway(5.0)
+	assert_float(fb.ink_fade()).is_equal_approx(0.0, 1e-6)
+	fb.highway = _inked_highway(1.0)  # before arrival: no ink
+	assert_float(fb.ink_fade()).is_equal(1.0)
+	fb.highway = _inked_highway(2.25)  # half a beat into the 1-beat fade in
+	assert_float(fb.ink_fade()).is_between(0.01, 0.99)
+
+
+func test_popups_unchanged_without_payloads() -> void:
+	var fb: Feedback = auto_free(Feedback.new())
+	fb.audio_enabled = false
+	assert_float(fb.ink_fade()).is_equal(1.0)
+	fb.highway = _crossed_highway()
+	assert_float(fb.ink_fade()).is_equal(1.0)

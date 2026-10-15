@@ -114,6 +114,25 @@ func lane_x(lane: int) -> float:
 	return Trench.hit_point(lane).x
 
 
+## Popup opacity factor under an Ink Cloud / Silt band (WR-05, V-5): the band above Feedback
+## hides the popup centre, but a wide outer-lane popup overhangs the band's trapezoid edge. While
+## the popup row (POP_Y) lies inside the inked depth range, popups fade by 1 - ink amount so no
+## stray letters show past the band. 1.0 without a highway, payloads or ink.
+func ink_fade() -> float:
+	if highway == null or not is_instance_valid(highway) or highway.payloads == null:
+		return 1.0
+	var ink := clampf(highway.payloads.ink_amount(highway._vt), 0.0, 1.0)
+	if ink <= 0.0:
+		return 1.0
+	var bottom := highway.vcfg.ink_depth_bottom if highway.vcfg != null else Trench.D_MIN
+	var top := highway.payloads.ink_top_depth(highway._vt)
+	var y_near := Trench.point(0.0, bottom).y
+	var y_far := Trench.point(0.0, top).y
+	if POP_Y < y_far or POP_Y > y_near:
+		return 1.0
+	return 1.0 - ink
+
+
 func floating_count() -> int:
 	return _floating.size()
 
@@ -244,6 +263,7 @@ func _draw() -> void:
 	var font := popup_font()
 	var asc := font.get_ascent(POP_SIZE)
 	var desc := font.get_descent(POP_SIZE)
+	var ink_k := ink_fade()
 	for e in _floating:
 		var age := float(t - int(e["born"])) / 1e6
 		if age >= POP_LIFE:
@@ -254,7 +274,9 @@ func _draw() -> void:
 		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, POP_SIZE).x
 		var cx := float(e["x_sum"]) / float(e["n"])
 		var cy := POP_Y - float(s["rise"])
-		var a: float = s["alpha"]
+		var a: float = float(s["alpha"]) * ink_k
+		if a <= 0.0:
+			continue
 		var pos := Vector2(-w * 0.5, (asc - desc) * 0.5)
 		draw_set_transform(Vector2(cx, cy), 0.0, Vector2.ONE * float(s["scale"]))
 		draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, POP_SIZE, OUTLINE_PX,
