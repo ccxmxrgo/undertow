@@ -184,7 +184,9 @@ func _on_event(e: Dictionary) -> void:
 		GameEvent.PAYLOAD_END:
 			if int(e.get("seat", -1)) == seat and e.get("reason", "") == "reflected":
 				var t := float(e["t"])
-				stack.end_early(int(e["id"]), t)
+				# t is already MatchSim's end beat (the next whole beat after the reflection),
+				# so the ease-out starts at t, not one beat later (WR-02, D-17).
+				stack.end_at(int(e["id"]), t)
 				judge.clear_payload(int(e["id"]), t)
 		GameEvent.BUFF_APPLIED:
 			if int(e.get("seat", -1)) == seat:

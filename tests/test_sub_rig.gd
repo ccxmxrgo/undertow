@@ -210,3 +210,29 @@ func test_late_miss_is_stamped_at_the_deadline_not_the_tick() -> void:
 	other.judgment_reported.connect(func(idx: int, j: int, t: float) -> void: seen2.append([idx, j, t]))
 	other.tick(0.95)
 	assert_float(seen2[1][2]).is_equal(seen[1][2])
+
+
+## WR-02: the reflected payload eases out over the beat starting at the referee's end time
+## (12.0 s = beat 24), not one beat later; Crossed Wires input returns to identity after it.
+func test_reflected_payload_eases_out_from_the_end_beat() -> void:
+	var rig := _rig()
+	_ch.send(_landed(0, 6, Reward.Id.INK_CLOUD, 10.0, 18.0))
+	assert_float(rig.stack.ink_amount(11.9)).is_equal_approx(1.0, 1e-6)
+	_ch.send(GameEvent.make(GameEvent.PAYLOAD_END, 12.0,
+		{"id": 6, "seat": 0, "reward": Reward.Id.INK_CLOUD, "reason": "reflected",
+		"immune_until": 14.0}))
+	assert_float(rig.stack.ink_amount(12.0)).is_equal_approx(1.0, 1e-6)
+	assert_float(rig.stack.ink_amount(12.375)).is_less(1.0)  # 0.75 beat into the ease-out
+	assert_float(rig.stack.ink_amount(12.5)).is_equal(0.0)
+
+
+func test_reflected_crossed_wires_restores_input_one_beat_after_end() -> void:
+	var rig := _rig()
+	_ch.send(_landed(0, 7, Reward.Id.CROSSED_WIRES, 10.0, 18.0))
+	var pair := rig.stack.crossed_pair()
+	assert_int(rig.stack.input_map(11.0)[pair.x]).is_equal(pair.y)
+	_ch.send(GameEvent.make(GameEvent.PAYLOAD_END, 12.0,
+		{"id": 7, "seat": 0, "reward": Reward.Id.CROSSED_WIRES, "reason": "reflected",
+		"immune_until": 14.0}))
+	assert_int(rig.stack.input_map(12.25)[pair.x]).is_equal(pair.y)
+	assert_int(rig.stack.input_map(12.5)[pair.x]).is_equal(pair.x)

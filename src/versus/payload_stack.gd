@@ -72,6 +72,17 @@ func end_early(id: int, t: float) -> void:
 			e["b_end"] = maxf(minf(e["b_end"], nb), e["b_arr"])
 
 
+## Ends a payload at the referee's end time t (PAYLOAD_END "reflected", WR-02): the 1-beat
+## ease-out starts AT t (MatchSim already put t on the next whole beat after the reflection).
+## Never moves an end later.
+func end_at(id: int, t: float) -> void:
+	if not is_finite(t):
+		return
+	for e in _payloads:
+		if e["id"] == id:
+			e["b_end"] = maxf(minf(e["b_end"], _beat(t)), e["b_arr"])
+
+
 func clear() -> void:
 	_payloads.clear()
 	_warheads.clear()
