@@ -22,6 +22,8 @@ func before_test() -> void:
 
 func after_test() -> void:
 	Settings.no_fail = _saved_no_fail
+	MatchSetup.pending = null
+	VersusController.test_autoplay_human = false
 	Gameplay.pending_chart = null
 	Gameplay.pending_autoplay = false
 	Gameplay.pending_intro = IntroTimeline.Mode.FULL
@@ -139,6 +141,119 @@ func _wait_built(gp: Gameplay) -> bool:
 			return true
 		await get_tree().process_frame
 	return false
+
+
+## Versus launch (03-14): MatchSetup.pending with 3 rivals; the human is the test autoplay seam.
+func _launch_versus() -> Gameplay:
+	var m := MatchSetup.new()
+	m.mode = MatchSetup.MODE_VERSUS
+	m.rivals = 3
+	m.skill = "regular"
+	m.seed = 777
+	MatchSetup.pending = m
+	VersusController.test_autoplay_human = true
+	Gameplay.pending_chart = TestCharts.short_chart()
+	Gameplay.pending_autoplay = false
+	var gp: Gameplay = (load(SCENE) as PackedScene).instantiate()
+	add_child(gp)
+	auto_free(gp)
+	return gp
+
+
+## Feeds one event straight to every versus view (no referee or rig side effects).
+func _feed(v: VersusController, e: Dictionary) -> void:
+	v.periscope_column.call("_on_event", e)
+	for n: Object in [v.killfeed, v.incoming_alert, v.event_banner, v.reward_popup, v.reward_socket,
+			v.target_readout, v.status_chips]:
+		n.call("on_event", e)
+
+
+## UI-SPEC 13: every versus element in its largest state sits at its exact rect and outside the
+## note-path keep-out (VersusHud children plus the new Hud children and the 6-chip stack).
+func test_versus_hud_elements_keep_out_of_the_note_path() -> void:
+	var gp := _launch_versus()
+	var ok: bool = await _wait_built(gp)
+	assert_bool(ok).override_failure_message("versus gameplay did not build").is_true()
+	gp.set_process(false)  # freeze the match: only the views' own animation steps run
+	var v := gp.versus
+	var t := gp.conductor.song_time()
+	# Longest names, so one killfeed line needs the overflow fallback.
+	v.killfeed.bind(v.channel, 0, PackedStringArray(["YOU", "BARRACUDA", "LAMPREY", "NARWHAL"]), v.cfg)
+	var ev := func(type: String, fields: Dictionary) -> Dictionary: return GameEvent.make(type, t, fields)
+	# Periscopes: bounty on P1, reticle on P1; socket held + queued; readout locked.
+	_feed(v, ev.call(GameEvent.BOUNTY_MOVED, {"from_seat": -1, "to_seat": 1}))
+	_feed(v, ev.call(GameEvent.TARGET, {"seat": 0, "mode": PlayerState.TargetMode.LOCKED, "target": 1}))
+	_feed(v, ev.call(GameEvent.METER, {"seat": 0, "progress": 3, "threshold": 3,
+		"held": Reward.Id.INK_CLOUD, "queued": Reward.Id.OVERCLOCK, "debris": false}))
+	# Killfeed: 4 lines, one long bounty claim.
+	_feed(v, ev.call(GameEvent.LANDED, {"id": 90, "from": 1, "to": 2, "reward": Reward.Id.INK_CLOUD}))
+	_feed(v, ev.call(GameEvent.COLLISION, {"a": 2, "b": 3, "ids": [91, 92],
+		"reward_a": Reward.Id.SONAR_JAM, "reward_b": Reward.Id.GHOST_NOTES}))
+	_feed(v, ev.call(GameEvent.REFLECTED, {"id": 93, "by": 3, "to": 1, "reward": Reward.Id.DEPTH_CHARGE}))
+	_feed(v, ev.call(GameEvent.BOUNTY_CLAIMED, {"from": 1, "to": 3, "refund": 2}))
+	# Alert slot INCOMING; event banner SOLO DUEL live; reward popup.
+	_feed(v, ev.call(GameEvent.TORPEDO_LAUNCH, {"id": 94, "from": 1, "to": 0, "reward": Reward.Id.INK_CLOUD,
+		"launch_beat": 1, "launch_t": t, "arrive_t": t + 2.0, "warheads": [], "reflected": false,
+		"debris": false}))
+	_feed(v, ev.call(GameEvent.DUEL_ANNOUNCE, {"solo": 0, "start": t, "end": t + 20.0, "note_count": 24}))
+	_feed(v, ev.call(GameEvent.DUEL_START, {"solo": 0}))
+	_feed(v, ev.call(GameEvent.REWARD_EARNED, {"seat": 0, "reward": Reward.Id.INK_CLOUD, "source": "meter"}))
+	# Status chips at the 6-chip maximum.
+	_feed(v, ev.call(GameEvent.STATUS, {"seat": 0, "hull": 80.0, "depth": 100.0, "alive": true, "place": 1,
+		"accuracy": 1.0}))
+	_feed(v, ev.call(GameEvent.BUFF_APPLIED, {"seat": 0, "reward": Reward.Id.DECOY_FLARE, "until_t": t + 8.0}))
+	_feed(v, ev.call(GameEvent.BUFF_APPLIED, {"seat": 0, "reward": Reward.Id.OVERCLOCK, "until_t": t + 8.0}))
+	_feed(v, ev.call(GameEvent.BUFF_APPLIED, {"seat": 0, "reward": Reward.Id.BALLAST_PATCH, "until_t": t,
+		"amount": 25.0}))
+	_feed(v, ev.call(GameEvent.PAYLOAD_END, {"id": 95, "seat": 0, "reward": Reward.Id.SONAR_JAM,
+		"reason": "expired", "immune_until": t + 6.0}))
+	gp.hud.set_chip("BOUNTY", "BOUNTY ON YOU", "reward", "bounty", true)
+	v.incoming_alert.observe(t + 0.05)
+	v.event_banner.observe(t + 0.05)
+	v.periscope_column.update(t + 0.05)
+	for i in 30:  # slides, pops and the reticle glide settle
+		await get_tree().process_frame
+	# Everything is showing.
+	var col := v.periscope_column
+	assert_int(col.panels().size()).is_equal(3)
+	assert_bool(col.panels()[0].bounty()).is_true()
+	assert_bool(col.has_reticle()).is_true()
+	assert_int(v.killfeed.lines().size()).is_equal(4)
+	assert_bool(v.incoming_alert.is_showing()).is_true()
+	assert_bool(v.event_banner.is_showing()).is_true()
+	assert_bool(v.reward_popup.showing()).is_true()
+	assert_int(gp.hud.chip_rects().size()).is_equal(6)
+	# Exact rects (UI-SPEC 13).
+	var want_panels := [Rect2(24, 216, 352, 88), Rect2(24, 312, 352, 88), Rect2(24, 408, 352, 88)]
+	for i in 3:
+		assert_object(col.panels()[i].get_global_rect()).is_equal(want_panels[i])
+	assert_object(v.killfeed.get_global_rect()).is_equal(Rect2(1544, 216, 352, 184))
+	assert_object(v.incoming_alert.get_global_rect()).is_equal(Rect2(640, 120, 640, 72))
+	assert_object((v.event_banner.get_node("Panel") as Control).get_global_rect()).is_equal(
+		Rect2(640, 200, 640, 72))
+	assert_object(v.target_readout.get_global_rect()).is_equal(Rect2(248, 752, 144, 88))
+	assert_object(v.reward_socket.get_global_rect()).is_equal(Rect2(272, 928, 80, 80))
+	# Nothing intersects the keep-out polygon.
+	var keep := keep_out_polygon()
+	var vp := Vector2(1920.0, 1080.0)
+	var allow: Array = [gp.hud.hull_arc, gp.hud.hull_caption]
+	var bad: Array = []
+	for root in [gp.cockpit_frame, gp.hud, v.versus_hud, gp.streak_counter]:
+		_scan(root, keep, allow, vp, bad)
+	assert_array(bad).override_failure_message("versus keep-out violated:\n" + "\n".join(bad)).is_empty()
+	assert_int(v.versus_hud.keepout_shapes().size()).is_greater_equal(6)
+	for s in v.versus_hud.keepout_shapes():
+		assert_bool(_hits(s, keep)).override_failure_message("VersusHud shape %s" % str(s)).is_false()
+
+
+func test_versus_full_screen_canvases_implement_keepout_shapes() -> void:
+	var gp := _launch_versus()
+	var ok: bool = await _wait_built(gp)
+	assert_bool(ok).is_true()
+	var v := gp.versus
+	for n in [v.versus_hud, v.periscope_column, v.event_banner, v.edge_flash, v.reward_popup]:
+		assert_bool((n as Node).has_method("keepout_shapes")).override_failure_message(
+			"%s has no keepout_shapes()" % (n as Node).name).is_true()
 
 
 ## The scanner is not vacuous: an intruding Control and a full-screen canvas without

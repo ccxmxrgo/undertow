@@ -20,6 +20,20 @@ const EXPECTED := {
 	"gameplay": ["Arena", "Highway", "HighwayNotes", "FxLayer", "MultiplierRing", "SectionBanner",
 		"StreakCounter", "ScreenTransition"],
 	"results": ["AbyssBackdrop", "GradeEmblem", "FocusMarker", "ScreenTransition"],
+	# 03-14 (UI-SPEC 12): a running versus match. EdgeFlash and InkTopLayer are identical in every
+	# mode and deliberately not registered.
+	"versus": ["Arena", "Highway", "HighwayNotes", "FxLayer", "MultiplierRing", "SectionBanner",
+		"StreakCounter", "ScreenTransition", "RewardSocket", "PeriscopeColumn", "PeriscopePanel",
+		"EventBanner", "IncomingAlert", "InkCloudLayer"],
+	"match_setup": ["ScreenTransition"],
+	"versus_results": ["VersusResultsScreen", "ScreenTransition"],
+}
+
+## Owners that must be registered in a context but only change under Reduce motion (so they
+## cannot be in EXPECTED, whose owners must change under Low effects).
+const PRESENT := {
+	"versus": ["RewardPopup", "TargetReadout", "Killfeed"],
+	"match_setup": ["MatchSetupScreen"],
 }
 
 ## Motion entries that Reduce motion must flip, per owner: key -> value under Reduce motion.
@@ -38,15 +52,31 @@ const REDUCE := {
 	"SectionBanner": {"slide": false},
 	"StreakCounter": {"milestone_sparks": 0},
 	"GradeEmblem": {"scale": false},
+	# 03-14 versus owners (UI-SPEC 12).
+	"RewardSocket": {"breathing": false, "pop": false},
+	"RewardPopup": {"pop": false},
+	"TargetReadout": {"pulse": false},
+	"PeriscopeColumn": {"glide": false, "slide": false},
+	"PeriscopePanel": {"sweep": false, "burst_radius": false, "damage_flash": false},
+	"Killfeed": {"slide": false},
+	"IncomingAlert": {"slide": false, "burst_grow": false},
+	"EventBanner": {"slide": false, "shake": false},
+	"InkCloudLayer": {"drift": false},
+	"VersusResultsScreen": {"rise": false, "medal_pop": false},
+	"MatchSetupScreen": {"roster_fade": false},
 }
 
 var _low := false
 var _reduce := false
 var _style := ""
 var _old_scores_path := ""
+var _versus_song := ""
+var _versus_diff := ""
 
 
 func before_test() -> void:
+	_versus_song = Settings.versus_song_id
+	_versus_diff = Settings.versus_difficulty
 	_low = Settings.low_effects
 	_reduce = Settings.reduce_motion
 	_style = Settings.background_style
@@ -71,6 +101,10 @@ func after_test() -> void:
 	Gameplay.pending_chart = null
 	Gameplay.pending_autoplay = false
 	Gameplay.pending_intro = IntroTimeline.Mode.FULL
+	MatchSetup.pending = null
+	VersusController.test_autoplay_human = false
+	Settings.versus_song_id = _versus_song
+	Settings.versus_difficulty = _versus_diff
 
 
 # ---- helpers ----------------------------------------------------------------------------
@@ -114,7 +148,7 @@ func _check_context(ctx: String, root: Node) -> void:
 	for n in nodes:
 		names.append(owner_name(n))
 	var missing: Array[String] = []
-	for want: String in EXPECTED[ctx]:
+	for want: String in EXPECTED[ctx] + PRESENT.get(ctx, []):
 		if not names.has(want):
 			missing.append(want)
 	assert_array(missing).override_failure_message(
@@ -196,6 +230,62 @@ func _gameplay() -> Gameplay:
 	add_child(gp)
 	auto_free(gp)
 	return gp
+
+
+## A versus match (3 rivals), the human on the test autoplay seam.
+func _versus() -> Gameplay:
+	var m := MatchSetup.new()
+	m.mode = MatchSetup.MODE_VERSUS
+	m.rivals = 3
+	m.seed = 99
+	MatchSetup.pending = m
+	VersusController.test_autoplay_human = true
+	Gameplay.pending_intro = IntroTimeline.Mode.NONE
+	Gameplay.pending_chart = TestCharts.short_chart()
+	Gameplay.pending_autoplay = false
+	var gp: Gameplay = (load("res://scenes/gameplay.tscn") as PackedScene).instantiate()
+	add_child(gp)
+	auto_free(gp)
+	return gp
+
+
+func _match_setup() -> MatchSetupScreen:
+	var lib: Node = load("res://src/autoload/song_library.gd").new()
+	lib.songs_root_override = "user://test_effect_settings_songs"
+	lib.cache_path = "user://test_effect_settings_cache.json"
+	lib.auto_scan = false
+	add_child(lib)
+	auto_free(lib)
+	var e := SongEntry.new()
+	e.id = "fx01"
+	e.title = "Effect Song"
+	e.difficulties.append({"name": "expert", "note_count": 100, "fingerprint": "fp_fx01"})
+	lib.entries.assign([e])
+	Settings.versus_song_id = "fx01"
+	Settings.versus_difficulty = "expert"
+	MatchSetup.pending = null
+	var s: MatchSetupScreen = (load("res://scenes/match_setup.tscn") as PackedScene).instantiate()
+	s.library = lib
+	s.navigate = func(_p: String) -> void: pass
+	add_child(s)
+	auto_free(s)
+	return s
+
+
+func _versus_results() -> VersusResultsScreen:
+	var host := Control.new()
+	add_child(host)
+	auto_free(host)
+	var r := VersusResultsScreen.new()
+	host.add_child(r)
+	r.setup({"rows": [
+		{"seat": 0, "place": 1, "alive": true, "depth": 900.0, "hull": 80.0, "accuracy": 0.95,
+			"eliminated_at": INF, "name": "YOU", "landed": 2, "reflected": 1},
+		{"seat": 1, "place": 2, "alive": false, "depth": 500.0, "hull": 0.0, "accuracy": 0.8,
+			"eliminated_at": 40.0, "name": "MAKO", "landed": 1, "reflected": 0}],
+		"local_seat": 0, "medals": {0: ["shredder"]}, "title": "Effect Song", "artist": "Test",
+		"difficulty": "expert", "seed": 5, "last_standing_seat": 0})
+	return r
 
 
 func _results() -> ResultsScreen:
@@ -284,6 +374,29 @@ func test_gameplay_snow_bursts_and_shake_values() -> void:
 func test_results_effect_nodes_follow_settings() -> void:
 	var r := _results()
 	await _check_context("results", r)
+
+
+func test_versus_effect_nodes_follow_settings() -> void:
+	var gp := _versus()
+	await get_tree().process_frame
+	assert_object(gp.versus).is_not_null()
+	await _check_context("versus", gp)
+	# EdgeFlash and InkTopLayer are deliberately not effect nodes (identical in every mode).
+	var names: Array[String] = []
+	for n in _fx_nodes(gp):
+		names.append(owner_name(n))
+	assert_bool(names.has("EdgeFlash")).is_false()
+	assert_bool(names.has("InkTopLayer")).is_false()
+
+
+func test_match_setup_effect_nodes_follow_settings() -> void:
+	var s := _match_setup()
+	await _check_context("match_setup", s)
+
+
+func test_versus_results_effect_nodes_follow_settings() -> void:
+	var r := _versus_results()
+	await _check_context("versus_results", r)
 
 
 func test_results_screen_has_one_focus_marker() -> void:
