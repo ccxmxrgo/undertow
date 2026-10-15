@@ -48,6 +48,14 @@ var _sweep_t: float = -1.0
 var _reduce: bool = false
 var _low: bool = false
 var _panel: StyleBoxFlat
+## 03-UI-SPEC 6.4: the EventBanner has priority over section names. While suppressed is true the
+## banner is hidden immediately and no new section shows (the name stays in the progress track).
+## A section that started while suppressed shows once suppression ends, if it is still in force.
+## With suppressed false the behaviour is unchanged.
+var suppressed: bool = false:
+	set = set_suppressed
+var _missed_idx: int = -1
+var _missed_name: String = ""
 
 
 func _ready() -> void:
@@ -72,6 +80,8 @@ func setup(chart: ChartData, conductor: Conductor) -> void:
 				_sections.append({"time": st, "name": str(s.get("name", ""))})
 		_sections.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["time"]) < float(b["time"]))
 	_idx = -1
+	_missed_idx = -1
+	_missed_name = ""
 	_set_phase(Phase.IDLE)
 	_text = ""
 	_prev_text = ""
@@ -104,6 +114,7 @@ func observe(t: float) -> void:
 		return
 	var i := ProgressTrack.section_index(_sections, t)
 	if i == _idx:
+		_show_missed()
 		return
 	var forward := i > _idx
 	_idx = i
@@ -112,6 +123,12 @@ func observe(t: float) -> void:
 
 
 func show_section(raw_name: String) -> void:
+	if suppressed:
+		_missed_idx = _idx
+		_missed_name = raw_name
+		return
+	_missed_idx = -1
+	_missed_name = ""
 	var n := display_name(raw_name)
 	match _phase:
 		Phase.HOLD:
@@ -132,6 +149,30 @@ func show_section(raw_name: String) -> void:
 			_set_phase(Phase.IN)
 			_sweep_t = 0.0 if sweep_on() else -1.0
 	_apply_visual()
+
+
+func set_suppressed(v: bool) -> void:
+	if v == suppressed:
+		return
+	suppressed = v
+	if v:
+		_set_phase(Phase.IDLE)
+		_prev_text = ""
+		_xfade_left = 0.0
+		_sweep_t = -1.0
+		_apply_visual()
+
+
+## After suppression ends, shows the section that started while suppressed (if still in force).
+func _show_missed() -> void:
+	if suppressed or _missed_idx < 0:
+		return
+	var missed := _missed_name
+	var still := _missed_idx == _idx
+	_missed_idx = -1
+	_missed_name = ""
+	if still:
+		show_section(missed)
 
 
 func _cross_fade_to(n: String) -> void:

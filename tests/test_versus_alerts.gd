@@ -353,3 +353,278 @@ func test_edge_flash_draws() -> void:
 	f.observe(10.06)
 	await get_tree().process_frame
 	assert_float(f.current_alpha()).is_greater(0.4)
+
+
+# ---- EventBanner + SectionBanner priority -------------------------------------------------
+
+var _pcts: Dictionary = {}
+
+
+func _live(seat: int) -> float:
+	return float(_pcts.get(seat, -1.0))
+
+
+func _section(sections: Array) -> SectionBanner:
+	var c := ChartData.new()
+	c.tempo_map.append({"time": 0.0, "bpm": 120.0})
+	c.add_note(0, 199.0)
+	for s in sections:
+		c.sections.append({"time": float(s[0]), "name": str(s[1])})
+	c.finalize()
+	var b: SectionBanner = auto_free(SectionBanner.new())
+	add_child(b)
+	b.setup(c, null)
+	return b
+
+
+func _event_banner(ch: EventChannel, section: SectionBanner = null) -> EventBanner:
+	_pcts = {}
+	var b: EventBanner = auto_free(EventBanner.new())
+	add_child(b)
+	b.bind(ch, 0, NAMES, _cfg(), _live, section)
+	return b
+
+
+func _announce(ch: EventChannel, t := 18.0) -> void:
+	ch.send(GameEvent.make(GameEvent.DUEL_ANNOUNCE, t, {"solo": 0, "start": 20.0, "end": 29.5, "note_count": 26}))
+
+
+func test_banner_duel_announce_slides_and_stays() -> void:
+	var ch := LoopbackChannel.new()
+	var b := _event_banner(ch)
+	assert_object(EventBanner.RECT).is_equal(SectionBanner.RECT)
+	_announce(ch)
+	assert_int(b.current_kind()).is_equal(EventBanner.Kind.DUEL_ANNOUNCE)
+	assert_str(b.caption_text()).is_equal("SOLO DUEL")
+	assert_object(b.caption_color()).is_equal(Palette.REWARD_GOLD)
+	assert_str(b.headline_text()).is_equal("85% PERFECT WINS A REWARD")
+	assert_str(b.right_text()).is_equal("26 NOTES")
+	assert_float(b.slide_offset()).is_equal_approx(-24.0, 0.01)
+	b.step(Palette.DUR_BASE + 0.001)
+	assert_float(b.alpha()).is_equal_approx(1.0, 1e-3)
+	assert_float(b.slide_offset()).is_equal(0.0)
+	b.step(10.0)
+	b.observe(19.9)
+	assert_int(b.current_kind()).is_equal(EventBanner.Kind.DUEL_ANNOUNCE)  # stays until the solo starts
+
+
+func test_banner_duel_live_and_wreck() -> void:
+	var ch := LoopbackChannel.new()
+	var b := _event_banner(ch)
+	_announce(ch)
+	b.step(0.2)
+	ch.send(GameEvent.make(GameEvent.DUEL_START, 20.0, {"solo": 0}))
+	b.observe(20.0)
+	assert_int(b.current_kind()).is_equal(EventBanner.Kind.DUEL_LIVE)
+	assert_str(b.headline_text()).is_equal("YOU --%")
+	_pcts = {0: 88.0, 1: 70.0, 2: 91.0, 3: 95.0}
+	ch.send(GameEvent.make(GameEvent.IMPLODED, 21.0, {"seat": 3}))  # dead rivals never lead
+	b.step(5.0)
+	b.observe(24.75)
+	assert_int(b.current_kind()).is_equal(EventBanner.Kind.DUEL_LIVE)
+	assert_str(b.headline_text()).is_equal("YOU 88%")
+	assert_object(b.headline_color()).is_equal(Palette.SONAR_PALE)
+	assert_str(b.right_text()).is_equal("LEADER ORCA 91%")
+	assert_float(b.duel_progress()).is_equal_approx(0.5, 1e-4)
+	_pcts[0] = 80.0
+	b.observe(25.0)
+	assert_object(b.headline_color()).is_equal(Palette.TEXT_HI)
+	await get_tree().process_frame
+	# Local wreck.
+	var ch2 := LoopbackChannel.new()
+	var w := _event_banner(ch2)
+	ch2.send(GameEvent.make(GameEvent.IMPLODED, 5.0, {"seat": 0}))
+	w.step(3.0)
+	w.step(0.31)
+	ch2.send(GameEvent.make(GameEvent.DUEL_START, 20.0, {"solo": 0}))
+	w.observe(20.0)
+	assert_str(w.headline_text()).is_equal("WRECKS SIT THIS ONE OUT")
+
+
+func test_banner_duel_results() -> void:
+	var ch := LoopbackChannel.new()
+	var b := _event_banner(ch)
+	ch.send(GameEvent.make(GameEvent.DUEL_RESULT, 29.6, {"solo": 0, "winner": 0, "pct": 92.0, "best_pct": 92.0,
+		"tied": false}))
+	assert_str(b.headline_text()).is_equal("YOU WIN THE SOLO")
+	assert_object(b.headline_color()).is_equal(Palette.REWARD_GOLD)
+	assert_str(b.right_text()).is_equal("92% PERFECT")
+	b.step(Palette.DUR_BASE)
+	b.step(1.59)
+	assert_bool(b.is_showing()).is_true()
+	assert_int(b.phase()).is_equal(EventBanner.Phase.HOLD)
+	b.step(0.02)
+	assert_int(b.phase()).is_equal(EventBanner.Phase.OUT)
+	b.step(0.31)
+	assert_bool(b.is_showing()).is_false()
+	ch.send(GameEvent.make(GameEvent.DUEL_RESULT, 60.0, {"solo": 1, "winner": 2, "pct": 90.0, "best_pct": 90.0,
+		"tied": false}))
+	assert_str(b.headline_text()).is_equal("ORCA WINS THE SOLO")
+	assert_str(b.right_text()).is_equal("90% PERFECT")
+	ch.send(GameEvent.make(GameEvent.DUEL_RESULT, 90.0, {"solo": 2, "winner": -1, "pct": 0.0, "best_pct": 72.0,
+		"tied": false}))
+	assert_str(b.headline_text()).is_equal("NO WINNER")
+	assert_str(b.right_text()).is_equal("BEST 72% · NEEDED 85%")
+	ch.send(GameEvent.make(GameEvent.DUEL_RESULT, 99.0, {"solo": 3, "winner": -1, "pct": 0.0, "best_pct": 90.0,
+		"tied": true}))
+	assert_str(b.right_text()).is_equal("TIED")
+
+
+func test_banner_last_hull_standing() -> void:
+	var ch := LoopbackChannel.new()
+	var b := _event_banner(ch)
+	ch.send(GameEvent.make(GameEvent.LAST_STANDING, 50.0, {"seat": 0}))
+	assert_str(b.caption_text()).is_equal("LAST HULL STANDING")
+	assert_str(b.headline_text()).is_equal("YOU WIN")
+	assert_object(b.headline_color()).is_equal(Palette.REWARD_GOLD)
+	assert_str(b.right_text()).is_equal("SONG PLAYS ON")
+	assert_object(b.right_color()).is_equal(Palette.TEXT_LO)
+	b.step(Palette.DUR_BASE)
+	b.step(2.39)
+	assert_int(b.phase()).is_equal(EventBanner.Phase.HOLD)
+	b.step(0.02)
+	assert_int(b.phase()).is_equal(EventBanner.Phase.OUT)
+	var ch2 := LoopbackChannel.new()
+	var o := _event_banner(ch2)
+	ch2.send(GameEvent.make(GameEvent.LAST_STANDING, 50.0, {"seat": 2}))
+	assert_str(o.headline_text()).is_equal("ORCA WINS")
+	assert_object(o.headline_color()).is_equal(Palette.TEXT_HI)
+
+
+func test_banner_implosion_shake_and_vignette() -> void:
+	var ch := LoopbackChannel.new()
+	var b := _event_banner(ch)
+	ch.send(GameEvent.make(GameEvent.IMPLODED, 40.0, {"seat": 0}))
+	assert_int(b.current_kind()).is_equal(EventBanner.Kind.IMPLOSION)
+	assert_str(b.caption_text()).is_equal("HULL BREACHED")
+	assert_object(b.caption_color()).is_equal(Palette.WARNING_RED)
+	assert_str(b.headline_text()).is_equal("IMPLOSION")
+	assert_str(b.right_text()).is_equal("YOU ARE A WRECK")
+	assert_float(b.vignette_alpha()).is_equal_approx(1.0, 1e-4)
+	b.step(0.03)
+	assert_float(absf(b.shake_offset())).is_greater(0.5)
+	assert_float(absf(b.shake_offset())).is_less_equal(8.0)
+	b.step(0.1)
+	assert_float(b.shake_offset()).is_equal(0.0)
+	b.step(0.17)
+	assert_float(b.vignette_alpha()).is_equal_approx(0.5, 1e-3)
+	b.step(0.31)
+	assert_float(b.vignette_alpha()).is_equal(0.0)
+	await get_tree().process_frame
+	b.step(2.0)
+	assert_int(b.phase()).is_equal(EventBanner.Phase.OUT)
+
+
+func test_banner_reduce_motion_fade_only_no_shake() -> void:
+	Settings.reduce_motion = true
+	var ch := LoopbackChannel.new()
+	var b := _event_banner(ch)
+	ch.send(GameEvent.make(GameEvent.IMPLODED, 40.0, {"seat": 0}))
+	assert_float(b.slide_offset()).is_equal(0.0)
+	b.step(0.03)
+	assert_float(b.shake_offset()).is_equal(0.0)
+	assert_float(b.alpha()).is_greater(0.2)
+	assert_float(b.vignette_alpha()).is_greater(0.0)  # the vignette fades in every mode
+	assert_bool(b.effect_counts()["slide"]).is_false()
+	assert_bool(b.effect_counts()["shake"]).is_false()
+	assert_bool(b.is_in_group(UiKit.FX_GROUP)).is_true()
+	Settings.reduce_motion = false
+	Settings.low_effects = true
+	b.apply_effect_settings()
+	assert_bool(b.effect_counts()["glow"]).is_false()
+	assert_bool(b.effect_counts()["slide"]).is_true()
+
+
+func test_banner_priority_implosion_over_duel_and_back() -> void:
+	var ch := LoopbackChannel.new()
+	var b := _event_banner(ch)
+	_announce(ch)
+	b.step(0.2)
+	ch.send(GameEvent.make(GameEvent.IMPLODED, 18.5, {"seat": 0}))
+	assert_int(b.current_kind()).is_equal(EventBanner.Kind.IMPLOSION)
+	ch.send(GameEvent.make(GameEvent.DUEL_START, 20.0, {"solo": 0}))
+	assert_int(b.current_kind()).is_equal(EventBanner.Kind.IMPLOSION)  # the duel waits
+	assert_array(b.pending_kinds()).contains([EventBanner.Kind.DUEL_LIVE])
+	b.observe(20.5)
+	b.step(2.4)
+	b.step(0.31)
+	assert_int(b.current_kind()).is_equal(EventBanner.Kind.DUEL_LIVE)
+	assert_str(b.headline_text()).is_equal("WRECKS SIT THIS ONE OUT")
+
+
+func test_banner_priority_order_last_standing_waits_for_implosion() -> void:
+	var ch := LoopbackChannel.new()
+	var b := _event_banner(ch)
+	ch.send(GameEvent.make(GameEvent.IMPLODED, 40.0, {"seat": 0}))
+	ch.send(GameEvent.make(GameEvent.LAST_STANDING, 40.5, {"seat": 1}))
+	assert_int(b.current_kind()).is_equal(EventBanner.Kind.IMPLOSION)
+	b.step(Palette.DUR_BASE)
+	b.step(2.4)
+	b.step(0.31)
+	assert_int(b.current_kind()).is_equal(EventBanner.Kind.LAST_STANDING)
+	assert_str(b.headline_text()).is_equal("MAKO WINS")
+	# Last Hull Standing replaces a showing duel.
+	var ch2 := LoopbackChannel.new()
+	var d := _event_banner(ch2)
+	_announce(ch2)
+	ch2.send(GameEvent.make(GameEvent.LAST_STANDING, 19.0, {"seat": 0}))
+	assert_int(d.current_kind()).is_equal(EventBanner.Kind.LAST_STANDING)
+	assert_bool(EventBanner.priority_of(EventBanner.Kind.IMPLOSION) > EventBanner.priority_of(EventBanner.Kind.LAST_STANDING)).is_true()
+	assert_bool(EventBanner.priority_of(EventBanner.Kind.LAST_STANDING) > EventBanner.priority_of(EventBanner.Kind.DUEL_LIVE)).is_true()
+
+
+func test_banner_suppresses_section_banner() -> void:
+	var sec := _section([[10.0, "verse"], [30.0, "chorus"], [60.0, "bridge"]])
+	var ch := LoopbackChannel.new()
+	var b := _event_banner(ch, sec)
+	assert_bool(sec.suppressed).is_false()
+	sec.observe(10.0)
+	assert_bool(sec.is_showing()).is_true()
+	_announce(ch, 28.0)
+	assert_bool(sec.suppressed).is_true()
+	assert_bool(sec.is_showing()).is_false()  # hidden immediately
+	assert_bool(sec.visible).is_false()
+	sec.observe(30.0)
+	sec.step(0.1)
+	assert_bool(sec.is_showing()).is_false()  # no new section while suppressed
+	ch.send(GameEvent.make(GameEvent.DUEL_RESULT, 31.0, {"solo": 0, "winner": 1, "pct": 90.0, "best_pct": 90.0,
+		"tied": false}))
+	b.step(Palette.DUR_BASE)
+	b.step(1.6)
+	b.step(0.31)
+	assert_bool(b.is_showing()).is_false()
+	assert_bool(sec.suppressed).is_false()
+	sec.observe(33.0)
+	assert_bool(sec.is_showing()).is_true()  # the section in force shows again
+	assert_str(sec.shown_text()).is_equal("CHORUS")
+	sec.step(3.0)
+	sec.observe(60.0)
+	assert_str(sec.shown_text()).is_equal("BRIDGE")
+
+
+func test_section_banner_unsuppressed_behaviour_unchanged() -> void:
+	var sec := _section([[10.0, "verse"]])
+	sec.suppressed = false
+	sec.observe(10.0)
+	assert_bool(sec.is_showing()).is_true()
+	assert_float(sec.slide_offset()).is_equal_approx(-24.0, 0.01)
+	sec.suppressed = true
+	sec.suppressed = false
+	sec.observe(11.0)
+	assert_bool(sec.is_showing()).is_false()  # nothing was missed: no re-show
+
+
+func test_banner_keepout_and_draws() -> void:
+	var ch := LoopbackChannel.new()
+	var b := _event_banner(ch)
+	for poly in b.keepout_shapes():
+		for pt in poly:
+			assert_bool(Rect2(640.0, 200.0, 640.0, 72.0).grow(0.5).has_point(pt)).is_true()
+	_announce(ch)
+	await get_tree().process_frame
+	ch.send(GameEvent.make(GameEvent.DUEL_START, 20.0, {"solo": 0}))
+	b.observe(22.0)
+	await get_tree().process_frame
+	ch.send(GameEvent.make(GameEvent.IMPLODED, 23.0, {"seat": 0}))
+	await get_tree().process_frame
+	assert_int(b.mouse_filter).is_equal(Control.MOUSE_FILTER_IGNORE)
