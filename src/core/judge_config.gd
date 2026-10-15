@@ -13,7 +13,7 @@ extends Resource
 
 @export var hull_start: float = 100.0
 @export var miss_damage: float = 8.0
-@export var perfect_regen: float = 1.0
+@export var perfect_regen: float = 0.25
 
 @export var score_perfect: int = 100
 @export var score_good: int = 50
