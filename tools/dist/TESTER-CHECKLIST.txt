@@ -1,4 +1,4 @@
-UNDERTOW v0.5.3 - tester checklist
+UNDERTOW v0.5.4 - tester checklist
 ==================================
 
 Thanks for testing! Tick the boxes as you go ([x]) and write a few words
@@ -80,6 +80,24 @@ Write down anything odd as: song, difficulty, time (e.g. "HRT, Easy, 1:20").
     shows.
 
 
+4c. CHART A SONG (new in v0.5.4)
+--------------------------------
+[ ] Main menu shows Chart a Song.
+[ ] The one-time download (about 400 MB), or the "not available yet"
+    message, is clear. The download + install took: ______ min
+[ ] After the download, pick a song you own (MP3, OGG, WAV or FLAC) and
+    chart it with Auto.
+[ ] The progress moves, and Cancel stops it.
+[ ] Play Now opens Song Select on the new song, and it plays in sync.
+    (On the beat / early / late?)
+[ ] Chart Another Instrument is fast (a few seconds).
+[ ] Tell us your PC and how long charting took:
+    CPU ____________________  song length ______  charting took ______
+[ ] If something failed: what did the message say? (Show Details opens
+    the log.txt: please send it with your report.)
+    Did a message about the "Visual C++ Redistributable" show up?  yes / no
+
+
 5. RESULTS SCREEN
 -----------------
 [ ] The grade (S A B C D), accuracy %, depth and max combo look right.
@@ -158,5 +176,6 @@ Please send:
 If the game crashed: send us the file godot.log from
 %APPDATA%\Godot\app_userdata\UNDERTOW\logs. Paste that path into the
 Explorer address bar to open the folder.
+If Chart a Song failed: press "Show Details" and send the log.txt it shows.
 
 Thanks for diving!

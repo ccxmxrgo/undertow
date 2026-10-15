@@ -1,4 +1,4 @@
-UNDERTOW - early playtest build (v0.5.3, 2026-10-11)
+UNDERTOW - early playtest build (v0.5.4, 2026-10-15)
 ====================================================
 
 You're a submarine sinking into a deep-sea trench. This build is still the
@@ -12,6 +12,8 @@ controller work in every menu (see WHAT'S NEW IN v0.5.1).
 v0.5.2 adds Guitar Hero / Clone Hero songs that come with a notes.mid chart
 (see WHAT'S NEW IN v0.5.2).
 v0.5.3 makes the note highway easier to read (see WHAT'S NEW IN v0.5.3).
+v0.5.4 adds Chart a Song: turn an audio file you own into a playable chart
+(see WHAT'S NEW IN v0.5.4).
 This build is for friends only: please don't share it further.
 
 Want to help test? Open TESTER-CHECKLIST.txt (next to this file). It is a
@@ -79,6 +81,35 @@ SELECT SONG controls:
   Open Songs Folder  F6
   Back ............. Esc
 Highlight a song for half a second to hear a preview.
+
+
+WHAT'S NEW IN v0.5.4
+--------------------
+- Main menu > Chart a Song turns an MP3, OGG, WAV or FLAC file you own
+  into a song you can play, with Easy to Expert charts. It splits the
+  music into instruments and charts one of them (or Instrument Lanes:
+  each lane is one instrument).
+- The first time, the game offers a one-time download, the Autocharter
+  pack: about 400 MB, about 1 GB on disk (have about 2 GB free while it
+  installs), stored in %LOCALAPPDATA%\UNDERTOW\ac. Installing after the
+  download takes about 1.5 minutes. You can remove it again on the Chart
+  a Song screen.
+- If the screen says the pack is not available yet, it has not been
+  published yet: try again later. Everything else works without it.
+- Charting a 4-minute song takes about 1 to 3 minutes on a typical gaming
+  PC (on the developer's PC a 2-minute song took about 36 seconds, so a
+  4-minute song about 1 minute); the first run after the download is
+  slower. Your music never leaves your PC.
+- Charted songs appear in Song Select like any other song (charter:
+  UNDERTOW autochart). Use "Chart Another Instrument" to try a different
+  instrument quickly (a few seconds, the split is reused).
+- Antivirus programs may scan the pack during the first setup, which can
+  make it slower.
+- If charting fails, press "Show Details" and send us the log.txt it
+  shows with your bug report.
+- If it says to install the Microsoft Visual C++ Redistributable, install
+  "Microsoft Visual C++ Redistributable (x64)" from microsoft.com (search
+  for "vc_redist.x64.exe") and try again.
 
 
 WHAT'S NEW IN v0.5.3
@@ -241,8 +272,8 @@ How to add songs:
   reads it where it is. Your files are never copied or changed.
 
 An audio file without a chart (for example a bare .mp3) is listed as
-"NEEDS A CHART". You can't play it yet; a tool that charts songs for you
-comes in a later update.
+"NEEDS A CHART". To play it, chart it first with Main menu > Chart a Song
+(see WHAT'S NEW IN v0.5.4).
 
 How 5-fret charts become 4 lanes (the same for every song):
   Green  = lane 1
