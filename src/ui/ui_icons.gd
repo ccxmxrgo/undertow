@@ -7,7 +7,7 @@ extends RefCounted
 const GRID := 24.0
 const STROKE := 2.0
 const NAMES: Array[String] = [
-	"dive", "lifebuoy", "sonar", "sliders", "auto", "folder", "power",
+	"dive", "lifebuoy", "sonar", "sliders", "auto", "folder", "power", "chart",
 	"check", "chevron_left", "chevron_right",
 ]
 
@@ -59,6 +59,13 @@ static func draw(ci: CanvasItem, icon_name: String, rect: Rect2, color: Color) -
 		"power":
 			ci.draw_arc(o + Vector2(12, 13) * k, 8.0 * k, -PI * 0.3, PI * 1.3, 24, color, w, true)
 			_line(ci, o, k, [Vector2(12, 3), Vector2(12, 12)], color, w)
+		"chart":
+			# Audio waveform on the left feeding three short note bars on the right.
+			_line(ci, o, k, _wave(2.0, 11.0, 12.0, 4.0), color, w)
+			_line(ci, o, k, [Vector2(11, 12), Vector2(13, 12)], color, w)
+			for y: float in [6.0, 12.0, 18.0]:
+				_poly(ci, o, k, [Vector2(15, y - 1.5), Vector2(22, y - 1.5),
+						Vector2(22, y + 1.5), Vector2(15, y + 1.5)], color)
 		"check":
 			_line(ci, o, k, [Vector2(4, 12), Vector2(10, 18), Vector2(20, 6)], color, w)
 		"chevron_left":

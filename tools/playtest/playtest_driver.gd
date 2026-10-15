@@ -346,8 +346,8 @@ func menu_text_rects(m: MainMenu) -> Array:
 	if m.logo != null and m.logo.is_visible_in_tree():
 		rects.append(m.logo.get_global_rect())
 	var col := Rect2()
-	for b in [m.start_button, m.practice_button, m.calibrate_button, m.settings_button, m.autoplay_button,
-			m.open_folder_button, m.quit_button]:
+	for b in [m.start_button, m.practice_button, m.chart_button, m.calibrate_button, m.settings_button,
+			m.autoplay_button, m.open_folder_button, m.quit_button]:
 		if b != null and (b as Control).is_visible_in_tree():
 			col = (b as Control).get_global_rect() if col.size == Vector2.ZERO else col.merge((b as Control).get_global_rect())
 	if col.size != Vector2.ZERO:

@@ -1,7 +1,7 @@
 class_name MainMenu
 extends Control
 ## Entry screen (02.2 UI-SPEC section 5, "living title screen"): an AbyssBackdrop (variant
-## title) behind the generated UNDERTOW wordmark, the tagline, seven icon buttons at fixed
+## title) behind the generated UNDERTOW wordmark, the tagline, eight icon buttons at fixed
 ## positions (order unchanged), one FocusMarker, a one-line description of the focused item
 ## and a status line for prompts and errors.
 ## First launch (Settings.calibration_done false) routes straight to the skippable wizard once per
@@ -12,6 +12,7 @@ const SONG_SELECT_SCENE := "res://scenes/song_select.tscn"
 const FOLDER_MSG_SEC := 6.0
 const CALIBRATION_SCENE := "res://scenes/calibration.tscn"
 const SETTINGS_SCENE := "res://scenes/settings.tscn"
+const CHART_SCENE := "res://scenes/chart_song.tscn"
 const DEVICE_CHANGED_COPY := "Output device changed. Calibrate Sonar again for accurate timing."
 const NO_RECORD_COPY := "No record yet. Finish a dive to set one."
 const RECORDS_ERROR_COPY := "Records could not be loaded. Starting with an empty record book."
@@ -21,6 +22,7 @@ const TAGLINE := "YOUR STREAK IS A TORPEDO"
 const DESCRIPTIONS: Array[String] = [
 	"Pick a song and dive. Your hull is on the line.",
 	"Dive without imploding. Records are not saved.",
+	"Turn an audio file you own into a playable chart.",
 	"Line up audio and visuals for tight timing.",
 	"Controls, scroll speed, effects and volume.",
 	"Watch the sub play a song by itself.",
@@ -31,9 +33,9 @@ const DESCRIPTIONS: Array[String] = [
 ## Layout (UI-SPEC 5), 1920x1080 design pixels.
 const ITEM_X := 128.0
 const ITEM_W := 512.0
-const ITEM_H := 64
+const ITEM_H := 56
 const ITEM_TOP := 416.0
-const ITEM_PITCH := 72.0
+const ITEM_PITCH := 64.0
 const TAGLINE_BASELINE := 360.0
 const TAGLINE_SPACING := 4
 const DESC_BASELINE := 960.0
@@ -69,6 +71,7 @@ var open_folder: Callable = Callable()
 
 var start_button: Button
 var practice_button: Button
+var chart_button: Button
 var autoplay_button: Button
 var calibrate_button: Button
 var settings_button: Button
@@ -165,6 +168,7 @@ func _build() -> void:
 	start_button = _item("Start Dive", "dive", "primary", func() -> void: launch(false))
 	practice_button = _item("Practice Dive (No-Fail)", "lifebuoy", "default", func() -> void: launch_practice())
 	_build_best_line(_items)
+	chart_button = _item("Chart a Song", "chart", "default", func() -> void: _go(CHART_SCENE))
 	calibrate_button = _item("Calibrate Sonar", "sonar", "default", func() -> void: _calibrate())
 	settings_button = _item("Settings", "sliders", "default", func() -> void: _go(SETTINGS_SCENE))
 	autoplay_button = _item("Autoplay Dive (test)", "auto", "default", func() -> void: launch(true))
@@ -219,9 +223,9 @@ func _build() -> void:
 	_entrance()
 
 
-## The seven menu buttons in focus order.
+## The eight menu buttons in focus order.
 func menu_buttons() -> Array:
-	return [start_button, practice_button, calibrate_button, settings_button, autoplay_button,
+	return [start_button, practice_button, chart_button, calibrate_button, settings_button, autoplay_button,
 		open_folder_button, quit_button]
 
 
@@ -247,7 +251,8 @@ func _build_best_line(parent: Control) -> void:
 		records_error_label.text = RECORDS_ERROR_COPY
 
 
-## Menu button (UI-SPEC 4.2 / 5): 512 x 64 at x 128, tops 416 + 72 * index.
+## Menu button (UI-SPEC 4.2 / 5): 512 x 56 at x 128, tops 416 + 64 * index (8 items, the last
+## ends at 920, above the description baseline 960).
 func _item(text: String, icon: String, variant: String, cb: Callable) -> Button:
 	var i := _item_count
 	_item_count += 1
