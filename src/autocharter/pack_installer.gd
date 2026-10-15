@@ -113,12 +113,34 @@ func parts_to_fetch() -> Array:
 	if m.is_empty() or not FileAccess.file_exists(AutochartPaths.python_exe(_version())):
 		return parts.duplicate()
 	var have: Dictionary = m["parts"]
-	var out: Array = []
+	var changed := {}  # part name -> true
 	for p in parts:
 		if String(have.get(p["name"], "")) != String(p["sha256"]):
 			for r in p.get("roots", []):
 				if not PARTIAL_ROOTS.has(String(r)):
 					return parts.duplicate()
+			changed[String(p["name"])] = true
+	# WR-06: finalize replaces whole roots, so every part that shares a root with a changed part
+	# is extracted again too (pack_build splits a big part into -a / -b with the same roots).
+	var grew := true
+	while grew:
+		grew = false
+		var roots := {}
+		for p in parts:
+			if changed.has(String(p["name"])):
+				for r in p.get("roots", []):
+					roots[String(r)] = true
+		for p in parts:
+			if changed.has(String(p["name"])):
+				continue
+			for r in p.get("roots", []):
+				if roots.has(String(r)):
+					changed[String(p["name"])] = true
+					grew = true
+					break
+	var out: Array = []
+	for p in parts:
+		if changed.has(String(p["name"])):
 			out.append(p)
 	return out
 

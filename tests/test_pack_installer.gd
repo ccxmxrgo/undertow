@@ -277,6 +277,31 @@ func test_update_app_only() -> void:
 	assert_str(marker["parts"]["undertow-ac-v1-app.zip"]).is_equal(parts[1]["sha256"])
 
 
+## WR-06: two parts share the app root (pack_build splits big parts into -a / -b). Changing
+## one of them must re-extract both, because finalize swaps the whole root.
+func test_update_part_sharing_a_root_refetches_its_sibling() -> void:
+	var rt := _part("undertow-ac-v1-rt.zip", {"rt/python.exe": "MZ"}, ["rt"])
+	var a1 := _part("undertow-ac-v1-app-a.zip", {"app/a.py": "a1"}, ["app"])
+	var b1 := _part("undertow-ac-v1-app-b.zip", {"app/b.py": "b1"}, ["app"])
+	_inst.spec = _spec([rt, a1, b1])
+	_inst.start()
+	await _wait_end()
+	assert_int(_installed).is_equal(1)
+	var a2 := _part("undertow-ac-v1-app-a.zip", {"app/a.py": "a2"}, ["app"])
+	_inst.spec = _spec([rt, a2, b1])
+	var todo: Array = _inst.parts_to_fetch()
+	assert_array(todo.map(func(p: Dictionary) -> String: return p["name"])).is_equal(
+		["undertow-ac-v1-app-a.zip", "undertow-ac-v1-app-b.zip"])
+	_fetches.clear()
+	_inst.start()
+	await _wait_end()
+	assert_int(_installed).is_equal(2)
+	assert_str(FileAccess.get_file_as_string(_vdir() + "/app/a.py")).is_equal("a2")
+	assert_str(FileAccess.get_file_as_string(_vdir() + "/app/b.py")).is_equal("b1")
+	assert_bool(FileAccess.file_exists(_vdir() + "/rt/python.exe")).is_true()
+	assert_bool(_inst.is_installed()).is_true()
+
+
 func test_update_rt_full_reinstall() -> void:
 	await _install_three()
 	var parts := _three("v1", 2)
