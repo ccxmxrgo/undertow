@@ -55,6 +55,12 @@ var record_info: Dictionary = {}
 ## to each run's judge in start(), reset on every (re)start, detached on teardown.
 var offset_recorder := HitOffsetRecorder.new()
 var results: ResultsScreen
+## Versus results (03-12), shown at the song end of a versus match instead of ResultsScreen.
+var versus_results: VersusResultsScreen
+## The versus launch record (MatchSetup.pending, MODE_VERSUS) or null (solo / Solo Dive).
+var match_setup: MatchSetup = null
+## Match wiring (03-14) for versus and Solo Dive; null on a plain solo dive.
+var versus: VersusController = null
 var pause_menu: PauseMenu
 var debug_overlay: DebugOverlay
 var intro: GogglesIntro
@@ -81,6 +87,13 @@ func _ready() -> void:
 	pending_autoplay = false
 	practice = pending_practice
 	pending_practice = false
+	# One-shot launch record (T-03-35): always cleared; honoured only for a versus launch that is
+	# neither a practice nor an autoplay dive (those never become versus).
+	var ms := MatchSetup.pending
+	MatchSetup.pending = null
+	match_setup = null
+	if ms != null and ms.mode == MatchSetup.MODE_VERSUS and not practice and not a:
+		match_setup = ms
 	start(c, a, pending_intro)
 
 
@@ -97,6 +110,8 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	state = State.RUNNING
 	fail_screen = null
 	results = null
+	versus_results = null
+	versus = null
 	_run_root = Control.new()
 	UiLayout.fill_rect(_run_root)
 	_run_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -105,13 +120,28 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 		_show_audio_error()
 		return
 	var cfg := JudgeConfig.new()
-	judge = InputJudge.new(chart, cfg)
-	score = HullScore.new(cfg)
-	score.no_fail = Settings.no_fail or practice
-	score.connect_judge(judge)
+	if match_setup != null or practice:
+		# Versus / Solo Dive (03-14): the human plays through a SubRig. VersusJudge and VersusHull
+		# are InputJudge / HullScore subtypes, so the wiring below is shared. The rig already
+		# connects hull and judge (no connect_judge here) and forces no_fail (false in versus,
+		# true in training); Settings.no_fail is never read (T-03-33).
+		versus = VersusController.new()
+		_run_root.add_child(versus)
+		versus.setup(self, chart, cfg, match_setup,
+			MatchSetup.training_reward(Settings.training_payload), autoplay)
+		judge = versus.human_judge
+		score = versus.human_hull
+	else:
+		judge = InputJudge.new(chart, cfg)
+		score = HullScore.new(cfg)
+		score.no_fail = Settings.no_fail or practice
+		score.connect_judge(judge)
 	offset_recorder.reset()
 	offset_recorder.attach(judge)
-	score.failed.connect(_on_failed)
+	if match_setup != null:
+		score.failed.connect(_on_versus_wreck)
+	else:
+		score.failed.connect(_on_failed)
 	conductor = Conductor.new()
 	conductor.tempo_map = chart.tempo_map
 	_run_root.add_child(conductor)
@@ -176,11 +206,14 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	best_store.load()
 	var best_rec := best_store.best(chart.id)
 	hud.set_record(float(best_rec["depth"]) if not best_rec.is_empty() else -1.0)
+	if versus != null:
+		versus.bind_views(self)  # ink layers, Hud children, VersusHud (before StreakCounter)
 	streak_counter = StreakCounter.new()
 	_run_root.add_child(streak_counter)
 	streak_counter.bind(score)
 	streak_counter.highway = highway  # milestone rail flash
-	_autoplay_player = Autoplay.new(chart, judge) if autoplay else null
+	# Versus / Solo Dive autoplay is the controller's VersusAutoplay (overlay notes, D-28).
+	_autoplay_player = Autoplay.new(chart, judge) if autoplay and versus == null else null
 	_end_time = 0.0
 	for n in chart.notes:
 		_end_time = maxf(_end_time, float(n["time"]) + float(n["duration"]))
@@ -230,6 +263,7 @@ func _on_run_built() -> void:
 	_run_root.add_child(debug_overlay)
 	debug_overlay.setup(conductor, judge)
 	pause_menu = PauseMenu.new()
+	pause_menu.match_mode = match_setup != null  # before the first open() (03-UI-SPEC 9.5)
 	_run_root.add_child(pause_menu)
 	pause_menu.setup(conductor, lane_input, score)
 	pause_menu.restore_input = not autoplay
@@ -289,7 +323,11 @@ func _process(_delta: float) -> void:
 	var t := conductor.song_time()
 	if _autoplay_player != null:
 		_autoplay_player.update(t)  # exact note times, never the frame time (D-28)
+	if versus != null:
+		versus.pre_tick(t)
 	judge.tick(t)
+	if versus != null:
+		versus.update(t)  # bots, drone, referee, channel, views (after the human's judge)
 	if state == State.RUNNING and judge.is_finished() and t >= _end_time + END_PAD_SEC:
 		_finish()
 
@@ -302,6 +340,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		pause_menu.set_run_info(chart.title, chart.difficulty, progress_pct())
 		pause_menu.open()
 		return
+	if versus != null and state == State.RUNNING and _began and pause_menu != null \
+			and not pause_menu.is_open() and not pause_menu.is_counting_down():
+		if event.is_action_pressed(&"fire"):
+			var ft := conductor.song_time_at(Time.get_ticks_usec())
+			get_viewport().set_input_as_handled()
+			versus.fire(ft)
+			return
+		if event.is_action_pressed(&"target_cycle"):
+			var tt := conductor.song_time_at(Time.get_ticks_usec())
+			get_viewport().set_input_as_handled()
+			versus.cycle_target(tt)
+			return
 	if event.is_action_pressed(&"debug_autoplay"):
 		get_viewport().set_input_as_handled()
 		restart(true)
@@ -322,6 +372,9 @@ func restart(with_autoplay: bool = false) -> void:
 func _finish() -> void:
 	state = State.DONE
 	lane_input.enabled = false
+	if match_setup != null:
+		_finish_versus()
+		return
 	# The ONLY place records are written. Failed dives never reach here (see _on_failed).
 	var store := ScoreStore.new()
 	store.load()
@@ -357,6 +410,39 @@ func _finish() -> void:
 	results.retry_pressed.connect(_on_retry)
 	results.song_select_pressed.connect(go_to_song_select)
 	results.menu_pressed.connect(go_to_menu)
+
+
+## Versus end (MATCH-05, D-23): standings, medals and the seed on VersusResultsScreen. Versus
+## never writes ScoreStore.
+func _finish_versus() -> void:
+	var t := conductor.song_time() if conductor != null else _end_time
+	versus_results = VersusResultsScreen.new()
+	_run_root.add_child(versus_results)
+	versus_results.setup(versus.finish(t))
+	versus_results.rematch_pressed.connect(_on_rematch)
+	versus_results.change_match_pressed.connect(_on_change_match)
+	versus_results.menu_pressed.connect(go_to_menu)
+
+
+## The local hull broke in versus (D-22, D-24): no FailScreen, the song and lane input keep
+## going, the HUD shows WRECK, and the results come at the song end.
+func _on_versus_wreck() -> void:
+	if hud != null and is_instance_valid(hud):
+		hud.set_wreck(true)
+
+
+## Rematch: the same match with a new seed, rebuilt in place (start() tears the run down).
+func _on_rematch() -> void:
+	if match_setup == null:
+		return
+	match_setup = match_setup.rematch()
+	call_deferred("restart", false)
+
+
+## Change Match: back to match setup with the finished match's choices (it draws a new seed).
+func _on_change_match() -> void:
+	MatchSetup.pending = match_setup
+	ScreenTransition.change_scene(SongSelect.MATCH_SETUP_SCENE)
 
 
 ## Song progress 0..100 from the song clock and the song length (pause run line, IMPLOSION).
