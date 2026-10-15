@@ -9,10 +9,25 @@ var _old_reduce: bool
 var _old_scores: String
 var _old_music: float
 var _old_low: bool
+var _old_settings_path: String
+var _old_training: String
+var _old_vs_song: String
+var _old_vs_diff: String
+
+const SETTINGS_TMP := D + "/settings.cfg"
 
 
 func before_test() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(D))
+	# Training / pick mode save Settings: keep them off the real settings file.
+	_old_settings_path = Settings.save_path
+	Settings.save_path = SETTINGS_TMP
+	_old_training = Settings.training_payload
+	_old_vs_song = Settings.versus_song_id
+	_old_vs_diff = Settings.versus_difficulty
+	Settings.training_payload = "off"
+	SongSelect.run_pick = false
+	MatchSetup.pending = null
 	_old_reduce = Settings.reduce_motion
 	_old_music = Settings.volume_music
 	_old_low = Settings.low_effects
@@ -37,7 +52,13 @@ func after_test() -> void:
 	Gameplay.pending_practice = false
 	SongSelect.run_autoplay = false
 	SongSelect.run_practice = false
-	for p in [SCORES, SCORES + ".tmp", SCORES + ".bak"]:
+	SongSelect.run_pick = false
+	MatchSetup.pending = null
+	Settings.training_payload = _old_training
+	Settings.versus_song_id = _old_vs_song
+	Settings.versus_difficulty = _old_vs_diff
+	Settings.save_path = _old_settings_path
+	for p in [SCORES, SCORES + ".tmp", SCORES + ".bak", SETTINGS_TMP, SETTINGS_TMP + ".tmp", SETTINGS_TMP + ".bak"]:
 		if FileAccess.file_exists(p):
 			DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
 
@@ -341,6 +362,156 @@ func test_run_flags_reset_when_screen_exits() -> void:
 	s.free()
 	assert_bool(SongSelect.run_practice).is_false()
 	assert_bool(SongSelect.run_autoplay).is_false()
+
+
+# ---- 03-05: Solo Dive training stepper and versus pick mode ----
+
+func test_solo_dive_start_label_and_chip_copy() -> void:
+	SongSelect.run_practice = true
+	var s := _screen(_lib(_songs(2)))
+	assert_str(s._start_label(s._selected())).is_equal("Start Solo Dive")
+	assert_bool(s.training_row_visible()).is_true()
+	assert_str(s.footer_hint()).is_equal(
+		"UP DOWN SONG  ·  LEFT RIGHT DIFFICULTY  ·  F3 TRAINING  ·  ENTER DIVE  ·  ESC BACK")
+	await get_tree().process_frame
+
+
+func test_f3_cycles_training_and_shift_f3_goes_back() -> void:
+	SongSelect.run_practice = true
+	var s := _screen(_lib(_songs(2)))
+	assert_str(s.training_value()).is_equal("off")
+	assert_str(s.debug_state()["training"]).is_equal("off")
+	assert_bool(s.training_description_active()).is_false()
+	s.press_key_for_test(KEY_F3)
+	assert_str(s.training_value()).is_equal("all")
+	assert_str(SongSelect.training_label("all")).is_equal("ALL")
+	s.press_key_for_test(KEY_F3)
+	assert_str(s.training_value()).is_equal("crossed_wires")
+	assert_str(SongSelect.training_label(s.training_value())).is_equal("CROSSED WIRES")
+	assert_bool(s.training_description_active()).is_true()
+	s.press_key_for_test(KEY_F3, 0, false, true)
+	assert_str(s.training_value()).is_equal("all")
+	s.press_key_for_test(KEY_F3, 0, false, true)
+	s.press_key_for_test(KEY_F3, 0, false, true)
+	# Wraps from OFF back to the last disruptor.
+	assert_str(s.training_value()).is_equal("depth_charge")
+	await get_tree().process_frame
+
+
+func test_training_value_persists_to_settings() -> void:
+	SongSelect.run_practice = true
+	var s := _screen(_lib(_songs(2)))
+	s.press_key_for_test(KEY_F3)
+	s.press_key_for_test(KEY_F3)
+	assert_str(Settings.training_payload).is_equal("crossed_wires")
+	var cfg := ConfigFile.new()
+	assert_int(cfg.load(SETTINGS_TMP)).is_equal(OK)
+	assert_str(str(cfg.get_value("versus", "training", ""))).is_equal("crossed_wires")
+
+
+func test_training_descriptions_copy() -> void:
+	assert_str(SongSelect.training_description("off")).is_equal("Train without torpedoes.")
+	assert_str(SongSelect.training_description("all")).is_equal("The drone fires every disruptor in turn.")
+	var id := Reward.from_key("ghost_notes")
+	assert_str(SongSelect.training_description("ghost_notes")).is_equal(
+		Reward.description(id, VersusConfig.new()))
+
+
+func test_triggers_step_training_edge_triggered() -> void:
+	SongSelect.run_practice = true
+	var s := _screen(_lib(_songs(2)))
+	var rt := InputEventJoypadMotion.new()
+	rt.axis = JOY_AXIS_TRIGGER_RIGHT
+	for v in [0.6, 0.9, 1.0]:  # held: one step only
+		rt.axis_value = v
+		s._handle_stick(rt)
+	assert_str(s.training_value()).is_equal("all")
+	rt.axis_value = 0.45  # not yet released
+	s._handle_stick(rt)
+	rt.axis_value = 0.8
+	s._handle_stick(rt)
+	assert_str(s.training_value()).is_equal("all")
+	rt.axis_value = 0.1
+	s._handle_stick(rt)
+	rt.axis_value = 0.8
+	s._handle_stick(rt)
+	assert_str(s.training_value()).is_equal("crossed_wires")
+	var lt := InputEventJoypadMotion.new()
+	lt.axis = JOY_AXIS_TRIGGER_LEFT
+	lt.axis_value = 1.0
+	s._handle_stick(lt)
+	assert_str(s.training_value()).is_equal("all")
+	assert_str(s.footer_hint()).is_equal(
+		"D-PAD SONG  ·  LEFT RIGHT DIFFICULTY  ·  LT RT TRAINING  ·  A DIVE  ·  B BACK")
+
+
+func test_training_row_absent_in_normal_and_pick_modes() -> void:
+	var s := _screen(_lib(_songs(2)))
+	assert_bool(s.training_row_visible()).is_false()
+	s.press_key_for_test(KEY_F3)
+	assert_str(Settings.training_payload).is_equal("off")
+	assert_str(s.debug_state()["training"]).is_equal("")
+	SongSelect.run_practice = true
+	SongSelect.run_pick = true
+	assert_bool(s.training_row_visible()).is_false()
+	s.press_key_for_test(KEY_F3)
+	assert_str(Settings.training_payload).is_equal("off")
+
+
+func test_pick_mode_enter_stores_song_and_returns_to_match_setup() -> void:
+	SongSelect.run_pick = true
+	MatchSetup.pending = MatchSetup.new()
+	Settings.versus_song_id = ""
+	var s := _screen(_lib(_songs(3)))
+	var calls := _nav(s)
+	s.select_for_test("s01")
+	s.press_key_for_test(KEY_RIGHT)  # any change; difficulty stays valid
+	var diff: String = s.debug_state()["difficulty"]
+	assert_str(s._start_label(s._selected())).is_equal("Pick Song")
+	assert_bool(s.debug_state()["pick"]).is_true()
+	s.press_key_for_test(KEY_ENTER)
+	s.press_key_for_test(KEY_ENTER)
+	assert_array(calls).is_equal([SongSelect.MATCH_SETUP_SCENE])
+	assert_str(SongSelect.MATCH_SETUP_SCENE).is_equal("res://scenes/match_setup.tscn")
+	assert_str(Settings.versus_song_id).is_equal("s01")
+	assert_str(Settings.versus_difficulty).is_equal(diff)
+	assert_str(MatchSetup.pending.song_id).is_equal("s01")
+	assert_str(MatchSetup.pending.difficulty).is_equal(diff)
+	assert_object(Gameplay.pending_chart).is_null()
+	assert_bool(FileAccess.file_exists(SETTINGS_TMP)).is_true()
+
+
+func test_pick_mode_esc_returns_without_changes() -> void:
+	SongSelect.run_pick = true
+	Settings.versus_song_id = "keep_me"
+	Settings.versus_difficulty = "hard"
+	var s := _screen(_lib(_songs(3)))
+	var calls := _nav(s)
+	s.select_for_test("s02")
+	s.press_key_for_test(KEY_ESCAPE)
+	assert_array(calls).is_equal([SongSelect.MATCH_SETUP_SCENE])
+	assert_str(Settings.versus_song_id).is_equal("keep_me")
+	assert_str(Settings.versus_difficulty).is_equal("hard")
+
+
+func test_training_row_and_pick_chip_draw_without_errors() -> void:
+	SongSelect.run_practice = true
+	var s := _screen(_lib(_songs(3)))
+	for i in MatchSetup.TRAINING_VALUES.size():
+		s.press_key_for_test(KEY_F3)
+		await get_tree().process_frame
+	SongSelect.run_practice = false
+	SongSelect.run_pick = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert_bool(s.is_inside_tree()).is_true()
+
+
+func test_run_pick_resets_when_screen_exits() -> void:
+	SongSelect.run_pick = true
+	var s := _screen(_lib(_songs(2)))
+	s.free()
+	assert_bool(SongSelect.run_pick).is_false()
 
 
 func test_failed_build_shows_message_and_stays() -> void:

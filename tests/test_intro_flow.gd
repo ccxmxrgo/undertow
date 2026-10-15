@@ -15,6 +15,9 @@ func before_test() -> void:
 	ScoreStore.default_path = SCORES_TMP
 	_rm_scores()
 	Gameplay.pending_intro = IntroTimeline.Mode.FULL
+	# 03-05: a stale versus record or pick flag must never leak into these solo dives.
+	SongSelect.run_pick = false
+	MatchSetup.pending = null
 
 
 func after_test() -> void:
@@ -24,6 +27,8 @@ func after_test() -> void:
 	Gameplay.pending_autoplay = false
 	Gameplay.pending_practice = false
 	Gameplay.pending_intro = IntroTimeline.Mode.FULL
+	SongSelect.run_pick = false
+	MatchSetup.pending = null
 
 
 func _rm_scores() -> void:

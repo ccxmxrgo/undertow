@@ -6,6 +6,8 @@ extends Control
 
 const MENU_SCENE := "res://scenes/main_menu.tscn"
 const GAMEPLAY_SCENE := "res://scenes/gameplay.tscn"
+## Versus song pick mode (03 UI-SPEC 9.3) returns here on Pick Song and on Esc.
+const MATCH_SETUP_SCENE := "res://scenes/match_setup.tscn"
 const AUDIO_ERR_USER := "This song's audio could not be loaded. Choose another song."
 const AUDIO_ERR_BUNDLED := "Song audio could not be loaded. Reinstall the game files or choose another song."
 const CREDITS := "Music: Pro Sensory (Alex McCulloch), CC0, via OpenGameArt.org"
@@ -85,10 +87,30 @@ const SONAR_RING_A := 0.07
 const SONAR_CROSS_A := 0.05
 const SWEEP_A := 0.08
 const PING_A := 0.2
+## Solo Dive training row (03 UI-SPEC 8.2, D-27): replaces the visualizer area in Solo Dive mode.
+const TRAINING_CAPTION := "TRAINING TORPEDOES"
+const TRAINING_CAPTION_POS := Vector2(1080.0, 760.0)
+const TRAINING_RECT := Rect2(1080.0, 768.0, 752.0, 48.0)
+const TRAINING_CHEVRON_L_X := 1096.0
+const TRAINING_CHEVRON_R_X := 1792.0
+const TRAINING_VALUE_CX := 1456.0
+const TRAINING_ICON := 24.0
+## The stepper's description replaces the section names line this long after a change.
+const TRAINING_DESC_SEC := 3.0
+const TRAINING_OFF_DESC := "Train without torpedoes."
+const TRAINING_ALL_DESC := "The drone fires every disruptor in turn."
+## Trigger edge thresholds (T-03-14): press past 0.5, release below 0.4, so a held trigger steps once.
+const TRIGGER_PRESS := 0.5
+const TRIGGER_RELEASE := 0.4
+## Versus pick mode header chip, right-aligned to x 744 (16 px left of the sort chip).
+const PICK_CHIP := "VERSUS"
+const PICK_CHIP_RIGHT := 744.0
 
 ## Run flags set by MainMenu; reset when Song Select exits (a dive copies them first).
 static var run_autoplay: bool = false
 static var run_practice: bool = false
+## Versus song pick mode (03 UI-SPEC 9.3), set by the match setup screen.
+static var run_pick: bool = false
 
 
 ## A Control that draws through a Callable in absolute screen coordinates.
@@ -171,6 +193,11 @@ var _stream_cache: Array = []
 ## _process once finished, in _exit_tree at the latest): an unreaped task keeps its lambda alive
 ## until engine shutdown, which crashed the game on quit (0xC0000005, 02-06 harness finding).
 var _preview_tasks: Array[int] = []
+# training stepper (Solo Dive) and pick mode
+var _training_changed_msec: int = -1000000
+var _trigger_down: Dictionary = {JOY_AXIS_TRIGGER_LEFT: false, JOY_AXIS_TRIGGER_RIGHT: false}
+var _picked: bool = false
+
 # visualizer
 var _viz_levels := PackedFloat32Array()
 var _viz_edges := PackedFloat32Array()
@@ -275,6 +302,7 @@ func _exit_tree() -> void:
 				sig.disconnect(pair[1])
 	run_autoplay = false
 	run_practice = false
+	run_pick = false
 
 
 func _pane(pane_name: String, r: Rect2, painter: Callable) -> Pane:
@@ -703,7 +731,25 @@ func _go(path: String) -> void:
 
 func _back() -> void:
 	_stop_preview(true)
-	_go(MENU_SCENE)
+	# Pick mode: back to match setup with the song unchanged (03 UI-SPEC 9.3).
+	_go(MATCH_SETUP_SCENE if run_pick else MENU_SCENE)
+
+
+## Pick mode (03 UI-SPEC 9.3): stores the chosen song and difficulty for the match setup screen.
+func _pick() -> void:
+	if _picked or not _start_enabled():
+		return
+	var e := _selected()
+	_picked = true
+	var id := e.id.left(Settings.MAX_PATH_LEN)
+	Settings.versus_song_id = id
+	Settings.versus_difficulty = _diff
+	if MatchSetup.pending != null:
+		MatchSetup.pending.song_id = id
+		MatchSetup.pending.difficulty = _diff
+	Settings.save_to(Settings.save_path)
+	_stop_preview(true)
+	_go(MATCH_SETUP_SCENE)
 
 
 func _open_folder() -> void:
@@ -727,6 +773,9 @@ func _start_enabled() -> bool:
 
 
 func _dive() -> void:
+	if run_pick:
+		_pick()
+		return
 	if _diving or not _start_enabled():
 		return
 	var e := _selected()
@@ -821,6 +870,10 @@ func _handle_key(ev: InputEventKey) -> void:
 			if not ev.echo:
 				_cycle_sort()
 			return
+		KEY_F3:
+			if not ev.echo:
+				cycle_training(-1 if ev.shift_pressed else 1)
+			return
 		KEY_F5:
 			if not ev.echo:
 				_rescan()
@@ -890,6 +943,9 @@ func _handle_pad_button(ev: InputEventJoypadButton) -> void:
 
 
 func _handle_stick(ev: InputEventJoypadMotion) -> void:
+	if ev.axis == JOY_AXIS_TRIGGER_LEFT or ev.axis == JOY_AXIS_TRIGGER_RIGHT:
+		_handle_trigger(ev)
+		return
 	if ev.axis != JOY_AXIS_LEFT_Y and ev.axis != JOY_AXIS_LEFT_X:
 		return
 	var dir := 0
@@ -906,6 +962,68 @@ func _handle_stick(ev: InputEventJoypadMotion) -> void:
 				_hold_dir = 0
 	elif dir != 0 and absf(ev.axis_value) > 0.9:
 		_change_difficulty(dir)
+
+
+## Gamepad RT = next training value, LT = previous, edge-triggered (T-03-14).
+func _handle_trigger(ev: InputEventJoypadMotion) -> void:
+	_last_pad = true
+	var axis: int = ev.axis
+	var down: bool = _trigger_down.get(axis, false)
+	if not down and ev.axis_value > TRIGGER_PRESS:
+		_trigger_down[axis] = true
+		cycle_training(1 if axis == JOY_AXIS_TRIGGER_RIGHT else -1)
+	elif down and ev.axis_value < TRIGGER_RELEASE:
+		_trigger_down[axis] = false
+
+
+# ---- Solo Dive training torpedoes (03 UI-SPEC 8.2, D-27, MATCH-06) ----
+
+## The training row shows only in Solo Dive mode, never in versus pick mode.
+func training_row_visible() -> bool:
+	return run_practice and not run_pick
+
+
+## Current stepper value ("off", "all" or a disruptor Reward key), from Settings.
+func training_value() -> String:
+	var v := Settings.training_payload
+	return v if MatchSetup.TRAINING_VALUES.has(v) else "off"
+
+
+## Stepper text: "OFF", "ALL" or the disruptor's HUD name.
+static func training_label(value: String) -> String:
+	match value:
+		"off":
+			return "OFF"
+		"all":
+			return "ALL"
+	return Reward.hud_name(Reward.from_key(value))
+
+
+## One-line description shown for TRAINING_DESC_SEC after a change.
+static func training_description(value: String) -> String:
+	match value:
+		"off":
+			return TRAINING_OFF_DESC
+		"all":
+			return TRAINING_ALL_DESC
+	return Reward.description(Reward.from_key(value), VersusConfig.new())
+
+
+## Steps the training value (dir +1 next, -1 previous, wrapping) and saves Settings.
+func cycle_training(dir: int) -> void:
+	if not training_row_visible() or dir == 0:
+		return
+	var vals := MatchSetup.TRAINING_VALUES
+	var i := vals.find(training_value())
+	Settings.training_payload = vals[posmod(i + dir, vals.size())]
+	Settings.save_to(Settings.save_path)
+	_training_changed_msec = Time.get_ticks_msec()
+	UiSounds.play("move")
+
+
+func training_description_active() -> bool:
+	return training_row_visible() \
+		and Time.get_ticks_msec() - _training_changed_msec < int(TRAINING_DESC_SEC * 1000.0)
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -1220,6 +1338,8 @@ func debug_state() -> Dictionary:
 		"cover": "art" if _cover_art != null else "generated",
 		"tiles": tile_states(_selected()),
 		"sections": _sections_debug(),
+		"training": training_value() if training_row_visible() else "",
+		"pick": run_pick,
 	}
 
 
@@ -1240,13 +1360,14 @@ func select_for_test(id: String) -> void:
 	_select_id(id, false)
 
 
-func press_key_for_test(keycode: int, unicode: int = 0, ctrl: bool = false) -> void:
+func press_key_for_test(keycode: int, unicode: int = 0, ctrl: bool = false, shift: bool = false) -> void:
 	var ev := InputEventKey.new()
 	ev.keycode = keycode as Key
 	ev.physical_keycode = keycode as Key
 	ev.pressed = true
 	ev.unicode = unicode
 	ev.ctrl_pressed = ctrl
+	ev.shift_pressed = shift
 	_handle_key(ev)
 
 
@@ -1361,9 +1482,11 @@ func _paint_header(c: CanvasItem) -> void:
 			Palette.SIZE_HEADING, Palette.TEXT_HI)
 	var x := 384.0
 	if run_practice:
-		x += _chip(c, x, 88.0, "PRACTICE DIVE", "mode") + Palette.SP_SM
+		x += _chip(c, x, 88.0, "SOLO DIVE", "mode") + Palette.SP_SM
 	if run_autoplay:
 		_chip(c, x, 88.0, "AUTOPLAY", "mode")
+	if run_pick:
+		_chip(c, PICK_CHIP_RIGHT - UiKit.chip_width(PICK_CHIP, "info"), 88.0, PICK_CHIP, "info")
 
 
 func _paint_sort(c: CanvasItem) -> void:
@@ -1630,7 +1753,11 @@ func _paint_detail(c: CanvasItem) -> void:
 		_paint_sections(c, e)
 	else:
 		_paint_reason(c, e)
-	_paint_preview_row(c)
+	# Solo Dive: the training row replaces the visualizer (an audio error still shows there).
+	if training_row_visible() and _message_kind != "audio":
+		_paint_training(c)
+	else:
+		_paint_preview_row(c)
 	_paint_start(c, e)
 	if _show_debug and _diff != "":
 		_txt_r(c, 1832, 140, str(e.difficulty(_diff).get("fingerprint", "")), Palette.SIZE_LABEL, Palette.TEXT_LO)
@@ -1660,6 +1787,10 @@ func _paint_sections(c: CanvasItem, e: SongEntry) -> void:
 	for s in _sections:
 		var tx := section_tick_x(float(s.get("time", 0.0)), length)
 		c.draw_rect(Rect2(tx, SECTION_STRIP.position.y, SECTION_TICK_W, SECTION_STRIP.size.y), Palette.TEXT_LO)
+	if training_description_active():
+		_txt(c, Vector2(x0, SECTION_NAMES_BASELINE), _fit(training_description(training_value()),
+				Palette.SIZE_LABEL, SECTION_NAMES_W), Palette.SIZE_LABEL, Palette.TEXT_MID)
+		return
 	var col := Palette.TEXT_LO if _sections.is_empty() else Palette.TEXT_MID
 	_txt(c, Vector2(x0, SECTION_NAMES_BASELINE), section_names_text(_sections), Palette.SIZE_LABEL, col)
 
@@ -1922,6 +2053,27 @@ func _paint_preview_row(c: CanvasItem) -> void:
 		c.draw_rect(Rect2(r.position, Vector2(VIZ_W, VIZ_TIP)), Palette.SONAR_PALE)
 
 
+## Training row (03 UI-SPEC 8.2): caption, then a 48 px compact stepper with chevrons, the value
+## centred at x 1456 and the payload glyph 24 px left of it for a single disruptor.
+func _paint_training(c: CanvasItem) -> void:
+	_txt(c, TRAINING_CAPTION_POS, TRAINING_CAPTION, Palette.SIZE_LABEL, Palette.TEXT_LO)
+	var r := TRAINING_RECT
+	_button_style("normal", "default").draw(c.get_canvas_item(), r)
+	var iy := r.position.y + (r.size.y - TRAINING_ICON) * 0.5
+	UiIcons.draw(c, "chevron_left", Rect2(TRAINING_CHEVRON_L_X, iy, TRAINING_ICON, TRAINING_ICON), Palette.TEXT_MID)
+	UiIcons.draw(c, "chevron_right", Rect2(TRAINING_CHEVRON_R_X, iy, TRAINING_ICON, TRAINING_ICON), Palette.TEXT_MID)
+	var v := training_value()
+	var label := training_label(v)
+	var lw := _w(label, Palette.SIZE_BODY)
+	var lx := TRAINING_VALUE_CX - lw * 0.5
+	_txt(c, Vector2(lx, r.position.y + 34.0), label, Palette.SIZE_BODY, Palette.TEXT_HI)
+	if v != "off" and v != "all":
+		var g := Reward.glyph(Reward.from_key(v))
+		if g != "":
+			UiIcons.draw(c, g, Rect2(lx - Palette.SP_SM - TRAINING_ICON, iy, TRAINING_ICON, TRAINING_ICON),
+					Palette.TEXT_HI)
+
+
 ## No preview: a flat 2 px TEXT_LO 35% line across the visualizer's width.
 func _paint_viz_line(c: CanvasItem) -> void:
 	var w := VIZ_PITCH * (VIZ_BARS - 1) + VIZ_W
@@ -1937,10 +2089,12 @@ func _start_label(e: SongEntry) -> String:
 		return "Unavailable"
 	if _diving:
 		return "Loading..."
+	if run_pick:
+		return "Pick Song"
 	if run_autoplay:
 		return "Start Autoplay Dive"
 	if run_practice:
-		return "Start Practice Dive"
+		return "Start Solo Dive"
 	return "Start Dive"
 
 
@@ -1980,14 +2134,7 @@ func _paint_footer(c: CanvasItem) -> void:
 	_paint_button(c, OPEN_RECT, "Open Songs Folder", "open")
 	var scanning: bool = library != null and library.scanning
 	_paint_button(c, RESCAN_RECT, "Scanning..." if scanning else "Rescan Library", "rescan", not scanning)
-	var hint: String
-	if _last_pad:
-		hint = "D-PAD SONG  ·  LEFT RIGHT DIFFICULTY  ·  A DIVE  ·  Y SORT  ·  X RESCAN  ·  B BACK"
-	elif _filter != "" or _typing:
-		hint = "TYPE TO FILTER  ·  BACKSPACE EDIT  ·  ESC CLEAR FILTER  ·  UP DOWN SONG  ·  ENTER DIVE"
-	else:
-		hint = "UP DOWN SONG  ·  LEFT RIGHT DIFFICULTY  ·  ENTER DIVE  ·  F5 RESCAN  ·  ESC BACK"
-	_txt(c, Vector2(64, 1008), _fit(hint, Palette.SIZE_LABEL, 976.0), Palette.SIZE_LABEL, Palette.TEXT_LO)
+	_txt(c, Vector2(64, 1008), _fit(footer_hint(), Palette.SIZE_LABEL, 976.0), Palette.SIZE_LABEL, Palette.TEXT_LO)
 	if library != null:
 		var prefix := "Songs folder: "
 		var path := SongListModel.truncate_middle(library.songs_dir(), 66 - prefix.length())
@@ -1995,6 +2142,24 @@ func _paint_footer(c: CanvasItem) -> void:
 		var x := 1856.0 - _w(full, Palette.SIZE_LABEL)
 		_txt(c, Vector2(x, 1008), prefix, Palette.SIZE_LABEL, Palette.TEXT_LO)
 		_txt(c, Vector2(x + _w(prefix, Palette.SIZE_LABEL), 1008), path, Palette.SIZE_LABEL, Palette.TEXT_HI)
+
+
+## Footer key hint for the current mode and input device (Solo Dive: 03 UI-SPEC 8.2).
+func footer_hint() -> String:
+	var training := training_row_visible()
+	if training and _last_pad:
+		return "D-PAD SONG  ·  LEFT RIGHT DIFFICULTY  ·  LT RT TRAINING  ·  A DIVE  ·  B BACK"
+	if run_pick and _last_pad:
+		return "D-PAD SONG  ·  LEFT RIGHT DIFFICULTY  ·  A PICK  ·  B BACK"
+	if _last_pad:
+		return "D-PAD SONG  ·  LEFT RIGHT DIFFICULTY  ·  A DIVE  ·  Y SORT  ·  X RESCAN  ·  B BACK"
+	if _filter != "" or _typing:
+		return "TYPE TO FILTER  ·  BACKSPACE EDIT  ·  ESC CLEAR FILTER  ·  UP DOWN SONG  ·  ENTER DIVE"
+	if training:
+		return "UP DOWN SONG  ·  LEFT RIGHT DIFFICULTY  ·  F3 TRAINING  ·  ENTER DIVE  ·  ESC BACK"
+	if run_pick:
+		return "UP DOWN SONG  ·  LEFT RIGHT DIFFICULTY  ·  ENTER PICK  ·  ESC BACK"
+	return "UP DOWN SONG  ·  LEFT RIGHT DIFFICULTY  ·  ENTER DIVE  ·  F5 RESCAN  ·  ESC BACK"
 
 
 func _scan_text() -> String:
