@@ -140,6 +140,20 @@ func test_validate_rejects_bad_fields() -> void:
 
 # --- safe_path_arg ---------------------------------------------------------
 
+## IN-05: like stages/job.py, version and threads must be ints (a float would be written as
+## 1.0 / 4.0 and rejected by the Python side).
+func test_validate_requires_int_version_and_threads() -> void:
+	var job := AutochartJob.make_job("C:/music/song.mp3", "My Song", "Me", "auto", "drums",
+		"C:/songs", "C:/ac/work", "C:/ac/v1/models", 4)
+	assert_str(AutochartJob.validate(job)).is_equal("")
+	var j1 := job.duplicate()
+	j1["version"] = 1.0
+	assert_str(AutochartJob.validate(j1)).is_equal("bad_job")
+	var j2 := job.duplicate()
+	j2["threads"] = 4.0
+	assert_str(AutochartJob.validate(j2)).is_equal("bad_job")
+
+
 func test_safe_path_arg() -> void:
 	for bad in ["C:/a/", "C:\\a\\", "C:/a\"b", "rel/path", "", "C:/a\nb", "C:/a\tb"]:
 		assert_bool(AutochartJob.safe_path_arg(bad)).override_failure_message(bad).is_false()

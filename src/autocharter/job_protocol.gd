@@ -80,7 +80,8 @@ static func validate(job: Dictionary) -> String:
 			"work_root", "models_root", "threads", "replace"]:
 		if not job.has(key):
 			return "bad_job"
-	if not _is_number(job["version"]) or int(job["version"]) != VERSION:
+	# IN-05: version and threads must be real ints, as stages/job.py requires.
+	if not (job["version"] is int) or int(job["version"]) != VERSION:
 		return "bad_job"
 	if not (job["src"] is String):
 		return "bad_job"
@@ -103,7 +104,7 @@ static func validate(job: Dictionary) -> String:
 	var nps := float(job["target_nps"])
 	if nps < 0.5 or nps > 8.0:
 		return "bad_job"
-	if not _is_number(job["threads"]):
+	if not (job["threads"] is int):
 		return "bad_job"
 	var th := int(job["threads"])
 	if th < 1 or th > 64:

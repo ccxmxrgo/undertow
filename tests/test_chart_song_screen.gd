@@ -590,7 +590,12 @@ func test_start_writes_job_and_runs_with_exact_args() -> void:
 	var written = JSON.parse_string(FileAccess.get_file_as_string(job_path))
 	assert_str(written["stem"]).is_equal("bass")
 	assert_str(written["mode"]).is_equal("single")
-	assert_str(AutochartJob.validate(written)).is_equal("")
+	# Godot's JSON reads every number back as a float, so the emitted job is validated, and the
+	# file is checked for plain integers (stages/job.py rejects 1.0 / 4.0; IN-05).
+	assert_str(AutochartJob.validate(_jobs[-1])).is_equal("")
+	var text := FileAccess.get_file_as_string(job_path)
+	assert_object(RegEx.create_from_string("\"version\": 1\\s*[,}]").search(text)).is_not_null()
+	assert_object(RegEx.create_from_string("\"threads\": \\d+\\s*[,}]").search(text)).is_not_null()
 	assert_int(_music_stops[0]).is_equal(1)
 	assert_object(_focus()).is_same(s.cancel_job_button)
 	assert_str(s.body_text()).contains("This can take a few minutes. You can leave the game open.")
