@@ -222,3 +222,40 @@ func test_new_popup_in_same_lane_pushes_older_into_fade() -> void:
 	assert_int(int(fb.popup(1)["born"])).is_equal(1100000)
 	fb.on_judged(3, 101, G, 0.0)  # far lane: the MISS popup keeps its hold
 	assert_int(int(fb.popup(1)["born"])).is_equal(1100000)
+
+
+# ---- 03-09: GHOST popup and Overclock GOOD colour (UI-SPEC 7.2, 5.3) -----------------------
+
+func test_ghost_hit_popup_is_warning_red() -> void:
+	var fb := _fb()
+	fb.on_ghost_hit(2)
+	assert_int(fb.floating_count()).is_equal(1)
+	var pop := fb.popup(0)
+	assert_str(str(pop["text"])).is_equal("GHOST")
+	assert_object(pop["color"]).is_equal(Palette.WARNING_RED)
+	assert_float(float(pop["x"])).is_equal_approx(Trench.hit_point(2).x, 0.01)
+	# A ghost never merges into a real judgment popup.
+	fb.on_judged(0, _idx(fb, 0, 1.0), P, 0.0)
+	assert_int(fb.floating_count()).is_equal(2)
+	fb.on_ghost_hit(2, 7)
+	assert_int(fb.floating_count()).is_equal(3)
+	fb.queue_redraw()
+	await get_tree().process_frame
+
+
+func test_overclock_good_is_sonar_pale_word_unchanged() -> void:
+	var fb := _fb()
+	assert_bool(fb.overclock).is_false()
+	fb.on_judged(0, _idx(fb, 0, 1.0), G, 0.0)
+	assert_object(fb.popup(0)["color"]).is_equal(Palette.TEXT_MID)
+	fb.overclock = true
+	fb.on_judged(2, _idx(fb, 2, 1.5), G, 0.0)
+	var pop := fb.popup(1)
+	assert_str(str(pop["text"])).is_equal("GOOD")
+	assert_object(pop["color"]).is_equal(Palette.SONAR_PALE)
+	# Perfect and Miss colours are unchanged under Overclock.
+	fb.clock_usec = 3000000
+	fb.on_judged(0, 99, M, 0.0)
+	assert_object(fb.popup(fb.floating_count() - 1)["color"]).is_equal(Palette.WARNING_RED)
+	fb.queue_redraw()
+	await get_tree().process_frame

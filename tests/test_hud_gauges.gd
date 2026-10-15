@@ -496,8 +496,9 @@ func test_mode_chips_only_when_active() -> void:
 	assert_bool(hud.is_autoplay_shown()).is_true()
 	var r: Dictionary = hud.chip_rects()
 	assert_array(r.keys()).is_equal(["AUTOPLAY"])
-	assert_float((r["AUTOPLAY"] as Rect2).position.y).is_equal(864.0)
-	assert_float((r["AUTOPLAY"] as Rect2).end.y).is_equal(896.0)
+	# 03-09 / UI-SPEC 5.3: only visible chips take slots, so AUTOPLAY alone packs to 824.
+	assert_float((r["AUTOPLAY"] as Rect2).position.y).is_equal(824.0)
+	assert_float((r["AUTOPLAY"] as Rect2).end.y).is_equal(856.0)
 	var s2 := HullScore.new(JudgeConfig.new())
 	s2.no_fail = true
 	var hud2 := _hud(s2)
@@ -829,4 +830,265 @@ func test_mode_chips_are_nodes_that_pop_in_at_their_rects() -> void:
 	tw.custom_step(Palette.DUR_BASE * 2.0)
 	assert_float(ap.scale.x).is_equal_approx(1.0, 0.001)
 	hud.set_autoplay(false)
+	# 03-09: a hidden chip leaves the stack at once and fades out over DUR_BASE.
+	assert_bool(hud.chip_rects().has("AUTOPLAY")).is_false()
+	var fade: Tween = hud.chip_fade_tweens["AUTOPLAY"]
+	assert_object(fade).is_not_null()
+	fade.pause()
+	fade.custom_step(Palette.DUR_BASE + 0.01)
 	assert_bool(ap.visible).is_false()
+
+
+# ---- 03-09: chip stack, SOLO DIVE, wreck caption (UI-SPEC 5.3, 5.5, 8.3) ------------------
+
+func _chip_y(hud: Hud, key: String) -> float:
+	return (hud.chip_rects()[key] as Rect2).position.y
+
+
+func test_chip_stack_packs_visible_chips_in_order() -> void:
+	var score := HullScore.new(JudgeConfig.new())
+	var hud := _hud(score)
+	hud.set_chip("PLACE", "2ND OF 4", "info", "", true)
+	assert_array(hud.chip_rects().keys()).is_equal(["PLACE"])
+	assert_float(_chip_y(hud, "PLACE")).is_equal(824.0)
+	assert_float((hud.chip_rects()["PLACE"] as Rect2).position.x).is_equal(1552.0)
+	assert_float((hud.chip_rects()["PLACE"] as Rect2).size.y).is_equal(32.0)
+	assert_str(hud.chip_text("PLACE")).is_equal("2ND OF 4")
+	var s2 := HullScore.new(JudgeConfig.new())
+	s2.no_fail = true
+	var hud2 := _hud(s2)
+	assert_float(_chip_y(hud2, "NO-FAIL")).is_equal(824.0)
+	hud2.set_autoplay(true)
+	hud2.set_chip("PLACE", "2ND OF 4", "info", "", true)
+	assert_float(_chip_y(hud2, "AUTOPLAY")).is_equal(864.0)
+	assert_float(_chip_y(hud2, "PLACE")).is_equal(904.0)
+	var place: Control = hud2.mode_chips["PLACE"]
+	assert_float(place.position.y).is_equal(904.0)
+	hud2.set_autoplay(false)
+	assert_float(_chip_y(hud2, "PLACE")).is_equal(864.0)
+	# Re-pack slides over DUR_FAST.
+	var tw: Tween = hud2.chip_slide_tweens["PLACE"]
+	assert_object(tw).is_not_null()
+	tw.pause()
+	tw.custom_step(Palette.DUR_FAST * 0.5)
+	assert_float(place.position.y).is_between(864.0, 904.0)
+	tw.custom_step(Palette.DUR_FAST)
+	assert_float(place.position.y).is_equal_approx(864.0, 0.01)
+	await get_tree().process_frame
+
+
+func test_chip_stack_jumps_under_reduce_motion() -> void:
+	Settings.reduce_motion = true
+	var s := HullScore.new(JudgeConfig.new())
+	s.no_fail = true
+	var hud := _hud(s)
+	hud.set_autoplay(true)
+	hud.set_chip("BOUNTY", "BOUNTY ON YOU", "reward", "bounty", true)
+	var b: Control = hud.mode_chips["BOUNTY"]
+	assert_float(b.position.y).is_equal(904.0)
+	hud.set_autoplay(false)
+	assert_float(b.position.y).is_equal(864.0)
+	assert_object(hud.chip_slide_tweens.get("BOUNTY")).is_null()
+
+
+func test_solo_dive_chip_after_autoplay() -> void:
+	var s := HullScore.new(JudgeConfig.new())
+	s.no_fail = true
+	var hud := _hud(s)
+	hud.set_solo_dive(true)
+	assert_array(hud.chip_rects().keys()).is_equal(["NO-FAIL", "SOLO DIVE"])
+	assert_float(_chip_y(hud, "SOLO DIVE")).is_equal(864.0)
+	assert_str(hud.chip_text("SOLO DIVE")).is_equal("SOLO DIVE")
+	assert_str(hud.chip_variant("SOLO DIVE")).is_equal("mode")
+	hud.set_autoplay(true)
+	assert_array(hud.chip_rects().keys()).is_equal(["NO-FAIL", "AUTOPLAY", "SOLO DIVE"])
+	assert_float(_chip_y(hud, "SOLO DIVE")).is_equal(904.0)
+	hud.set_solo_dive(false)
+	assert_bool(hud.chip_rects().has("SOLO DIVE")).is_false()
+
+
+func test_chip_stack_caps_at_six_and_width_208() -> void:
+	var s := HullScore.new(JudgeConfig.new())
+	s.no_fail = true
+	var hud := _hud(s)
+	hud.set_autoplay(true)
+	hud.set_solo_dive(true)
+	hud.set_chip("PLACE", "4TH OF 4", "info", "", true)
+	hud.set_chip("BOUNTY", "BOUNTY ON YOU", "reward", "bounty", true)
+	hud.set_chip("DECOY", "DECOY ARMED 8 WITH A VERY LONG TAIL", "info", "decoy_flare", true)
+	hud.set_chip("OVERCLOCK", "OVERCLOCK 4", "info", "overclock", true)
+	hud.set_chip("BALLAST", "HULL +25", "info", "ballast_patch", true)
+	hud.set_chip("IMMUNE", "IMMUNE", "muted", "shield", true)
+	var r: Dictionary = hud.chip_rects()
+	assert_int(r.size()).is_equal(Hud.CHIP_SLOTS)
+	assert_int(Hud.CHIP_SLOTS).is_equal(6)
+	var ys: Array[float] = []
+	for k in r:
+		var rect: Rect2 = r[k]
+		assert_float(rect.end.x).is_less_equal(1760.0)
+		assert_float(rect.size.x).is_less_equal(208.0)
+		ys.append(rect.position.y)
+	assert_array(ys).is_equal([824.0, 864.0, 904.0, 944.0, 984.0, 1024.0])
+	# Keep-out covers every visible chip.
+	var shapes := hud.keepout_shapes()
+	for k in r:
+		var rect: Rect2 = r[k]
+		var found := false
+		for poly in shapes:
+			if poly[0] == rect.position and poly[2] == rect.end:
+				found = true
+		assert_bool(found).override_failure_message("chip %s not in keep-out" % k).is_true()
+	hud.queue_redraw()
+	for k in hud.mode_chips:
+		(hud.mode_chips[k] as Control).queue_redraw()
+	await get_tree().process_frame
+
+
+func test_wreck_caption_and_zero_hull() -> void:
+	var score := HullScore.new(JudgeConfig.new())
+	var hud := _hud(score)
+	hud.set_chip("PLACE", "2ND OF 4", "info", "", true)
+	hud.set_wreck(true)
+	assert_bool(hud.is_wreck()).is_true()
+	assert_float(hud.hull_arc.pct()).is_equal(0.0)
+	assert_float(hud.hull_arc.shown_pct()).is_equal(0.0)
+	assert_int(HullArc.cracked_segments(hud.hull_arc.pct()).size()).is_equal(HullArc.SEGMENTS)
+	assert_bool(hud.hull_caption.visible).is_true()
+	assert_str(hud.hull_caption.text).is_equal("WRECK · PERFECTS CHARGE DEBRIS")
+	assert_object(hud.hull_caption.get_theme_color("font_color")).is_equal(Palette.TEXT_MID)
+	assert_int(hud.hull_caption.get_theme_constant("outline_size")).is_equal(3)
+	assert_object(hud.hull_caption.get_theme_color("font_outline_color")).is_equal(Palette.KEYLINE)
+	var cx := hud.hull_caption.position.x + hud.hull_caption.size.x * 0.5
+	assert_float(cx).is_equal_approx(960.0, 0.5)
+	assert_float(hud.hull_caption_baseline()).is_equal_approx(1028.0, 0.5)
+	assert_bool(hud.critical_pulsing()).is_false()
+	# Hull events no longer move the arc; PLACE is frozen.
+	score.on_judged(0, 0, JM, 0.2)
+	assert_float(hud.hull_arc.pct()).is_equal(0.0)
+	assert_str(hud.hull_caption.text).is_equal("WRECK · PERFECTS CHARGE DEBRIS")
+	hud.set_chip("PLACE", "3RD OF 4", "info", "", true)
+	assert_str(hud.chip_text("PLACE")).is_equal("2ND OF 4")
+	hud.set_chip("PLACE", "", "info", "", false)
+	assert_bool(hud.chip_rects().has("PLACE")).is_true()
+	await get_tree().process_frame
+
+
+# ---- 03-09: StatusChips ------------------------------------------------------------------
+
+func _chips_rig(training: bool = false) -> Array:
+	var ch := LoopbackChannel.new()
+	var hud := _hud(HullScore.new(JudgeConfig.new()))
+	var chart := ChartData.new()
+	chart.tempo_map.append({"time": 0.0, "bpm": 120.0})  # 2 s per 4/4 bar
+	chart.time_sigs.append({"time": 0.0, "num": 4, "den": 4})
+	chart.add_note(0, 1.0)
+	chart.finalize()
+	var sc: StatusChips = auto_free(StatusChips.new())
+	add_child(sc)
+	sc.bind(ch, 0, hud, VersusConfig.new(), chart, 4, training)
+	return [sc, ch, hud]
+
+
+func _send(ch: EventChannel, type: String, fields: Dictionary, t: float = 1.0) -> void:
+	ch.send(GameEvent.make(type, t, fields))
+
+
+func test_status_chips_place_and_bounty() -> void:
+	var r := _chips_rig()
+	var ch: EventChannel = r[1]
+	var hud: Hud = r[2]
+	_send(ch, GameEvent.STATUS, {"seat": 0, "place": 1, "alive": true})
+	assert_str(hud.chip_text("PLACE")).is_equal("1ST OF 4")
+	assert_str(hud.chip_variant("PLACE")).is_equal("info")
+	_send(ch, GameEvent.STATUS, {"seat": 0, "place": 2, "alive": true})
+	assert_str(hud.chip_text("PLACE")).is_equal("2ND OF 4")
+	_send(ch, GameEvent.STATUS, {"seat": 2, "place": 3, "alive": true})
+	assert_str(hud.chip_text("PLACE")).is_equal("2ND OF 4")
+	_send(ch, GameEvent.STATUS, {"seat": 0, "place": 3, "alive": true})
+	assert_str(hud.chip_text("PLACE")).is_equal("3RD OF 4")
+	_send(ch, GameEvent.STATUS, {"seat": 0, "place": 4, "alive": true})
+	assert_str(hud.chip_text("PLACE")).is_equal("4TH OF 4")
+	_send(ch, GameEvent.BOUNTY_MOVED, {"from_seat": -1, "to_seat": 0})
+	assert_bool(hud.chip_rects().has("BOUNTY")).is_true()
+	assert_str(hud.chip_text("BOUNTY")).is_equal("BOUNTY ON YOU")
+	assert_str(hud.chip_variant("BOUNTY")).is_equal("reward")
+	assert_str(hud.chip_glyph("BOUNTY")).is_equal("bounty")
+	_send(ch, GameEvent.BOUNTY_MOVED, {"from_seat": 0, "to_seat": 2})
+	assert_bool(hud.chip_rects().has("BOUNTY")).is_false()
+
+
+func test_status_chips_decoy_and_overclock_countdown() -> void:
+	var r := _chips_rig()
+	var sc: StatusChips = r[0]
+	var ch: EventChannel = r[1]
+	var hud: Hud = r[2]
+	# Decoy armed for 8 bars from t 1.0 (bars are 2 s).
+	_send(ch, GameEvent.BUFF_APPLIED, {"seat": 0, "reward": Reward.Id.DECOY_FLARE, "until_t": 17.0, "amount": 0}, 1.0)
+	assert_str(hud.chip_text("DECOY")).is_equal("DECOY ARMED 8")
+	assert_str(hud.chip_glyph("DECOY")).is_equal("decoy_flare")
+	sc.update(3.0)
+	assert_str(hud.chip_text("DECOY")).is_equal("DECOY ARMED 7")
+	sc.update(15.5)
+	assert_str(hud.chip_text("DECOY")).is_equal("DECOY ARMED 1")
+	_send(ch, GameEvent.BUFF_ENDED, {"seat": 0, "reward": Reward.Id.DECOY_FLARE, "reason": "used"}, 16.0)
+	assert_bool(hud.chip_rects().has("DECOY")).is_false()
+	_send(ch, GameEvent.BUFF_APPLIED, {"seat": 0, "reward": Reward.Id.OVERCLOCK, "until_t": 28.0, "amount": 0}, 20.0)
+	assert_str(hud.chip_text("OVERCLOCK")).is_equal("OVERCLOCK 4")
+	assert_str(hud.chip_glyph("OVERCLOCK")).is_equal("overclock")
+	sc.update(22.5)
+	assert_str(hud.chip_text("OVERCLOCK")).is_equal("OVERCLOCK 3")
+	# Other seats' buffs do nothing.
+	_send(ch, GameEvent.BUFF_ENDED, {"seat": 1, "reward": Reward.Id.OVERCLOCK, "reason": "expired"}, 23.0)
+	assert_bool(hud.chip_rects().has("OVERCLOCK")).is_true()
+	_send(ch, GameEvent.BUFF_ENDED, {"seat": 0, "reward": Reward.Id.OVERCLOCK, "reason": "expired"}, 28.0)
+	assert_bool(hud.chip_rects().has("OVERCLOCK")).is_false()
+
+
+func test_status_chips_ballast_and_immune() -> void:
+	var r := _chips_rig()
+	var sc: StatusChips = r[0]
+	var ch: EventChannel = r[1]
+	var hud: Hud = r[2]
+	_send(ch, GameEvent.BUFF_APPLIED, {"seat": 0, "reward": Reward.Id.BALLAST_PATCH, "until_t": 5.0, "amount": 25.0}, 5.0)
+	assert_str(hud.chip_text("BALLAST")).is_equal("HULL +25")
+	assert_str(hud.chip_glyph("BALLAST")).is_equal("ballast_patch")
+	sc.update(6.5)
+	assert_bool(hud.chip_rects().has("BALLAST")).is_true()
+	sc.update(6.61)
+	assert_bool(hud.chip_rects().has("BALLAST")).is_false()
+	_send(ch, GameEvent.PAYLOAD_END, {"id": 3, "seat": 0, "reward": Reward.Id.INK_CLOUD, "reason": "expired",
+		"immune_until": 12.0}, 10.0)
+	assert_str(hud.chip_text("IMMUNE")).is_equal("IMMUNE")
+	assert_str(hud.chip_variant("IMMUNE")).is_equal("muted")
+	assert_str(hud.chip_glyph("IMMUNE")).is_equal("shield")
+	sc.update(11.9)
+	assert_bool(hud.chip_rects().has("IMMUNE")).is_true()
+	sc.update(12.0)
+	assert_bool(hud.chip_rects().has("IMMUNE")).is_false()
+	_send(ch, GameEvent.PAYLOAD_END, {"id": 4, "seat": 2, "reward": Reward.Id.INK_CLOUD, "reason": "expired",
+		"immune_until": 30.0}, 20.0)
+	assert_bool(hud.chip_rects().has("IMMUNE")).is_false()
+
+
+func test_status_chips_training_has_no_place_or_bounty() -> void:
+	var r := _chips_rig(true)
+	var ch: EventChannel = r[1]
+	var hud: Hud = r[2]
+	_send(ch, GameEvent.STATUS, {"seat": 0, "place": 1, "alive": true})
+	_send(ch, GameEvent.BOUNTY_MOVED, {"from_seat": -1, "to_seat": 0})
+	assert_bool(hud.chip_rects().has("PLACE")).is_false()
+	assert_bool(hud.chip_rects().has("BOUNTY")).is_false()
+	_send(ch, GameEvent.BUFF_APPLIED, {"seat": 0, "reward": Reward.Id.OVERCLOCK, "until_t": 9.0, "amount": 0}, 1.0)
+	assert_bool(hud.chip_rects().has("OVERCLOCK")).is_true()
+
+
+func test_status_chips_place_freezes_on_implosion() -> void:
+	var r := _chips_rig()
+	var ch: EventChannel = r[1]
+	var hud: Hud = r[2]
+	_send(ch, GameEvent.STATUS, {"seat": 0, "place": 2, "alive": true})
+	_send(ch, GameEvent.IMPLODED, {"seat": 0})
+	_send(ch, GameEvent.STATUS, {"seat": 0, "place": 4, "alive": false})
+	assert_str(hud.chip_text("PLACE")).is_equal("2ND OF 4")
+	assert_str(StatusChips.ordinal(1)).is_equal("1ST")
+	assert_str(StatusChips.ordinal(3)).is_equal("3RD")
