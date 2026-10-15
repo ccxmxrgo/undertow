@@ -328,7 +328,7 @@ Building the pack (dev PC; outputs in build/pack/out, gitignored):
 End-to-end check with the game's own classes (installs into build/pack/e2e_ac, never LOCALAPPDATA):
   & $env:GODOT_BIN --headless --path . -s res://tools/autochart/pack_e2e.gd -- `
       --source build/pack/out --root build/pack/e2e_ac --songs build/pack/e2e_songs --threads 8 `
-      [--only install|selftest|job|rechart|lanes|cancel|scan]
+      [--only install|selftest|job|rechart|lanes|cancel|scan|probe]
   Steps: install from folder, selftest, auto job on synth_wave_april (CC0), re-chart with the second
   ranked stem (must reuse stems, < 20 s), lanes, cancel 3 s into separate (the PID must leave the
   process table), SongScanner scan (status ok, 4 difficulties, lanes 0..3). Last line E2E_OK.
@@ -347,6 +347,19 @@ Results on the dev PC (2026-10-15, 8 logical cores, reports/pack_e2e.txt):
   Charts made with threads 2 and 8 are byte-identical; threads 4 moved 2 notes to the next lane in
   Hard and Expert (same times; float reductions in torch differ by thread count). The gate is
   timing-only, so the result holds for every thread count.
+
+RELEASING THE PACK (02.2.2-10)
+------------------------------
+The game downloads the pack from the GitHub Release autocharter-pack-v1 on ccxmxrgo/undertow. Full
+steps (gh command and web UI) are in tools/autochart/PACK-RELEASE.txt. In short:
+  powershell -NoProfile -File tools/autochart/release_pack.ps1                  stage + verify + archive
+      (build/release/autocharter-pack-v1 and C:\Users\User\UNDERTOW-release-archive\autocharter-pack-v1;
+      ends with RELEASE_STAGE_OK)
+  publish (user action, needs GitHub credentials): see PACK-RELEASE.txt step 2a / 2b
+  powershell -NoProfile -File tools/autochart/release_pack.ps1 -VerifyPublished  must print RELEASE_LIVE_OK
+  & $env:GODOT_BIN --headless --path . -s res://tools/autochart/pack_e2e.gd -- --only probe
+      game's own download path: PROBE_NOT_AVAILABLE before publishing, PROBE_DOWNLOAD_STARTED after
+Re-publish from the archive, never from a rebuild: non-identical bytes need new pins and a new game build.
 
 LANE RULE
 ---------

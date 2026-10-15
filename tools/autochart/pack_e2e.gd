@@ -8,7 +8,12 @@ extends SceneTree
 ## Usage (repo root; relative paths are resolved against the project folder):
 ##   & $env:GODOT_BIN --headless --path . -s res://tools/autochart/pack_e2e.gd -- `
 ##       --source build/pack/out --root build/pack/e2e_ac --songs build/pack/e2e_songs --threads 8 `
-##       [--only install|selftest|job|rechart|lanes|cancel|scan]
+##       [--only install|selftest|job|rechart|lanes|cancel|scan|probe]
+## --only probe (02.2.2-10) is not part of the full run: it starts a real download through
+## PackInstaller's default HTTP fetcher and the compiled PackSpec URLs into a scratch root
+## (default build/pack/probe_ac) and prints PROBE_NOT_AVAILABLE (the pinned URL answers 404: the
+## release is not published yet), PROBE_DOWNLOAD_STARTED (bytes arrived; the download is
+## cancelled at once) or PROBE_FAIL <code>. The scratch root is deleted afterwards.
 ## The pack root is always --root (AutochartPaths.root_override); the player's real
 ## %LOCALAPPDATA%\UNDERTOW\ac is never used. Each step prints one result line; a failing step
 ## prints E2E_FAIL <step> <reason> and exits 1. The last line of a full run is E2E_OK.
@@ -24,12 +29,15 @@ const RECHART_MAX_S := 20.0
 const CANCEL_DELAY_S := 3.0
 const CANCEL_GONE_MAX_S := 15.0
 const DIFFS: Array[String] = ["easy", "medium", "hard", "expert"]
+const PROBE_ROOT := "build/pack/probe_ac"
+const PROBE_TIMEOUT_S := 60.0
 
 var _source := "build/pack/out"
 var _root := "build/pack/e2e_ac"
 var _songs := "build/pack/e2e_songs"
 var _threads := 8
 var _only := ""
+var _root_given := false
 
 var _installer: PackInstaller
 var _ranking: Array = []
@@ -48,6 +56,8 @@ func _run() -> int:
 	var err := _parse_args(OS.get_cmdline_user_args())
 	if err != "":
 		return _fail("args", err)
+	if _only == "probe":
+		return await _probe()
 	AutochartPaths.root_override = _root
 	DirAccess.make_dir_recursive_absolute(_songs)
 	print("E2E_CONFIG root=%s songs=%s threads=%d only=%s" % [_rel(AutochartPaths.root()), _rel(_songs),
@@ -76,6 +86,7 @@ func _parse_args(args: PackedStringArray) -> String:
 				_source = v
 			"--root":
 				_root = v
+				_root_given = true
 			"--songs":
 				_songs = v
 			"--threads":
@@ -85,7 +96,9 @@ func _parse_args(args: PackedStringArray) -> String:
 			_:
 				return "unknown argument " + a
 		i += 2
-	if _only != "" and not STEPS.has(_only):
+	if _only == "probe" and not _root_given:
+		_root = PROBE_ROOT
+	if _only != "" and _only != "probe" and not STEPS.has(_only):
 		return "unknown step " + _only
 	if _threads < 1 or _threads > 64:
 		return "threads out of range"
@@ -351,6 +364,68 @@ func _on_event(ev: Dictionary, r: Dictionary, runner: AutochartRunner) -> void:
 				",".join(PackedStringArray(ev.get("ranking", [])))])
 		"selftest":
 			r["selftest"] = ev
+
+
+# ---- probe (02.2.2-10): the real download path against the pinned release URLs ----
+
+func _probe() -> int:
+	AutochartPaths.root_override = _root
+	print("PROBE_CONFIG root=%s url=%s" % [_rel(AutochartPaths.root()), PackSpec.url(PackSpec.PARTS[0])])
+	var inst := PackInstaller.new()  # default HTTP fetcher, compiled PackSpec
+	root.add_child(inst)
+	await process_frame
+	var st := {"result": "", "code": "", "msg": "", "bytes": 0}
+	var on_ok := func() -> void:
+		st["result"] = "installed"
+	var on_fail := func(code: String, msg: String) -> void:
+		st["result"] = "failed"
+		st["code"] = code
+		st["msg"] = msg
+	var on_progress := func(done: int, _total: int, label: String) -> void:
+		if label.begins_with("Downloading") and done > 0 and st["result"] == "":
+			st["result"] = "bytes"
+			st["bytes"] = done
+	inst.installed.connect(on_ok)
+	inst.failed.connect(on_fail)
+	inst.progress_changed.connect(on_progress)
+	var t0 := Time.get_ticks_msec()
+	inst.start()
+	while st["result"] == "" and _since(t0) < PROBE_TIMEOUT_S:
+		await process_frame
+	var code := 0
+	match str(st["result"]):
+		"bytes":
+			inst.cancel()
+			print("PROBE_DOWNLOAD_STARTED %d bytes after %.1f s (cancelled)" % [int(st["bytes"]), _since(t0)])
+		"failed":
+			if st["code"] == "not_available":
+				print("PROBE_NOT_AVAILABLE %.1f s: %s" % [_since(t0), str(st["msg"])])
+			else:
+				print("PROBE_FAIL %s %s" % [str(st["code"]), str(st["msg"])])
+				code = 1
+		"installed":
+			print("PROBE_FAIL installed (the scratch root already held the pack)")
+			code = 1
+		_:
+			inst.cancel()
+			print("PROBE_FAIL timeout %.0f s" % PROBE_TIMEOUT_S)
+			code = 1
+	inst.queue_free()
+	await process_frame
+	_rm_tree(_root)
+	return code
+
+
+func _rm_tree(path: String) -> void:
+	var d := DirAccess.open(path)
+	if d == null:
+		return
+	d.include_hidden = true
+	for f in d.get_files():
+		DirAccess.remove_absolute(path.path_join(f))
+	for sub in d.get_directories():
+		_rm_tree(path.path_join(sub))
+	DirAccess.remove_absolute(path)
 
 
 # ---- helpers ----

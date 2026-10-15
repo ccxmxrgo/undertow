@@ -1,0 +1,106 @@
+UNDERTOW AUTOCHARTER PACK v1 - HOW TO PUBLISH THE RELEASE
+=========================================================
+
+PURPOSE
+-------
+Chart a Song downloads the Autocharter pack from the GitHub Release with tag autocharter-pack-v1 on
+https://github.com/ccxmxrgo/undertow. The game (v0.5.4 and later) has the name, size and SHA-256 of every
+part compiled into src/autocharter/pack_spec.gd. It downloads
+
+  https://github.com/ccxmxrgo/undertow/releases/download/autocharter-pack-v1/<part name>
+
+and refuses any file whose size or hash differs. Until this release exists, the game shows
+"The Autocharter pack is not available yet. Check for a newer UNDERTOW build." (the pinned URL answers 404).
+The release tag is separate from game versions: game builds pin the pack version (PackSpec).
+
+Assets (4 part zips + SHA256SUMS.txt, 400.1 MB in total):
+  undertow-ac-v1-app.zip         65,953 bytes  a8cb54fba3d6370a272d0b119da78056771cca7350bd7e96f866a65a62c9ecf5
+  undertow-ac-v1-rt-core.zip    143,200,163 bytes  66b52b9ee85e0f513b4ef4b71e61fd7262f4b0854ccc38ed0ff979ad5ee88e25
+  undertow-ac-v1-rt-torch.zip   103,720,410 bytes  cc34f8ba90fa553146f0a0950071f8dccb8667e3f7fca18c1f79e0b8377fbdc1
+  undertow-ac-v1-models.zip     153,119,849 bytes  32d6877201483171abac9d2e7c6fbece372d6cf2a03050aaff9ab15d0b68c9a8
+
+Publishing is an outward action: it needs the owner's GitHub credentials and consent. No script in this
+repo uploads anything.
+
+PREREQUISITES
+-------------
+- A GitHub account with push rights on ccxmxrgo/undertow (to create the tag and the release).
+- Optional: the GitHub CLI (gh, https://cli.github.com), logged in with `gh auth login`. Without gh, use
+  the web steps (2b).
+- The built pack in build/pack/out (tools/autochart/build_pack.ps1), or the archived copy (see DURABILITY).
+
+STEP 1 - STAGE AND VERIFY (repo root, PowerShell)
+-------------------------------------------------
+  powershell -NoProfile -File tools/autochart/release_pack.ps1
+
+It re-hashes every part against src/autocharter/pack_spec.gd, writes build/release/autocharter-pack-v1/
+(4 zips, SHA256SUMS.txt, RELEASE_NOTES.md), archives it (see DURABILITY) and must end with
+RELEASE_STAGE_OK. If it says "pack_spec.gd and ... differ: rebuild", STOP: do not publish those files.
+
+STEP 2a - PUBLISH WITH gh (one command, repo root)
+--------------------------------------------------
+PowerShell does not expand * for native commands, so the files are listed one by one:
+
+  gh release create autocharter-pack-v1 build/release/autocharter-pack-v1/undertow-ac-v1-app.zip build/release/autocharter-pack-v1/undertow-ac-v1-rt-core.zip build/release/autocharter-pack-v1/undertow-ac-v1-rt-torch.zip build/release/autocharter-pack-v1/undertow-ac-v1-models.zip build/release/autocharter-pack-v1/SHA256SUMS.txt --repo ccxmxrgo/undertow --title "UNDERTOW Autocharter pack v1" --notes-file build/release/autocharter-pack-v1/RELEASE_NOTES.md --latest=false
+
+(In Git Bash the short form also works:
+  gh release create autocharter-pack-v1 build/release/autocharter-pack-v1/*.zip build/release/autocharter-pack-v1/SHA256SUMS.txt --repo ccxmxrgo/undertow --title "UNDERTOW Autocharter pack v1" --notes-file build/release/autocharter-pack-v1/RELEASE_NOTES.md --latest=false )
+
+gh creates the tag autocharter-pack-v1 on the default branch (main) if it does not exist yet.
+
+STEP 2b - PUBLISH IN THE WEB UI (no gh)
+---------------------------------------
+1. Open https://github.com/ccxmxrgo/undertow and sign in.
+2. Releases (right-hand side) -> Draft a new release.
+3. Choose a tag -> type autocharter-pack-v1 -> "Create new tag: autocharter-pack-v1 on publish".
+   Target: main.
+4. Release title: UNDERTOW Autocharter pack v1
+5. Description: paste the contents of build/release/autocharter-pack-v1/RELEASE_NOTES.md.
+6. Attach binaries: drag in all 5 files from build/release/autocharter-pack-v1:
+     undertow-ac-v1-app.zip, undertow-ac-v1-rt-core.zip, undertow-ac-v1-rt-torch.zip,
+     undertow-ac-v1-models.zip, SHA256SUMS.txt
+   Wait until every upload shows as finished. Do NOT rename any file.
+7. Untick "Set as the latest release" (game builds stay the latest releases). Leave "pre-release" unticked.
+8. Publish release.
+
+STEP 3 - VERIFY THE LIVE RELEASE
+--------------------------------
+  powershell -NoProfile -File tools/autochart/release_pack.ps1 -VerifyPublished
+
+It downloads every part from the pinned URL and must print RELEASE_LIVE_OK. Optionally, the game's own
+download path (cancels as soon as bytes arrive, writes only build/pack/probe_ac, deleted afterwards):
+
+  & $env:GODOT_BIN --headless --path . -s res://tools/autochart/pack_e2e.gd -- --only probe
+
+Expected after publishing: PROBE_DOWNLOAD_STARTED (before publishing it prints PROBE_NOT_AVAILABLE).
+
+STEP 4 - IN THE GAME
+--------------------
+Main menu -> Chart a Song -> Download. The progress shows "Downloading n / 381 MB", then installing.
+Then chart one song you own.
+
+DURABILITY (D-16)
+-----------------
+The exact release bytes are archived outside the repo in
+
+  C:\Users\User\UNDERTOW-release-archive\autocharter-pack-v1
+
+(4 zips, SHA256SUMS.txt, RELEASE_NOTES.md, pack_manifest.json). release_pack.ps1 refuses to overwrite an
+archive whose SHA256SUMS.txt differs. Keep a second copy of this folder somewhere safe.
+
+The pack build is checked for reproducibility (plan 06 built it twice with identical SHA256SUMS), but a
+rebuild that produces NON-IDENTICAL bytes REQUIRES A NEW GAME BUILD with new pins: every game already
+shipped refuses the new bytes. So if the release assets ever need to be re-uploaded (deleted release,
+lost asset), re-publish them FROM THE ARCHIVE, never from a rebuild, and run -VerifyPublished afterwards.
+To restore the archive into the repo: copy the 4 zips, SHA256SUMS.txt and pack_manifest.json into
+build/pack/out and run STEP 1.
+
+RULES
+-----
+- Never upload different bytes under the same names: the game would refuse them ("The download was
+  damaged. Please try again.") and players could not chart until a matching file is back.
+- A changed pack (any app .py, wheel, model or runtime change) needs: build_pack.ps1 (or -AppOnly for
+  app-only changes), the new pins committed in src/autocharter/pack_spec.gd, and a new game build. If the
+  old game builds must keep working, publish the changed pack under a new tag (autocharter-pack-v2, with
+  VERSION/TAG/BASE_URL bumped in the build) instead of replacing v1 assets.
+- Do not mark the pack release as "latest"; the game does not look for "latest", it uses the tag.
