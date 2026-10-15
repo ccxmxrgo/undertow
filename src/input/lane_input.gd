@@ -38,8 +38,8 @@ var _held: Array[bool] = [false, false, false, false]  # union of the two source
 var _key_held: Array[bool] = [false, false, false, false]
 var _axis_held: Array[bool] = [false, false, false, false]
 ## Judged lane each physical action pressed (-1 = up), and how many actions hold each judged
-## lane: a lane is pressed on its 0 -> 1 edge and released on 1 -> 0, so two keys mapped onto
-## one lane across a remap never double-press or release each other.
+## lane: every action's press edge presses the lane (WR-03), but the lane is released only on
+## the 1 -> 0 edge, so two keys mapped onto one lane across a remap never release each other.
 var _pressed_lane: Array[int] = [-1, -1, -1, -1]
 var _lane_holders: Array[int] = [0, 0, 0, 0]
 
@@ -108,9 +108,10 @@ func _press(action: int, ticks: int) -> void:
 	_held[action] = true
 	var lane := _map_action(action, ticks)
 	_pressed_lane[action] = lane
+	# Every press edge reaches the judge (WR-03): after a Crossed Wires swap a second key can map
+	# onto a judged lane an earlier key still holds (e.g. through a sustain end), and that press
+	# is a real hit on the next note. The holder count only gates the release (1 -> 0 edge).
 	_lane_holders[lane] += 1
-	if _lane_holders[lane] > 1:
-		return  # another key already holds this judged lane
 	if conductor != null and judge != null:
 		var t := conductor.song_time_at(ticks)
 		if press_fn.is_valid():

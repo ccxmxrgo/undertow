@@ -211,13 +211,14 @@ func test_hold_across_switch_releases_lane_recorded_at_press() -> void:
 	assert_int(pressed[1][0]).is_equal(1)
 
 
-func test_two_keys_on_one_judged_lane_never_double_press() -> void:
+func test_two_keys_on_one_judged_lane_release_only_on_last_up() -> void:
 	var setup := _cw_setup(_tempo_chart())
 	_at(setup[1], 2.2)
 	li.inject(_key(KEY_2, true))  # lane 1 (identity before the switch)
 	_at(setup[1], 3.0)
-	li.inject(_key(KEY_3, true))  # now also lane 1: lane already held, no second press
-	assert_int(pressed.size()).is_equal(1)
+	li.inject(_key(KEY_3, true))  # now also lane 1: a real press edge (WR-03)
+	assert_int(pressed.size()).is_equal(2)
+	assert_int(pressed[1][0]).is_equal(1)
 	li.inject(_key(KEY_2, false))
 	assert_int(released.size()).is_equal(0)  # KEY_3 still holds lane 1
 	li.inject(_key(KEY_3, false))
@@ -232,3 +233,24 @@ func test_no_payloads_is_identity() -> void:
 		li.inject(_key([KEY_1, KEY_2, KEY_3, KEY_4][i], false))
 		assert_int(pressed[i][0]).is_equal(i)
 		assert_int(released[i][0]).is_equal(i)
+
+
+## WR-03 regression: key A still holds judged lane 1 from before the swap; key B (now also lane 1
+## at its screen position) presses for the next lane-1 note. The press must reach the judge and
+## hit the note, not be swallowed and expire as a Miss.
+func test_second_key_on_held_lane_still_judges_the_next_note() -> void:
+	var chart := _tempo_chart()
+	chart.add_note(1, 2.2, 0.0)
+	chart.add_note(1, 3.0, 0.0)
+	chart.finalize()
+	var setup := _cw_setup(chart)
+	var judge: InputJudge = setup[0]
+	var seen: Array = []
+	judge.judged.connect(func(l: int, idx: int, j: int, _e: float) -> void: seen.append([l, idx, j]))
+	_at(setup[1], 2.2)
+	li.inject(_key(KEY_2, true))  # lane 1, hits the note at 2.2 and stays down
+	_at(setup[1], 3.0)
+	li.inject(_key(KEY_3, true))  # mapped onto lane 1 after the swap
+	assert_int(seen.size()).is_equal(2)
+	assert_int(seen[1][1]).is_equal(1)
+	assert_int(seen[1][2]).is_equal(InputJudge.Judgment.PERFECT)
