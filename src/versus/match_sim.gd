@@ -688,18 +688,202 @@ func _emit_target_if_changed(seat: int) -> void:
 	_emit(GameEvent.TARGET, _now, {"seat": seat, "mode": key[0], "target": key[1]})
 
 
-# --- Beat-boundary checks (bounty, last standing, status: Task 3) ----------------------------
+# --- Standings (MATCH-02, D-22, D-23) --------------------------------------------------------
 
-func _beat_checks(_tb: float) -> void:
+## Rows {seat, place, alive, depth, hull, accuracy, max_streak, eliminated_at}, best first.
+## Survivors by depth, hull, accuracy, max streak (exact equality shares a place); then the
+## eliminated by later elimination beat (deaths inside one beat are simultaneous, D-22), ties by
+## depth. Training drones are not ranked.
+func standings() -> Array[Dictionary]:
+	var alive_rows: Array[Dictionary] = []
+	var dead_rows: Array[Dictionary] = []
+	for s in _seats:
+		var p: PlayerState = _by_seat[s]
+		if p.is_drone:
+			continue
+		var row := {"seat": s, "place": 0, "alive": p.alive, "depth": p.depth, "hull": p.hull,
+			"accuracy": p.accuracy, "max_streak": p.max_streak, "eliminated_at": p.eliminated_at}
+		if p.alive:
+			alive_rows.append(row)
+		else:
+			dead_rows.append(row)
+	alive_rows.sort_custom(_cmp_alive)
+	dead_rows.sort_custom(_cmp_dead)
+	for i in range(alive_rows.size()):
+		var r := alive_rows[i]
+		if i > 0 and _alive_key(alive_rows[i - 1]) == _alive_key(r):
+			r["place"] = alive_rows[i - 1]["place"]
+		else:
+			r["place"] = i + 1
+	var base := alive_rows.size()
+	for i in range(dead_rows.size()):
+		var r := dead_rows[i]
+		if i > 0 and _dead_key(dead_rows[i - 1]) == _dead_key(r):
+			r["place"] = dead_rows[i - 1]["place"]
+		else:
+			r["place"] = base + i + 1
+	var out: Array[Dictionary] = []
+	out.append_array(alive_rows)
+	out.append_array(dead_rows)
+	return out
+
+
+## The single first-placed seat, or -1 for a shared first place (or no players).
+func winner() -> int:
+	var rows := standings()
+	if rows.is_empty():
+		return -1
+	if rows.size() > 1 and rows[1]["place"] == 1:
+		return -1
+	return rows[0]["seat"]
+
+
+## The song ended: MATCH_END {standings} (once).
+func finish(t: float) -> void:
+	_begin(t)
+	if _finished:
+		return
+	_finished = true
+	_emit(GameEvent.MATCH_END, t, {"standings": standings()})
+
+
+func _elim_beat(eliminated_at: float) -> int:
+	return int(floor(BeatClock.beat_at(eliminated_at, chart.tempo_map) + EPS_BEAT))
+
+
+func _alive_key(r: Dictionary) -> Array:
+	return [r["depth"], r["hull"], r["accuracy"], r["max_streak"]]
+
+
+func _dead_key(r: Dictionary) -> Array:
+	return [_elim_beat(r["eliminated_at"]), r["depth"]]
+
+
+func _cmp_alive(a: Dictionary, b: Dictionary) -> bool:
+	var ka := _alive_key(a)
+	var kb := _alive_key(b)
+	for i in range(ka.size()):
+		if ka[i] != kb[i]:
+			return ka[i] > kb[i]
+	return a["seat"] < b["seat"]
+
+
+func _cmp_dead(a: Dictionary, b: Dictionary) -> bool:
+	var ka := _dead_key(a)
+	var kb := _dead_key(b)
+	for i in range(ka.size()):
+		if ka[i] != kb[i]:
+			return ka[i] > kb[i]
+	return a["seat"] < b["seat"]
+
+
+# --- Beat-boundary checks --------------------------------------------------------------------
+
+func _beat_checks(tb: float) -> void:
+	_update_bounty(tb)
+	_check_last_standing(tb)
 	_check_targets()
+	_check_status(tb)
 
 
-func _update_bounty(_t: float) -> void:
-	pass
+## D-22: decided at beat boundaries only, once; never when the last subs die in one beat.
+func _check_last_standing(tb: float) -> void:
+	if _last_standing_done:
+		return
+	var started := 0
+	var alive_seat := -1
+	var alive_n := 0
+	for s in _seats:
+		var p: PlayerState = _by_seat[s]
+		if p.is_drone:
+			continue
+		started += 1
+		if p.alive:
+			alive_n += 1
+			alive_seat = s
+	if started >= 2 and alive_n == 1:
+		_last_standing_done = true
+		_emit(GameEvent.LAST_STANDING, tb, {"seat": alive_seat})
+	elif started >= 2 and alive_n == 0:
+		_last_standing_done = true  # everyone left died inside one beat: no last standing
 
 
-func _on_landed_bounty(_rec: Dictionary, _t: float) -> void:
-	pass
+## STATUS per seat when place, alive, 10 m depth bucket or hull changed (once per beat max).
+func _check_status(tb: float) -> void:
+	var places := {}
+	for r in standings():
+		places[r["seat"]] = r["place"]
+	for s in _seats:
+		var p: PlayerState = _by_seat[s]
+		var key := [int(places.get(s, 0)), p.alive, int(floor(p.depth / 10.0)), p.hull]
+		if _status_cache.has(s) and _status_cache[s] == key:
+			continue
+		_status_cache[s] = key
+		_emit(GameEvent.STATUS, tb, {"seat": s, "hull": p.hull, "depth": p.depth,
+			"alive": p.alive, "place": key[0], "accuracy": p.accuracy})
+
+
+# --- Bounty (spec req 10, D-31) ---------------------------------------------------------------
+
+## The alive leader by depth holds the bounty; ties keep the holder; nobody holds it before
+## anyone has any depth. Drones never hold it.
+func _update_bounty(t: float) -> void:
+	var best := -1
+	for s in _seats:
+		var p: PlayerState = _by_seat[s]
+		if not p.alive or p.is_drone:
+			continue
+		if best == -1 or p.depth > _by_seat[best].depth:
+			best = s
+	var holder := -1
+	if bounty_holder != -1 and best != -1:
+		var h: PlayerState = _by_seat[bounty_holder]
+		if h.alive and not h.is_drone and h.depth >= _by_seat[best].depth:
+			holder = bounty_holder
+	if holder == -1 and best != -1 and _by_seat[best].depth > 0.0:
+		holder = best
+	if holder == bounty_holder:
+		return
+	var old := bounty_holder
+	bounty_holder = holder
+	_emit(GameEvent.BOUNTY_MOVED, t, {"from_seat": old, "to_seat": holder})
+
+
+## A disruptor (not debris, not reflected) took effect on the holder from another seat. With no
+## warheads there is no reflect chance, so it is claimed now; otherwise 03-06 claims it on the
+## first failed warhead (_claim_bounty) or drops it on reflection (_drop_bounty).
+func _on_landed_bounty(rec: Dictionary, t: float) -> void:
+	if rec["debris"] or rec["reflected"] or not Reward.is_disruptor(int(rec["reward"])):
+		return
+	var from: int = rec["from"]
+	var to: int = rec["to"]
+	if from == to or to != bounty_holder or _by_seat[from].is_drone:
+		return
+	_pending_bounty[rec["id"]] = {"shooter": from, "holder": to}
+	var heads: Array = rec.get("warheads", [])
+	if heads.is_empty():
+		_claim_bounty(rec["id"], t)
+
+
+## Refund round(bounty_refund_ratio x threshold) to the shooter (D-31 overflow rule lives in
+## RewardMeter.add_refund). A shooter that has since become a wreck gets nothing.
+func _claim_bounty(id: int, t: float) -> void:
+	if not _pending_bounty.has(id):
+		return
+	var c: Dictionary = _pending_bounty[id]
+	_pending_bounty.erase(id)
+	var shooter: PlayerState = _by_seat[c["shooter"]]
+	if not shooter.alive:
+		return
+	var refund := int(round(cfg.bounty_refund_ratio * threshold))
+	shooter.bounties += 1
+	_now = t
+	_emit(GameEvent.BOUNTY_CLAIMED, t, {"from": c["shooter"], "to": c["holder"], "refund": refund})
+	shooter.meter.add_refund(refund)
+
+
+func _drop_bounty(id: int) -> void:
+	_pending_bounty.erase(id)
 
 
 # --- Hooks for 03-06 -------------------------------------------------------------------------
