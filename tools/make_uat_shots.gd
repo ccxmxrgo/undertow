@@ -6,6 +6,9 @@ extends SceneTree
 ##   godot --headless --path . -s res://tools/make_uat_shots.gd
 ## Works headless: only Image load / resize / save. Exit code 1 if any listed shot is missing.
 ##
+## Phase 03 (plan 03-15): `-- --phase 03` copies the versus set (scenario "versus") into
+##   .planning/phases/03-offline-versus/uat-shots instead (NAMES_03). Default behaviour is unchanged.
+##
 ## Matching: the harness names files "<scenario>_<NN>_<shot>.png". A listed name matches a file when
 ##   - the file stem equals the name (immersion_01_intro_rig_boot), or
 ##   - the stem ends with "_<name>" (menu_full -> polish_02_menu_full), or
@@ -31,17 +34,47 @@ const NAMES: Array[String] = [
 	"background_living", "background_calm",
 ]
 
+## Phase 03 versus readability set (UI-SPEC 11.8), shot by playtest scenario "versus".
+const OUT_DIR_03 := "res://.planning/phases/03-offline-versus/uat-shots"
+const PAYLOAD_KEYS_03: Array[String] = ["crossed_wires", "ghost_notes", "ink_cloud", "pressure_crack",
+	"sonar_jam", "depth_charge"]
+const EXTRA_03: Array[String] = [
+	"versus_jam_warheads", "versus_ink_sustain", "versus_crossed_mid", "versus_crossed_settled",
+	"versus_alert_incoming", "versus_alert_active", "versus_alert_reflected", "versus_alert_absorbed",
+	"versus_alert_collision", "versus_panels_bounty_target", "versus_killfeed_4", "versus_duel_live",
+	"versus_results_medals", "versus_match_setup", "solo_training_stepper",
+]
+
 ## Scenario to prefer when a shot exists in more than one scenario.
 const PREFER := {"implosion": "polish"}
 
 
+static func names_03() -> Array[String]:
+	var out: Array[String] = []
+	for k in PAYLOAD_KEYS_03:
+		for v in ["x1_full", "x3_full", "x1_low"]:
+			out.append("versus_%s_%s" % [k, v])
+	out.append_array(EXTRA_03)
+	return out
+
+
 func _init() -> void:
+	var args := OS.get_cmdline_user_args()
+	var phase := ""
+	var pi := args.find("--phase")
+	if pi != -1 and pi + 1 < args.size():
+		phase = args[pi + 1]
+	var names: Array[String] = NAMES
+	var out_dir := OUT_DIR
+	if phase == "03" or phase == "3":
+		names = names_03()
+		out_dir = OUT_DIR_03
 	var src_abs := ProjectSettings.globalize_path(SRC_DIR)
-	var out_abs := ProjectSettings.globalize_path(OUT_DIR)
+	var out_abs := ProjectSettings.globalize_path(out_dir)
 	DirAccess.make_dir_recursive_absolute(out_abs)
 	var files: PackedStringArray = DirAccess.get_files_at(src_abs)
 	var missing: Array[String] = []
-	for n in NAMES:
+	for n in names:
 		var src := _match(n, files)
 		if src.is_empty():
 			missing.append(n)
@@ -59,7 +92,7 @@ func _init() -> void:
 		print("UAT_SHOT %s <- %s" % [n, src])
 	for n in missing:
 		print("UAT_SHOT_MISSING %s" % n)
-	print("UAT_SHOTS %d/%d" % [NAMES.size() - missing.size(), NAMES.size()])
+	print("UAT_SHOTS %d/%d" % [names.size() - missing.size(), names.size()])
 	quit(0 if missing.is_empty() else 1)
 
 

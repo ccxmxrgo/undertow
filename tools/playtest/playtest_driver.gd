@@ -22,6 +22,18 @@ extends Node
 ## Calibration Track (the hand chart) there so the Phase 1 scenarios keep their chart.
 ## run_all.ps1 passes --no-boot-scan so SongLibrary never scans the real Songs folder; every
 ## scenario points the library at user://playtest_library (removed at the end).
+##
+## Scenario "versus" (Phase 3, 03-15): Main menu > Versus Bots > match setup (3 rivals, VETERAN,
+## Expert, chosen through the temp settings) > Start Match, the human driven by VersusAutoplay
+## (VersusController.test_autoplay_human, reset at the end). Every disruptor is forced onto the
+## human with MatchSim.inject_fire from a rival seat and shot at scroll 1x / 3x, Full / Low
+## (UI-SPEC 11.8), plus Sonar Jam warheads, Ink Cloud on a sustain, Crossed Wires mid-slide and
+## settled, the alert states, panels, killfeed, Solo Duel and versus results. Then an in-place
+## Rematch measures the uncapped p95 frame time with 3 bots and Ink Cloud on the densest 30 s
+## (and the Gameplay._process cost, i.e. VersusController + judge), and the Solo Dive training
+## stepper is shot in Song Select. Shots: build/playtest/versus_NN_*.png, gallery via
+## `make_uat_shots.gd -- --phase 03`. Launch like the others (windowed, real audio):
+##   powershell -NoProfile -File tools/playtest/run_all.ps1 -Scenarios versus
 
 const OUT_DIR := "res://build/playtest"
 const TEMP_SETTINGS := "user://playtest_settings.cfg"
@@ -44,7 +56,7 @@ const LANE_KEYS := [KEY_1, KEY_2, KEY_3, KEY_4]
 const TIMEOUTS := {"a": 120.0, "b": 120.0, "c": 60.0, "d": 90.0, "e": 120.0, "f": 90.0,
 	"g": 90.0, "h": 150.0, "i": 90.0, "drift": 360.0, "layout": 240.0, "polish": 240.0, "immersion": 240.0,
 	"songs": 360.0, "align": 150.0, "perf": 470.0, "visual": 420.0, "autoplay5": 1500.0,
-	"background": 300.0, "pad": 300.0}
+	"background": 300.0, "pad": 300.0, "versus": 480.0}
 ## Scenario b offsets (seconds) per note, cycled. null = skip the note (miss). Values stay >= 5 ms
 ## from the JudgeConfig window edges (Perfect 50 / Good 100 / early-miss 130 ms since 02.2-26, G1)
 ## so frame jitter cannot flip the expected judgment: Perfect 0..+-40, Good +-60/75/90, late
@@ -119,6 +131,7 @@ func _run() -> void:
 		"autoplay5": await sc_autoplay5()
 		"background": await sc_background()
 		"pad": await sc_pad()
+		"versus": await sc_versus()
 		_: check("known scenario", false, scenario)
 	_finish()
 
@@ -346,7 +359,7 @@ func menu_text_rects(m: MainMenu) -> Array:
 	if m.logo != null and m.logo.is_visible_in_tree():
 		rects.append(m.logo.get_global_rect())
 	var col := Rect2()
-	for b in [m.start_button, m.practice_button, m.chart_button, m.calibrate_button, m.settings_button,
+	for b in [m.start_button, m.versus_button, m.practice_button, m.chart_button, m.calibrate_button, m.settings_button,
 			m.autoplay_button, m.open_folder_button, m.quit_button]:
 		if b != null and (b as Control).is_visible_in_tree():
 			col = (b as Control).get_global_rect() if col.size == Vector2.ZERO else col.merge((b as Control).get_global_rect())
@@ -495,8 +508,8 @@ func start_dive_from_menu(autoplay: bool, intro: bool = false) -> Gameplay:
 	return await dive_from_song_select(TestCharts.HAND_CHART_ID, "expert")
 
 
-## Moves menu focus from Start Dive down to `target` with real Down presses (02-03 order: Start,
-## Practice, Calibrate, Settings, Autoplay, Open Songs Folder, Quit).
+## Moves menu focus from Start Dive down to `target` with real Down presses (03-05 order: Start,
+## Versus Bots, Solo Dive, Chart a Song, Calibrate, Settings, Autoplay, Open Songs Folder, Quit).
 func menu_focus(m: MainMenu, target: Control) -> bool:
 	m.start_button.grab_focus()
 	await frame()
@@ -2188,10 +2201,14 @@ func sc_polish() -> void:
 	if not check("main menu shown", m != null, cur()):
 		return
 	var box := m.start_button.get_parent()
-	check("Practice Dive (No-Fail) sits directly after Start Dive",
-		m.practice_button != null and m.practice_button.text == "Practice Dive (No-Fail)"
-		and m.practice_button.get_parent() == box and m.practice_button.get_index() == m.start_button.get_index() + 1,
-		"start #%d, practice #%d" % [m.start_button.get_index(), m.practice_button.get_index() if m.practice_button else -1])
+	check("Versus Bots sits directly after Start Dive, Solo Dive (No-Fail) directly after Versus Bots",
+		m.versus_button != null and m.versus_button.text == "Versus Bots"
+		and m.versus_button.get_parent() == box and m.versus_button.get_index() == m.start_button.get_index() + 1
+		and m.practice_button != null and m.practice_button.text == "Solo Dive (No-Fail)"
+		and m.practice_button.get_parent() == box and m.practice_button.get_index() == m.start_button.get_index() + 2,
+		"start #%d, versus #%d, solo #%d" % [m.start_button.get_index(),
+			m.versus_button.get_index() if m.versus_button else -1,
+			m.practice_button.get_index() if m.practice_button else -1])
 	check("menu best line shows the empty-state copy (fresh temp record book)",
 		m.best_label != null and m.best_label.text == MainMenu.NO_RECORD_COPY, m.best_label.text if m.best_label else null)
 	m.finish_entrance()
@@ -2291,12 +2308,14 @@ func sc_polish() -> void:
 	MenuMusic.start()
 	await wait_until(func() -> bool: return MenuMusic.is_playing(), 10.0)
 
-	# --- practice entry ---------------------------------------------------------------------
+	# --- Solo Dive entry (03-05 order: Start Dive, Versus Bots, Solo Dive) ---------------------
 	m.start_button.grab_focus()
 	await frame()
 	var blips0: int = UiSounds.play_count
 	await press_key(KEY_DOWN)
-	check("Down from Start Dive focuses Practice Dive", focus_owner() == m.practice_button, focus_owner())
+	check("Down from Start Dive focuses Versus Bots", focus_owner() == m.versus_button, focus_owner())
+	await press_key(KEY_DOWN)
+	check("a second Down focuses Solo Dive", focus_owner() == m.practice_button, focus_owner())
 	# 02.2-23 (VIS-09): a focus move by a navigation key plays the soft "move" blip on SFX.
 	var blip_player: AudioStreamPlayer = UiSounds.last_player()
 	check("UI blip plays on focus move in the menu", UiSounds.last_played == "move" and UiSounds.play_count > blips0
@@ -2305,10 +2324,10 @@ func sc_polish() -> void:
 			"bus": String(blip_player.bus) if blip_player else ""})
 	await press_key(KEY_ENTER)
 	var pg: Gameplay = await dive_from_song_select(TestCharts.HAND_CHART_ID, "expert")
-	if not check("Practice Dive opens gameplay (through Song Select)", pg != null, cur()):
+	if not check("Solo Dive opens gameplay (through Song Select)", pg != null, cur()):
 		return
 	await wait_until(func() -> bool: return pg.conductor.song_time() > 2.0, 10.0)
-	check("practice run: Gameplay.practice, score.no_fail on, persisted Settings.no_fail untouched",
+	check("Solo Dive run: Gameplay.practice, score.no_fail on, persisted Settings.no_fail untouched",
 		pg.practice and pg.score.no_fail and not Settings.no_fail,
 		"practice=%s score.no_fail=%s Settings.no_fail=%s" % [pg.practice, pg.score.no_fail, Settings.no_fail])
 	check("menu music stopped when the dive starts", not MenuMusic.is_playing(), MenuMusic.state())
@@ -2540,17 +2559,17 @@ func sc_polish() -> void:
 		ScoreStore.is_eligible(false, ps.no_fail, true))
 	var pinfo := {"eligible": false, "new_record": pres["new_record"], "previous_depth": -1.0,
 		"best_depth": float(store.best(TestCharts.HAND_CHART_ID)["depth"])}
-	check("practice run is not recorded", not bool(pres["recorded"]) and not bool(pres["new_record"]), pres)
+	check("Solo Dive run is not recorded", not bool(pres["recorded"]) and not bool(pres["new_record"]), pres)
 	var prs := ResultsScreen.new()
 	host_overlay(prs)
 	var pr_offsets := fake_offsets(ps.perfect_count, ps.good_count, -9.0, 2216)
 	prs.setup(ps, false, pinfo, true, {"title": "Hand Chart", "artist": "UNDERTOW test", "difficulty": "expert",
 		"offsets": pr_offsets, "perfect_window": cfgj.perfect_window})
 	await wait(0.2)
-	check("practice results: PRACTICE DIVE flag and 'Not recorded' note",
-		prs.flags.has("PRACTICE DIVE") and prs.note_label != null and prs.note_label.text.begins_with("Not recorded"),
+	check("Solo Dive results: SOLO DIVE flag and 'Not recorded' note",
+		prs.flags.has("SOLO DIVE") and prs.note_label != null and prs.note_label.text.begins_with("Not recorded"),
 		[prs.flags, prs.note_label.text if prs.note_label else null])
-	check("no visible MainMenu behind practice results", visible_main_menus().is_empty(), visible_main_menus())
+	check("no visible MainMenu behind Solo Dive results", visible_main_menus().is_empty(), visible_main_menus())
 	await review_results("results_practice_not_recorded", prs, ps, pr_offsets, menu_rects)
 	await release_overlay(prs)
 	var fs := FailScreen.new()
@@ -4897,7 +4916,7 @@ func sc_pad() -> void:
 	var m := cur() as MainMenu
 	var ok := m != null and focus_owner() == m.start_button
 	await pad_flick(JOY_AXIS_LEFT_Y, 1.0)
-	var moved := m != null and focus_owner() == m.practice_button
+	var moved := m != null and focus_owner() == m.versus_button
 	await pad_tap(JOY_BUTTON_DPAD_UP)
 	ok = ok and moved and focus_owner() == m.start_button
 	await shot("pad_menu")
@@ -5020,3 +5039,564 @@ func sc_pad() -> void:
 	check("no keyboard event sent by the pad scenario", watch.keys == 0, watch.keys)
 	watch.queue_free()
 	Settings.set_background_style(style_at_start)
+
+
+# ------------------------------------------------------------------------------------------------
+# Phase 3 (03-15): versus playtest scenario: UI-SPEC 11.8 readability shots and the 3-bot frame cost
+# ------------------------------------------------------------------------------------------------
+
+## Longest bundled song (192 s, 120 BPM, solo at 133 s): room for every disruptor before the duel.
+const VERSUS_SONG := "space_synth_wave"
+const VERSUS_DISRUPTORS: Array[int] = [Reward.Id.CROSSED_WIRES, Reward.Id.GHOST_NOTES, Reward.Id.INK_CLOUD,
+	Reward.Id.PRESSURE_CRACK, Reward.Id.SONAR_JAM, Reward.Id.DEPTH_CHARGE]
+const VS_HUMAN := 0
+
+
+## Gameplay._process cost (VersusController.pre_tick + judge.tick + VersusController.update): a
+## start probe processed just before Gameplay (same priority, previous sibling) and an end probe
+## processed just after it (Gameplay's first child). Read-only.
+class GpTimer extends Node:
+	var is_end: bool = false
+	var peer: GpTimer
+	var gp: Gameplay
+	var t0: int = -1
+	var samples: PackedFloat64Array = PackedFloat64Array()
+
+	func _ready() -> void:
+		process_mode = Node.PROCESS_MODE_ALWAYS
+
+	func _process(_delta: float) -> void:
+		if not is_end:
+			t0 = Time.get_ticks_usec()
+			return
+		if peer != null and peer.t0 >= 0 and is_instance_valid(gp) and gp.state == Gameplay.State.RUNNING:
+			samples.append((Time.get_ticks_usec() - peer.t0) / 1000.0)
+
+
+func _vs_t(g: Gameplay) -> float:
+	return g.conductor.song_time() if is_instance_valid(g) and g.conductor != null else -1.0
+
+
+func _vs_running(g: Gameplay, v: VersusController) -> bool:
+	return is_instance_valid(g) and g.versus == v and g.state == Gameplay.State.RUNNING
+
+
+## Events of `type` logged at or after index `from_i`.
+func _vs_events(v: VersusController, type: String, from_i: int = 0) -> Array:
+	var out: Array = []
+	var elog: Array[Dictionary] = v.sim.event_log
+	for i in range(from_i, elog.size()):
+		if String(elog[i].get("type", "")) == type:
+			out.append(elog[i])
+	return out
+
+
+## Scroll speed and effects through the redirected temp settings only (never the player's file).
+func _vs_view(scroll: float, low: bool) -> void:
+	Settings.scroll_speed = scroll
+	Settings.low_effects = low
+	Settings.settings_changed.emit()
+
+
+## Forces `reward` onto the human from a rival seat through MatchSim.inject_fire (retries while
+## the human is shielded). warheads: VersusConfig.warhead_count for this launch only (0 = no
+## Return-to-Sender chance, so the autoplay human cannot reflect it before the shot). Returns the
+## TORPEDO_LAUNCH event or {}.
+func _vs_inject(g: Gameplay, reward: int, warheads: int, timeout: float = 30.0) -> Dictionary:
+	var v := g.versus
+	var cfg := v.sim.cfg
+	var saved := cfg.warhead_count
+	var deadline := Time.get_ticks_msec() + int(timeout * 1000.0)
+	while Time.get_ticks_msec() < deadline:
+		await frame()
+		if not _vs_running(g, v):
+			break
+		var t := _vs_t(g)
+		var mark := v.sim.event_log.size()
+		var from := -1
+		for s in v.rival_seats():
+			var r := v.sim.inject_fire(s, VS_HUMAN, reward, t)
+			if r == MatchSim.FIRE_OK:
+				from = s
+				break
+			if r == MatchSim.FIRE_SHIELDED:
+				break
+		if from == -1:
+			continue
+		cfg.warhead_count = warheads  # read only when the launch commits on the next beat
+		var box := {}
+		await wait_until(func() -> bool:
+			for e in _vs_events(v, GameEvent.TORPEDO_LAUNCH, mark):
+				if int(e["from"]) == from and int(e["to"]) == VS_HUMAN and int(e["reward"]) == reward:
+					box["e"] = e
+					return true
+			for e in _vs_events(v, GameEvent.FIRE_REFUSED, mark):
+				if int(e.get("seat", -1)) == from:
+					return true
+			if not _vs_events(v, GameEvent.COLLISION, mark).is_empty():
+				return true
+			return not _vs_running(g, v), 3.0)
+		cfg.warhead_count = saved
+		if box.has("e"):
+			return box["e"]
+	cfg.warhead_count = saved
+	return {}
+
+
+## Waits for the event of `type` carrying torpedo `id`; returns it or {}.
+func _vs_wait_id(g: Gameplay, type: String, id: int, timeout: float) -> Dictionary:
+	var v := g.versus
+	var box := {}
+	await wait_until(func() -> bool:
+		for e in _vs_events(v, type):
+			if int(e.get("id", -1)) == id:
+				box["e"] = e
+				return true
+		return not _vs_running(g, v), timeout)
+	return box.get("e", {})
+
+
+func _vs_alert_state_is(v: VersusController, s: IncomingAlert.State) -> bool:
+	return v.incoming_alert != null and v.incoming_alert.state() == s
+
+
+## x1 Full, x3 Full and x1 Low of the current moment (UI-SPEC 11.8), back to x1 Full after.
+func _vs_triple(g: Gameplay, key: String) -> void:
+	_vs_view(1.0, false)
+	await frame()
+	await shot("versus_%s_x1_full" % key, g)
+	_vs_view(3.0, false)
+	await frame()
+	await frame()
+	await shot("versus_%s_x3_full" % key, g)
+	_vs_view(1.0, true)
+	await frame()
+	await frame()
+	await shot("versus_%s_x1_low" % key, g)
+	_vs_view(1.0, false)
+	await frame()
+
+
+## First sustain of the chart held during [a, b] (a time inside it, >= 0.15 s after its head).
+func _vs_sustain_time(chart: ChartData, a: float, b: float) -> float:
+	for n in chart.notes:
+		var nt := float(n["time"])
+		var d := float(n["duration"])
+		if d < 0.45:
+			continue
+		var ts := nt + minf(0.25, d * 0.5)
+		if ts >= a and ts <= b:
+			return ts
+	return -1.0
+
+
+## Densest PERF_WINDOW_S of `chart` starting within PERF_MAX_START_S (as _densest_bundled_window).
+func _vs_densest(chart: ChartData) -> Dictionary:
+	var times: Array = []
+	for n in chart.notes:
+		times.append(float(n["time"]))
+	times.sort()
+	var j := 0
+	var top := 0
+	var top_start := 0.0
+	for i in range(times.size()):
+		var s: float = times[i]
+		if s > PERF_MAX_START_S:
+			break
+		if j < i:
+			j = i
+		while j < times.size() and float(times[j]) < s + PERF_WINDOW_S:
+			j += 1
+		if j - i > top:
+			top = j - i
+			top_start = s
+	return {"start": top_start, "count": top}
+
+
+## Keeps Ink Cloud on the human for the frame-time capture (re-fires as soon as the human is no
+## longer shielded). Runs until state["stop"]; counts frames with the ink visible.
+func _vs_ink_keeper(g: Gameplay, state: Dictionary) -> void:
+	var v := g.versus
+	var cfg := v.sim.cfg
+	var saved := cfg.warhead_count
+	cfg.warhead_count = 0  # no Return to Sender: the autoplay human would end the ink at once
+	while not bool(state.get("stop", false)) and _vs_running(g, v):
+		var t := _vs_t(g)
+		if not v.players[VS_HUMAN].is_shielded(t):
+			for s in v.rival_seats():
+				if v.sim.inject_fire(s, VS_HUMAN, Reward.Id.INK_CLOUD, t) == MatchSim.FIRE_OK:
+					state["fired"] = int(state.get("fired", 0)) + 1
+					break
+		await frame()
+		if bool(state.get("capturing", false)):
+			state["frames"] = int(state.get("frames", 0)) + 1
+			if v.human_stack.ink_amount(_vs_t(g)) > 0.5:
+				state["ink_frames"] = int(state.get("ink_frames", 0)) + 1
+	cfg.warhead_count = saved
+
+
+func sc_versus() -> void:
+	isolate_settings(true)
+	await wait_library_idle(60.0)
+	var dir := "res://songs/%s" % VERSUS_SONG
+	var e := SongLibrary.find(dir)
+	if not check("versus: bundled song %s is in the library" % VERSUS_SONG, e != null and e.status == "ok", dir):
+		return
+	# Match setup choices come from the redirected temp settings (T-03-38).
+	Settings.versus_rivals = 3
+	Settings.versus_skill = "veteran"
+	Settings.versus_song_id = e.id
+	Settings.versus_difficulty = "expert"
+	Settings.training_payload = "off"
+	_vs_view(1.0, false)
+	Settings.save_to(Settings.save_path)
+	check("versus: settings saved only to the temp file", Settings.save_path == TEMP_SETTINGS, Settings.save_path)
+	var saved_win := await _force_capture_window()
+	metrics["versus_capture_resolution"] = "%dx%d" % [get_window().size.x, get_window().size.y]
+	VersusController.test_autoplay_human = true
+	await _vs_match(e)
+	VersusController.test_autoplay_human = false
+	_vs_view(1.0, false)
+	await _restore_window(saved_win)
+	await _vs_training_stepper(e)
+	Settings.training_payload = "off"
+	MatchSetup.pending = null
+	await goto(MENU)
+
+
+func _vs_match(e: SongEntry) -> void:
+	# --- Main menu > Versus Bots > match setup (3 rivals, VETERAN, Expert) > Start Match ---------
+	await goto(MENU)
+	await wait(0.6)
+	var m := cur() as MainMenu
+	if not check("versus: main menu shown", m != null, cur()):
+		return
+	await menu_focus(m, m.versus_button)
+	await press_key(KEY_ENTER)
+	var in_setup: bool = await wait_until(func() -> bool: return cur() is MatchSetupScreen, 6.0)
+	if not check("versus: Versus Bots opens the match setup", in_setup, cur()):
+		return
+	await wait_library_idle()
+	await wait(1.0)
+	var ms := cur() as MatchSetupScreen
+	var su: MatchSetup = ms._setup
+	check("versus: setup shows 3 rivals, VETERAN, Expert on %s" % VERSUS_SONG,
+		su.rivals == 3 and su.skill == "veteran" and su.difficulty == "expert" and su.song_id == e.id,
+		{"rivals": su.rivals, "skill": su.skill, "difficulty": su.difficulty, "song": su.song_id})
+	await shot("versus_match_setup")
+	ms._set_focus(MatchSetupScreen.ROW_START)
+	await frame()
+	await press_key(KEY_ENTER)
+	var to_game: bool = await wait_until(func() -> bool: return cur() is Gameplay, 8.0)
+	if not check("versus: Start Match opens the dive", to_game, cur()):
+		return
+	var g := cur() as Gameplay
+	if not check("versus: dive began", await wait_for_began(g, 15.0)):
+		return
+	var v := g.versus
+	if not check("versus: VersusController with 3 Veteran bots", v != null and v.versus and v.bots.size() == 3
+			and g.match_setup != null and g.match_setup.skill == "veteran",
+			{"versus": v != null, "bots": v.bots.size() if v else -1}):
+		return
+	metrics["versus_seed"] = v.match_seed
+	metrics["versus_names"] = Array(v.names)
+	note("versus match on %s Expert, seed %d, rivals %s" % [VERSUS_SONG, v.match_seed, Array(v.names)])
+	await wait(1.5)
+
+	# --- every disruptor on the human: x1 Full, x3 Full, x1 Low (+ alert, crossed and ink extras) ---
+	var landed_ok := 0
+	var first := true
+	for rid in VERSUS_DISRUPTORS:
+		var key: String = Reward.TABLE[rid]["key"]
+		if rid == Reward.Id.INK_CLOUD:
+			# Time the ink so a held sustain falls ~3 s into it (UI-SPEC 11.8 "Ink Cloud with a held sustain").
+			var su_t := _vs_sustain_time(g.chart, _vs_t(g) + 3.5, _vs_t(g) + 40.0)
+			if su_t > 0.0:
+				await _wait_song_time(g, su_t - 3.0, 45.0)
+		var launch := await _vs_inject(g, rid, 0)
+		if not check("versus: %s launched at the human" % key, not launch.is_empty(), _vs_t(g)):
+			continue
+		var id := int(launch["id"])
+		if first:
+			var inc: bool = await wait_until(func() -> bool:
+				return _vs_alert_state_is(v, IncomingAlert.State.INCOMING), 1.0)
+			check("versus: alert shows INCOMING during the flight", inc, v.incoming_alert.state())
+			await wait(0.15)  # past the DUR_FAST fade-in (flight is 1 beat)
+			await shot("versus_alert_incoming", g)
+		var landed := await _vs_wait_id(g, GameEvent.LANDED, id, 4.0)
+		if not check("versus: %s landed on the human" % key, not landed.is_empty(), _vs_t(g)):
+			continue
+		landed_ok += 1
+		var a := float(landed["active_start"])
+		var b := float(landed["end_t"])
+		var mid := a + (b - a) * 0.45
+		if rid == Reward.Id.CROSSED_WIRES:
+			var slid: bool = await wait_until(func() -> bool:
+				var t := _vs_t(g)
+				return v.human_stack.sliding(t) and v.human_stack.slide_k(t) >= 0.35, 4.0)
+			check("versus: Crossed Wires slide caught mid-way", slid, v.human_stack.slide_k(_vs_t(g)))
+			await shot("versus_crossed_mid", g)
+		var sus := -1.0
+		if rid == Reward.Id.INK_CLOUD:
+			sus = _vs_sustain_time(g.chart, maxf(a + 0.6, _vs_t(g) + 0.1), b - 0.8)
+			note("ink cloud window %.2f..%.2f s, sustain shot at %.2f s" % [a, b, sus])
+			if sus > 0.0 and sus < mid:
+				await _wait_song_time(g, sus, 12.0)
+				await shot("versus_ink_sustain", g)
+		await _wait_song_time(g, mid, 15.0)
+		if first:
+			check("versus: alert shows ACTIVE while the payload runs",
+				_vs_alert_state_is(v, IncomingAlert.State.ACTIVE), v.incoming_alert.state())
+			await shot("versus_alert_active", g)
+			first = false
+		if rid == Reward.Id.CROSSED_WIRES:
+			check("versus: Crossed Wires settled (no slide) at mid-payload", not v.human_stack.sliding(_vs_t(g)))
+			await shot("versus_crossed_settled", g)
+		await _vs_triple(g, key)
+		if rid == Reward.Id.INK_CLOUD:
+			if sus >= mid:
+				await _wait_song_time(g, sus, 12.0)
+				await shot("versus_ink_sustain", g)
+			elif sus < 0.0:
+				note("no sustain inside the Ink Cloud window: versus_ink_sustain is a plain ink frame")
+				await shot("versus_ink_sustain", g)
+	check("versus: all 6 disruptors landed on the human", landed_ok == 6, landed_ok)
+	metrics["versus_disruptors_t_end"] = _vs_t(g)
+
+	# --- Sonar Jam with live warheads, then Return to Sender (REFLECTED) ---------------------------
+	var jl := await _vs_inject(g, Reward.Id.SONAR_JAM, v.sim.cfg.warhead_count)
+	if check("versus: Sonar Jam with warheads launched", not jl.is_empty() and not (jl["warheads"] as Array).is_empty(), jl):
+		var jid := int(jl["id"])
+		var jland := await _vs_wait_id(g, GameEvent.LANDED, jid, 4.0)
+		var caught: bool = await wait_until(func() -> bool:
+			var t := _vs_t(g)
+			var pr := v.human_stack.warhead_progress(jid)
+			return v.human_stack.jam_amount(t) >= 0.5 and pr.y > 0 and pr.x < pr.y, 4.0)
+		check("versus: Sonar Jam visible with open warheads", not jland.is_empty() and caught,
+			{"jam": v.human_stack.jam_amount(_vs_t(g)), "progress": v.human_stack.warhead_progress(jid)})
+		await shot("versus_jam_warheads", g)
+		var refl: bool = await wait_until(func() -> bool:
+			return _vs_alert_state_is(v, IncomingAlert.State.REFLECTED), 8.0)
+		check("versus: autoplay Perfects reflect the torpedo (alert REFLECTED)", refl, v.incoming_alert.state())
+		await wait(0.35)  # past the 120 ms cross-fade (result holds 1.2 s)
+		await shot("versus_alert_reflected", g)
+
+	# --- Decoy Flare absorbs a torpedo (ABSORBED) ---------------------------------------------------
+	await wait_until(func() -> bool: return not v.players[VS_HUMAN].is_shielded(_vs_t(g)), 12.0)
+	var td := _vs_t(g)
+	var hp := v.players[VS_HUMAN]
+	# The buff itself without MatchSim._apply_buff's meter.use(): the human keeps its held reward.
+	hp.decoy_until = MatchSim.time_after_bars(td, v.sim.cfg.decoy_bars, v.chart)
+	v.sim._emit(GameEvent.BUFF_APPLIED, td, {"seat": VS_HUMAN, "reward": Reward.Id.DECOY_FLARE,
+		"until_t": hp.decoy_until, "amount": 0.0})
+	v.channel.update(td)
+	var dl := await _vs_inject(g, Reward.Id.GHOST_NOTES, 0)
+	var absorbed: bool = not dl.is_empty() and await wait_until(func() -> bool:
+		return _vs_alert_state_is(v, IncomingAlert.State.ABSORBED), 4.0)
+	check("versus: Decoy Flare absorbs the torpedo (alert ABSORBED)", absorbed, v.incoming_alert.state())
+	await wait(0.35)
+	await shot("versus_alert_absorbed", g)
+
+	# --- Collision: the human and a rival fire at each other on the same beat ------------------------
+	var col_ok := false
+	var col_log: Array = []
+	var deadline := Time.get_ticks_msec() + 20000
+	while not col_ok and Time.get_ticks_msec() < deadline and _vs_running(g, v):
+		await frame()
+		var t := _vs_t(g)
+		if v.players[VS_HUMAN].is_shielded(t) or v.sim._has_pending(VS_HUMAN) \
+				or v.sim._pending.any(func(q: Dictionary) -> bool: return int(q["to"]) == VS_HUMAN):
+			continue
+		for s in v.rival_seats():
+			var p := v.players[s]
+			if not p.alive or p.is_shielded(t) or v.sim._has_pending(s):
+				continue
+			var mark := v.sim.event_log.size()
+			var r2 := v.sim.inject_fire(s, VS_HUMAN, Reward.Id.GHOST_NOTES, t)
+			var r1 := v.sim.inject_fire(VS_HUMAN, s, Reward.Id.SONAR_JAM, t) if r2 == MatchSim.FIRE_OK else -1
+			if r1 == MatchSim.FIRE_OK and r2 == MatchSim.FIRE_OK:
+				col_ok = await wait_until(func() -> bool:
+					for ce in _vs_events(v, GameEvent.COLLISION, mark):
+						if int(ce["a"]) == VS_HUMAN or int(ce["b"]) == VS_HUMAN:
+							return true
+					return false, 3.0)
+				for i in range(mark, v.sim.event_log.size()):
+					var le: Dictionary = v.sim.event_log[i]
+					if ["fire_queued", "fire_refused", "torpedo_launch", "collision", "landed"].has(le["type"]):
+						col_log.append(le)
+			break
+	var col_alert: bool = col_ok and await wait_until(func() -> bool:
+		return _vs_alert_state_is(v, IncomingAlert.State.COLLISION), 1.5)
+	check("versus: same-beat torpedoes collide (alert COLLISION)", col_ok and col_alert,
+		{"collision": col_ok, "alert": v.incoming_alert.state(), "log": col_log.slice(0, 8)})
+	await wait(0.35)
+	await shot("versus_alert_collision", g)
+
+	# --- Killfeed with 4 lines: Space fires the human's held reward, rivals trade torpedoes ---------
+	if v.players[VS_HUMAN].meter.held != -1:
+		await press_key(KEY_SPACE)
+	var saved_wh := v.sim.cfg.warhead_count
+	v.sim.cfg.warhead_count = 0
+	var seats := v.rival_seats()
+	var tk := _vs_t(g)
+	for i in range(seats.size()):
+		v.sim.inject_fire(seats[i], seats[(i + 1) % seats.size()], VERSUS_DISRUPTORS[i], tk)
+	var kf4: bool = await wait_until(func() -> bool: return v.killfeed.lines().size() >= 4, 6.0)
+	v.sim.cfg.warhead_count = saved_wh
+	check("versus: killfeed shows 4 lines", kf4, v.killfeed.lines().size())
+	var texts: Array = []
+	for l in v.killfeed.lines():
+		texts.append(str(l.get("text", l)))
+	metrics["versus_killfeed_lines"] = texts
+	await shot("versus_killfeed_4", g)
+
+	# --- Periscope panels: H locks a target; the bounty is on the leader -----------------------------
+	await press_key(KEY_H)
+	var aimed: bool = await wait_until(func() -> bool:
+		return v.periscope_column.has_reticle() and not v.periscope_column.is_gliding(), 3.0)
+	check("versus: H locks a rival (reticle on a panel)", aimed, v.periscope_column.target_seat())
+	metrics["versus_bounty_holder"] = v.sim.bounty_holder
+	await wait(0.3)
+	await shot("versus_panels_bounty_target", g)
+
+	# --- Solo Duel live ----------------------------------------------------------------------------
+	var solos: Array = g.chart.solos
+	if check("versus: chart has a solo section", not solos.is_empty(), solos):
+		var st := float(solos[0]["start"])
+		await _wait_song_time(g, st + 3.0, 120.0)
+		check("versus: a Solo Duel is running", v.sim.duel_active() != -1, _vs_t(g))
+		await shot("versus_duel_live", g)
+
+	# --- Versus results with medals -----------------------------------------------------------------
+	var res_ok: bool = await wait_until(func() -> bool:
+		return is_instance_valid(g) and g.versus_results != null, 120.0)
+	if not check("versus: results screen at the song end", res_ok, g.state if is_instance_valid(g) else null):
+		return
+	await wait(2.5)
+	var vr := g.versus_results
+	var with_medals := 0
+	for i in range(vr.row_count()):
+		var rt: Dictionary = vr.row_texts(i)
+		if not (rt.get("medals", []) as Array).is_empty():
+			with_medals += 1
+	metrics["versus_results_rows"] = vr.row_count()
+	metrics["versus_results_headline"] = vr.headline_text()
+	check("versus: results list 4 subs", vr.row_count() == 4, vr.row_count())
+	note("results headline '%s', rows with medals %d" % [vr.headline_text(), with_medals])
+	await shot("versus_results_medals", g)
+	metrics["versus_error_blips"] = v.error_blips
+
+	# --- Rematch in place, then the frame cost with 3 bots + Ink Cloud on the densest passage --------
+	var old_seed := v.match_seed
+	vr.rematch_pressed.emit()
+	var re_ok: bool = await wait_until(func() -> bool:
+		return is_instance_valid(g) and g.versus != null and g.versus != v and g.is_began(), 15.0)
+	check("versus: Rematch rebuilds the match in place with a new seed", re_ok and g.versus.match_seed != old_seed,
+		{"old": old_seed, "new": g.versus.match_seed if re_ok else null})
+	if not re_ok:
+		return
+	v = g.versus
+	var win := _vs_densest(g.chart)
+	metrics["versus_perf_window"] = win
+	note("versus perf window %.1f s, %d notes in %d s" % [float(win["start"]), int(win["count"]), int(PERF_WINDOW_S)])
+	var ks := {}
+	_vs_ink_keeper(g, ks)
+	await _wait_song_time(g, float(win["start"]), float(win["start"]) + 20.0)
+	var pb := GpTimer.new()
+	var pa := GpTimer.new()
+	pa.is_end = true
+	pa.peer = pb
+	pa.gp = g
+	pb.process_priority = g.process_priority
+	pa.process_priority = g.process_priority
+	var par := g.get_parent()
+	par.add_child(pb)
+	par.move_child(pb, g.get_index())
+	g.add_child(pa)
+	g.move_child(pa, 0)
+	ks["capturing"] = true
+	var cap := await capture_frames(PERF_WINDOW_S)
+	ks["capturing"] = false
+	var gpt := Array(pa.samples)
+	# Diagnostic attribution (follow-up data only): 6 s captures with one versus view group hidden
+	# and not processing, then the whole set in Low effects. Restored after each step.
+	var attrib := {}
+	var groups := {
+		"versus_hud_hidden": [v.versus_hud],
+		"ink_layers_hidden": [v.ink_cloud, v.ink_top],
+		"socket_readout_chips_hidden": [v.reward_socket, v.target_readout, v.status_chips],
+	}
+	for gname in groups:
+		var nodes: Array = []
+		for n in groups[gname]:
+			if n != null and is_instance_valid(n):
+				nodes.append({"n": n, "pm": (n as Node).process_mode,
+					"vis": (n as CanvasItem).visible if n is CanvasItem else true})
+				(n as Node).process_mode = Node.PROCESS_MODE_DISABLED
+				if n is CanvasItem:
+					(n as CanvasItem).visible = false
+		var c2 := await capture_frames(6.0)
+		attrib[gname] = {"p50": c2["p50"], "p95": c2["p95"], "n": c2["n"]}
+		for d in nodes:
+			if is_instance_valid(d["n"]):
+				(d["n"] as Node).process_mode = d["pm"]
+				if d["n"] is CanvasItem:
+					(d["n"] as CanvasItem).visible = d["vis"]
+	_vs_view(1.0, true)
+	var c3 := await capture_frames(6.0)
+	attrib["low_effects"] = {"p50": c3["p50"], "p95": c3["p95"], "n": c3["n"]}
+	_vs_view(1.0, false)
+	ks["stop"] = true
+	metrics["versus_perf_attribution"] = attrib
+	note("versus perf attribution (6 s each): %s" % JSON.stringify(attrib))
+	pb.queue_free()
+	pa.queue_free()
+	gpt.sort()
+	var ink_share := float(ks.get("ink_frames", 0)) / maxf(float(ks.get("frames", 0)), 1.0)
+	metrics["versus_frames"] = cap["n"]
+	metrics["versus_frame_ms_p50"] = cap["p50"]
+	metrics["versus_frame_ms_p95"] = cap["p95"]
+	metrics["versus_frame_ms_p99"] = cap["p99"]
+	metrics["versus_frame_ms_max"] = cap["max"]
+	metrics["versus_avg_fps"] = cap["avg_fps"]
+	metrics["versus_render_cpu_ms_p95"] = cap["cpu_p95"]
+	metrics["versus_render_gpu_ms_p95"] = cap["gpu_p95"]
+	metrics["versus_gameplay_process_ms"] = {"n": gpt.size(), "p50": _quantile(gpt, 0.5),
+		"p95": _quantile(gpt, 0.95), "p99": _quantile(gpt, 0.99), "max": float(gpt[-1]) if not gpt.is_empty() else 0.0}
+	metrics["versus_ink_frame_share"] = ink_share
+	metrics["versus_ink_fired"] = ks.get("fired", 0)
+	note("versus 3 bots + Ink Cloud: n=%d p50 %.3f p95 %.3f p99 %.3f ms; Gameplay._process (controller + judge) p95 %.3f ms; ink on %.0f%% of frames"
+		% [cap["n"], cap["p50"], cap["p95"], cap["p99"], _quantile(gpt, 0.95), ink_share * 100.0])
+	check("versus perf: Ink Cloud visible on >= 45% of captured frames (D-07 immunity + 1-beat flight cap it near 60%)",
+		ink_share >= 0.45, ink_share)
+	check("versus perf: capture has >= 1000 frames", int(cap["n"]) >= 1000, cap["n"])
+	check("versus p95 <= 4.35 ms with 3 bots + Ink Cloud (uncapped, UI-SPEC 12 / U-12)",
+		float(cap["p95"]) <= PERF_P95_GATE_MS, "%.3f ms" % cap["p95"])
+
+
+## Solo Dive training stepper (UI-SPEC 8.2): Main menu > Solo Dive > Song Select, F3 twice.
+func _vs_training_stepper(e: SongEntry) -> void:
+	await goto(MENU)
+	await wait(0.6)
+	var m := cur() as MainMenu
+	if m == null:
+		check("training: main menu shown", false, cur())
+		return
+	await menu_focus(m, m.practice_button)
+	await press_key(KEY_ENTER)
+	var ok: bool = await wait_until(func() -> bool: return cur() is SongSelect, 6.0)
+	if not check("training: Solo Dive opens Song Select", ok, cur()):
+		return
+	var ss := cur() as SongSelect
+	await wait_library_idle()
+	await wait(0.6)
+	ss.select_for_test(e.id)
+	await wait(0.4)
+	await press_key(KEY_F3)
+	await press_key(KEY_F3)
+	await wait(0.3)
+	check("training: stepper visible, F3 twice -> crossed_wires", ss.training_row_visible()
+		and ss.training_value() == "crossed_wires", ss.training_value())
+	await shot("solo_training_stepper")
+	await press_key(KEY_ESCAPE)
+	await wait(0.5)
