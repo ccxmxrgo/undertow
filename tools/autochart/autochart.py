@@ -386,10 +386,16 @@ PLAYABLE_SUFFIXES = (".mp3", ".ogg", ".wav")
 EXTRACT_STEPS = 3
 
 
-def slugify(name: str) -> str:
-    """Song folder name: lowercase, every run outside [a-z0-9] -> "_", trimmed, <= 40 chars, else "song"."""
+def slugify(name: str, src_sha: str | None = None) -> str:
+    """Song folder name: lowercase, every run outside [a-z0-9] -> "_", trimmed, <= 40 chars. A name with
+    nothing left (Japanese, Cyrillic, ...) becomes song_<first 8 hex of the source SHA-256> when the SHA
+    is known (IN-04: different songs no longer all collapse to song, song_2, ...), else "song"."""
     s = re.sub(r"[^a-z0-9]+", "_", (name or "").lower()).strip("_")[:40].strip("_")
-    return s or "song"
+    if s:
+        return s
+    if isinstance(src_sha, str) and re.fullmatch(r"[0-9a-f]{8,64}", src_sha):
+        return "song_" + src_sha[:8]
+    return "song"
 
 
 def default_songs_root() -> Path:
@@ -683,7 +689,7 @@ def _job_run(cfg: dict, emit, log_path: Path | None) -> int:
     out = work / ("out_lanes" if mode == "lanes" else f"out_{stem}")
     if out.exists():
         shutil.rmtree(out)
-    slug_base = slugify(cfg["name"])
+    slug_base = slugify(cfg["name"], sha)
     song_id = "user_" + slug_base
     _chart_core(work, out, work, stem, None, "bars", cfg["target_nps"], cfg["name"], cfg["artist"],
                 cfg["genre"], None, None, None, chart_mode, song_id)

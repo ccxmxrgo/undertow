@@ -140,6 +140,24 @@ class BpModeTest(unittest.TestCase):
         self.assertEqual(autochart._bp_mode({}, None), ("inprocess", None))
 
 
+class SlugifyTest(unittest.TestCase):
+    """IN-04: names with no [a-z0-9] left get a per-source folder name instead of song, song_2, ..."""
+
+    def test_ascii_names_unchanged(self):
+        self.assertEqual(autochart.slugify("My Song!", "ab" * 32), "my_song")
+
+    def test_non_ascii_name_uses_the_source_sha(self):
+        sha = "0123456789abcdef" * 4
+        slug = autochart.slugify("日本語の歌", sha)
+        self.assertEqual(slug, "song_01234567")
+        self.assertRegex(slug, r"^[a-z0-9_]{1,48}$")
+        self.assertNotEqual(autochart.slugify("Песня", "f" * 64), slug)
+
+    def test_without_sha_falls_back_to_song(self):
+        self.assertEqual(autochart.slugify("日本"), "song")
+        self.assertEqual(autochart.slugify("", "not-a-sha"), "song")
+
+
 class SubcommandsTest(unittest.TestCase):
     def test_help_lists_all_subcommands(self):
         r, _ = run_cmd("-h")
