@@ -119,3 +119,116 @@ func test_drives_judge_when_connected() -> void:
 	# No crash and signals still emitted with a connected (idle) conductor.
 	assert_int(pressed.size()).is_equal(1)
 	assert_int(released.size()).is_equal(1)
+
+
+# ---- Phase 3 (03-08): Crossed Wires remap (D-10, RESEARCH Pitfall 3) ----
+# 120 bpm (beat 0.5 s). Crossed Wires arrives at 2.0: the slide ends (input switches) at 2.5;
+# it ends at 6.0 and switches back at 6.5. Lane indices are 0-based; the crossed pair is {1, 2},
+# so the physical action ACTIONS[2] (KEY_3, screen position 2) judges lane 1 once crossed.
+
+const CW_ARRIVE := 2.0
+const CW_END := 6.0
+
+
+func _cw_stack(chart: ChartData) -> PayloadStack:
+	for seed in range(1000):
+		var s := PayloadStack.new(chart, VersusConfig.new())
+		s.install({"id": 1, "reward": Reward.Id.CROSSED_WIRES, "arrive_t": CW_ARRIVE, "end_t": CW_END, "seed": seed})
+		var p := s.crossed_pair()
+		if (p.x == 1 and p.y == 2) or (p.x == 2 and p.y == 1):
+			return s
+	return null
+
+
+func _cw_setup(chart: ChartData) -> Array:
+	var judge := InputJudge.new(chart, JudgeConfig.new())
+	var conductor: Conductor = auto_free(Conductor.new())
+	li.setup(conductor, judge)
+	li.payloads = _cw_stack(chart)
+	return [judge, conductor]
+
+
+func _at(conductor: Conductor, t: float) -> void:
+	conductor.clock.reset(Time.get_ticks_usec(), t)
+
+
+func _tempo_chart() -> ChartData:
+	var c := ChartData.new()
+	c.tempo_map.append({"time": 0.0, "bpm": 120.0})
+	return c
+
+
+func test_crossed_wires_key_judges_lane_now_at_its_screen_position() -> void:
+	var setup := _cw_setup(_tempo_chart())
+	assert_object(li.payloads).is_not_null()
+	_at(setup[1], 3.0)
+	li.inject(_key(KEY_3, true))
+	li.inject(_key(KEY_3, false))
+	assert_int(pressed[0][0]).is_equal(1)
+	assert_int(released[0][0]).is_equal(1)
+	# Untouched lanes keep their own key.
+	li.inject(_key(KEY_1, true))
+	li.inject(_key(KEY_1, false))
+	assert_int(pressed[1][0]).is_equal(0)
+
+
+func test_crossed_wires_before_slide_end_keeps_identity() -> void:
+	var setup := _cw_setup(_tempo_chart())
+	_at(setup[1], 2.2)
+	li.inject(_key(KEY_3, true))
+	li.inject(_key(KEY_3, false))
+	assert_int(pressed[0][0]).is_equal(2)
+	assert_int(released[0][0]).is_equal(2)
+	# After the return slide input is back to identity.
+	_at(setup[1], 7.0)
+	li.inject(_key(KEY_3, true))
+	assert_int(pressed[1][0]).is_equal(2)
+
+
+func test_hold_across_switch_releases_lane_recorded_at_press() -> void:
+	var chart := _tempo_chart()
+	chart.add_note(2, 2.2, 1.5)  # sustain on lane 2, tail at 3.7 (after the switch at 2.5)
+	chart.finalize()
+	var setup := _cw_setup(chart)
+	var judge: InputJudge = setup[0]
+	var strays := [0]
+	var ends: Array = []
+	judge.stray.connect(func(_l: int) -> void: strays[0] += 1)
+	judge.sustain_end.connect(func(l: int, ok: bool) -> void: ends.append([l, ok]))
+	_at(setup[1], 2.2)
+	li.inject(_key(KEY_3, true))
+	assert_int(pressed[0][0]).is_equal(2)
+	_at(setup[1], 3.7)
+	li.inject(_key(KEY_3, false))
+	assert_int(released.size()).is_equal(1)
+	assert_int(released[0][0]).is_equal(2)
+	assert_int(strays[0]).is_equal(0)
+	assert_int(ends.size()).is_equal(1)
+	assert_int(ends[0][0]).is_equal(2)
+	assert_bool(ends[0][1]).is_true()
+	# The next press of the same key follows the new map.
+	li.inject(_key(KEY_3, true))
+	assert_int(pressed[1][0]).is_equal(1)
+
+
+func test_two_keys_on_one_judged_lane_never_double_press() -> void:
+	var setup := _cw_setup(_tempo_chart())
+	_at(setup[1], 2.2)
+	li.inject(_key(KEY_2, true))  # lane 1 (identity before the switch)
+	_at(setup[1], 3.0)
+	li.inject(_key(KEY_3, true))  # now also lane 1: lane already held, no second press
+	assert_int(pressed.size()).is_equal(1)
+	li.inject(_key(KEY_2, false))
+	assert_int(released.size()).is_equal(0)  # KEY_3 still holds lane 1
+	li.inject(_key(KEY_3, false))
+	assert_int(released.size()).is_equal(1)
+	assert_int(released[0][0]).is_equal(1)
+
+
+func test_no_payloads_is_identity() -> void:
+	li.payloads = null
+	for i in range(4):
+		li.inject(_key([KEY_1, KEY_2, KEY_3, KEY_4][i], true))
+		li.inject(_key([KEY_1, KEY_2, KEY_3, KEY_4][i], false))
+		assert_int(pressed[i][0]).is_equal(i)
+		assert_int(released[i][0]).is_equal(i)

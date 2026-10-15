@@ -11,16 +11,19 @@ const EPS_PX := 0.5
 
 var _saved_offset: float
 var _saved_speed: float
+var _saved_reduce: bool
 
 
 func before_test() -> void:
 	_saved_offset = Settings.visual_offset
 	_saved_speed = Settings.scroll_speed
+	_saved_reduce = Settings.reduce_motion
 
 
 func after_test() -> void:
 	Settings.visual_offset = _saved_offset
 	Settings.scroll_speed = _saved_speed
+	Settings.reduce_motion = _saved_reduce
 
 
 ## One note per lane, all at NOTE_T (lane order 0..3 = note index 0..3).
@@ -175,3 +178,142 @@ func test_gem_at_line_is_unfaded() -> void:
 	var hw := _board(NOTE_T)
 	assert_float(Trench.note_fade(0.0)).is_equal(1.0)
 	assert_float(hw.gem_center(0).y).is_equal_approx(Trench.line_points()[0].y, EPS_PX)
+
+
+# ---- Phase 3 (03-08): payload modifiers keep the gem on the hit line (UI-SPEC 7.5-7.7) ----
+
+## 120 bpm: one beat = 0.5 s. Payload arrives at 2.0 (ease/slide done at 2.5), ends at 20.0.
+const P_ARRIVE := 2.0
+const P_END := 20.0
+
+
+func _stack(hw: Highway, reward: int, seed: int = 0) -> PayloadStack:
+	var s := PayloadStack.new(hw.chart, VersusConfig.new())
+	s.install({"id": 1, "reward": reward, "arrive_t": P_ARRIVE, "end_t": P_END, "seed": seed})
+	hw.bind_versus(s, null, VersusConfig.new())
+	return s
+
+
+## A Crossed Wires stack whose seeded pair is exactly lanes {a, b}.
+func _crossed(hw: Highway, a: int, b: int) -> PayloadStack:
+	for seed in range(1000):
+		var s := PayloadStack.new(hw.chart, VersusConfig.new())
+		s.install({"id": 1, "reward": Reward.Id.CROSSED_WIRES, "arrive_t": P_ARRIVE, "end_t": P_END, "seed": seed})
+		var p := s.crossed_pair()
+		if (p.x == a and p.y == b) or (p.x == b and p.y == a):
+			hw.bind_versus(s, null, VersusConfig.new())
+			return s
+	return null
+
+
+func test_null_payloads_keep_solo_approach() -> void:
+	Settings.visual_offset = 0.0
+	for speed in SPEEDS:
+		Settings.scroll_speed = speed
+		var hw := _board(NOTE_T - 0.4)
+		assert_object(hw.payloads).is_null()
+		assert_float(float(hw.debug_payload_state()["approach"])).is_equal(Trench.approach_for(speed))
+		for lane in range(4):
+			assert_float(hw.receptor_center(lane).distance_to(Trench.hit_point(lane))).is_equal(0.0)
+
+
+func test_pressure_crack_speeds_up_and_gem_still_on_line() -> void:
+	Settings.visual_offset = 0.0
+	Settings.scroll_speed = 1.0
+	var hw := _board(NOTE_T)
+	_stack(hw, Reward.Id.PRESSURE_CRACK)
+	_set_time(hw, NOTE_T)
+	assert_float(hw._approach).is_equal_approx(Trench.approach_for(1.5), 1e-9)
+	for idx in range(4):
+		var lane := _lane_of(hw, idx)
+		assert_float(hw.gem_center(idx).distance_to(Trench.hit_point(lane))).is_less_equal(EPS_PX)
+	# Before the note the gem is nearer than at normal speed (faster scroll).
+	_set_time(hw, NOTE_T - 0.6)
+	assert_float(hw.gem_depth(0)).is_equal_approx(0.6 / Trench.approach_for(1.5), 1e-6)
+	# Cap: base 3.0 x 1.5 is capped at pressure_crack_max_speed (3.5).
+	Settings.scroll_speed = 3.0
+	_set_time(hw, NOTE_T)
+	assert_float(hw._approach).is_equal_approx(Trench.approach_for(3.5), 1e-9)
+	assert_float(PayloadStack.effective_speed(3.0, 1.5, 3.5)).is_equal(3.5)
+
+
+func test_pressure_crack_rail_colour_blends_toward_warning_red() -> void:
+	Settings.scroll_speed = 1.0
+	var hw := _board(NOTE_T)
+	assert_that(_rgb(hw.rail_color())).is_equal(_rgb(Palette.SONAR))
+	_stack(hw, Reward.Id.PRESSURE_CRACK)
+	_set_time(hw, NOTE_T)
+	assert_that(_rgb(hw.rail_color())).is_equal(_rgb(Palette.SONAR.lerp(Palette.WARNING_RED, 0.6)))
+	assert_that(_rgb(hw.debug_payload_state()["rail_color"])).is_equal(_rgb(Palette.SONAR.lerp(Palette.WARNING_RED, 0.6)))
+
+
+static func _rgb(c: Color) -> Vector3:
+	return Vector3(snappedf(c.r, 1e-5), snappedf(c.g, 1e-5), snappedf(c.b, 1e-5))
+
+
+func test_crossed_wires_moves_gems_and_receptors_not_labels() -> void:
+	Settings.visual_offset = 0.0
+	Settings.scroll_speed = 1.0
+	var hw := _board(NOTE_T)
+	assert_object(_crossed(hw, 1, 2)).is_not_null()
+	_set_time(hw, NOTE_T)
+	# Lane 1's gem reaches the hit line at its time, at lane 2's screen x (and vice versa).
+	assert_float(hw.gem_center(1).distance_to(Trench.hit_point(2))).is_less_equal(EPS_PX)
+	assert_float(hw.gem_center(2).distance_to(Trench.hit_point(1))).is_less_equal(EPS_PX)
+	assert_float(hw.receptor_center(1).distance_to(Trench.hit_point(2))).is_less_equal(EPS_PX)
+	assert_float(hw.receptor_center(2).distance_to(Trench.hit_point(1))).is_less_equal(EPS_PX)
+	for lane in [0, 3]:
+		assert_float(hw.gem_center(lane).distance_to(Trench.hit_point(lane))).is_less_equal(EPS_PX)
+		assert_float(hw.receptor_center(lane).distance_to(Trench.hit_point(lane))).is_less_equal(EPS_PX)
+	# Key labels stay at their screen positions.
+	for lane in range(4):
+		assert_float(hw.lane_label_center(lane).distance_to(Trench.hit_point(lane))).is_equal(0.0)
+	var xs: PackedFloat32Array = hw.debug_payload_state()["lane_x"]
+	assert_float(xs[1]).is_equal_approx(Trench.lane_f(2), 1e-6)
+	assert_float(xs[2]).is_equal_approx(Trench.lane_f(1), 1e-6)
+
+
+func test_crossed_wires_slide_is_between_positions_mid_beat() -> void:
+	Settings.visual_offset = 0.0
+	Settings.scroll_speed = 1.0
+	Settings.reduce_motion = false
+	var hw := _board(P_ARRIVE + 0.25)
+	assert_object(_crossed(hw, 1, 2)).is_not_null()
+	_set_time(hw, P_ARRIVE + 0.25)
+	var x := float((hw.debug_payload_state()["lane_x"] as PackedFloat32Array)[1])
+	assert_float(x).is_between(Trench.lane_f(1) + 0.01, Trench.lane_f(2) - 0.01)
+	assert_bool(bool(hw.debug_payload_state()["sliding"])).is_true()
+
+
+func test_crossed_wires_reduce_motion_cross_fades_columns() -> void:
+	Settings.visual_offset = 0.0
+	Settings.scroll_speed = 1.0
+	Settings.reduce_motion = true
+	var hw := _board(P_ARRIVE + 0.25)
+	assert_object(_crossed(hw, 1, 2)).is_not_null()
+	_set_time(hw, P_ARRIVE + 0.25)
+	var cols: Array = hw.lane_columns(1)
+	assert_int(cols.size()).is_equal(2)
+	assert_float(float(cols[0].x)).is_equal_approx(Trench.lane_f(1), 1e-6)
+	assert_float(float(cols[1].x)).is_equal_approx(Trench.lane_f(2), 1e-6)
+	assert_float(float(cols[0].y) + float(cols[1].y)).is_equal_approx(1.0, 1e-6)
+	# Lanes outside the pair always have a single opaque column.
+	assert_int(hw.lane_columns(0).size()).is_equal(1)
+
+
+func test_sonar_jam_switches_gems_to_jam_type() -> void:
+	Settings.scroll_speed = 1.0
+	var hw := _board(NOTE_T)
+	assert_int(hw.gem_paint_type(NotePainter.NOTE_NORMAL)).is_equal(NotePainter.NOTE_NORMAL)
+	_stack(hw, Reward.Id.SONAR_JAM)
+	_set_time(hw, P_ARRIVE + 0.25)
+	var k := float(hw.debug_payload_state()["jam_k"])
+	assert_float(k).is_between(0.01, 0.99)
+	assert_int(hw.gem_paint_type(NotePainter.NOTE_NORMAL)).is_equal(NotePainter.NOTE_NORMAL)
+	_set_time(hw, NOTE_T)
+	assert_float(float(hw.debug_payload_state()["jam_k"])).is_equal(1.0)
+	assert_int(hw.gem_paint_type(NotePainter.NOTE_NORMAL)).is_equal(NotePainter.NOTE_JAM)
+	assert_int(hw.gem_paint_type(NotePainter.NOTE_DISRUPTOR)).is_equal(NotePainter.NOTE_JAM)
+	assert_int(hw.gem_paint_type(NotePainter.NOTE_GHOST)).is_equal(NotePainter.NOTE_GHOST)
+	# Jam never moves a gem: it still sits on the hit line at its time.
+	assert_float(hw.gem_center(0).distance_to(Trench.hit_point(0))).is_less_equal(EPS_PX)
