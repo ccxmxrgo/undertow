@@ -573,13 +573,19 @@ def _process_hygiene() -> None:
         threading.Thread(target=_watch, name="stdin-eof-watchdog", daemon=True).start()
 
 
-def _bp_mode(raw: dict, version_dir: Path | None):
-    """("worker", python) with a dev "bp_python" key or a pack rt310/python.exe, else ("inprocess", None)."""
+def _bp_mode(raw: dict, version_dir: Path | None, cli_bp: str | None = None):
+    """("worker", python) with the dev --bp-python flag or a pack rt310/python.exe, else ("inprocess", None).
+    WR-08: job.json is untrusted on disk (T-02.2.2-18), so it can never name an interpreter; the dev flag
+    comes only from the command line and is refused when running from the installed pack."""
     from stages.job import JobError
-    bp = raw.get("bp_python")
-    if bp is not None:
-        if not isinstance(bp, str) or not bp or not Path(bp).is_absolute() or not Path(bp).is_file():
-            raise JobError("bad_job", "bp_python must be the absolute path of an existing interpreter")
+    if "bp_python" in raw:
+        raise JobError("bad_job", "bp_python is not accepted in job.json (dev runs pass --bp-python)")
+    if cli_bp is not None:
+        if version_dir is not None:
+            raise JobError("bad_job", "--bp-python is a dev option and is refused in the pack")
+        bp = cli_bp
+        if not bp or not Path(bp).is_absolute() or not Path(bp).is_file():
+            raise JobError("bad_job", "--bp-python must be the absolute path of an existing interpreter")
         return "worker", Path(bp).resolve()
     if version_dir is not None:
         rt310 = version_dir / "rt310" / "python.exe"
@@ -740,7 +746,7 @@ def cmd_job(args) -> int:
         numba_cache.mkdir(parents=True, exist_ok=True)
         os.environ["NUMBA_CACHE_DIR"] = str(numba_cache)
         from stages import runtime
-        bp_mode, bp_python = _bp_mode(cfg["raw"], version_dir)
+        bp_mode, bp_python = _bp_mode(cfg["raw"], version_dir, getattr(args, "bp_python", None))
         runtime.configure_pack(cfg["models_root"], bp_mode, bp_python, HERE / "bp_worker.py", cfg["threads"])
         os.environ.update(runtime.model_env())
         print(f"autochart job {job_path} pid {os.getpid()} bp_mode {bp_mode} threads {cfg['threads']}",
@@ -895,6 +901,7 @@ def main(argv=None) -> int:
     j = sub.add_parser("job", help="pack entry point: job.json -> song folder, JSON events on stdout")
     j.add_argument("job", help="job.json written by the game")
     j.add_argument("--ac-root", help="autocharter folder that must contain work_root (tests / dev runs)")
+    j.add_argument("--bp-python", help="dev runs only: Basic Pitch worker interpreter (refused in the pack)")
     t = sub.add_parser("selftest", help="pack check: load the models offline and run them on generated audio")
     t.add_argument("--models-root", help="folder with hf/ and torch/ (default: the pack's models folder)")
     t.add_argument("--log", help="log file (default: selftest_log.txt next to the models folder)")

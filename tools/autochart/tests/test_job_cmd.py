@@ -108,6 +108,37 @@ class JobCommandTest(_Tmp):
         r, _ = run_cmd("job", str(p))
         self.assert_single_error(r, "bad_job")
 
+    def test_existing_bp_python_in_job_json_is_bad_job(self):
+        # WR-08: even a real interpreter path in job.json is refused (no process is started from it).
+        p = self.write_job(bp_python=sys.executable)
+        r, _ = run_cmd("job", str(p))
+        ev = self.assert_single_error(r, "bad_job")
+        self.assertIn("bp_python", ev["msg"])
+
+
+class BpModeTest(unittest.TestCase):
+    """WR-08: job.json can never name an interpreter; the dev --bp-python flag is refused in the pack."""
+
+    def test_bp_python_key_in_job_json_is_refused_even_when_it_exists(self):
+        with self.assertRaises(JobError) as cm:
+            autochart._bp_mode({"bp_python": sys.executable}, None)
+        self.assertEqual(cm.exception.code, "bad_job")
+
+    def test_cli_flag_refused_in_pack_mode(self):
+        with self.assertRaises(JobError) as cm:
+            autochart._bp_mode({}, Path(sys.executable).parent, sys.executable)
+        self.assertEqual(cm.exception.code, "bad_job")
+
+    def test_cli_flag_selects_worker_in_dev_runs(self):
+        mode, py = autochart._bp_mode({}, None, sys.executable)
+        self.assertEqual(mode, "worker")
+        self.assertEqual(py, Path(sys.executable).resolve())
+        with self.assertRaises(JobError):
+            autochart._bp_mode({}, None, "relative/python.exe")
+
+    def test_default_is_inprocess(self):
+        self.assertEqual(autochart._bp_mode({}, None), ("inprocess", None))
+
 
 class SubcommandsTest(unittest.TestCase):
     def test_help_lists_all_subcommands(self):
