@@ -226,15 +226,47 @@ def _drop_folder(p: Path) -> None:
         shutil.rmtree(p)
 
 
+# IN-03: written into the cross-volume temp folder first and removed once notes.chart is in place, so a
+# folder left by a killed install is recognisably ours (never a player's own song) and can be swept.
+INSTALLING = ".autochart_installing"
+_TMP_RE = re.compile(r"\.tmp_[a-z0-9_]{1,51}")
+_SONG_DIR_RE = re.compile(r"[a-z0-9_]{1,51}")  # <slug> or <slug>_<n>
+
+
+def sweep_stale_installs(songs_root: Path) -> list:
+    """Remove what a killed cross-volume install left in songs_root: .tmp_<slug> folders, and <slug>
+    folders that still carry the INSTALLING marker and have no notes.chart. Returns the removed names."""
+    removed = []
+    try:
+        entries = list(Path(songs_root).iterdir())
+    except OSError:
+        return removed
+    for d in entries:
+        try:
+            if not d.is_dir() or d.is_symlink():
+                continue
+            ours = _TMP_RE.fullmatch(d.name) is not None
+            if not ours and _SONG_DIR_RE.fullmatch(d.name) is not None:
+                ours = (d / INSTALLING).is_file() and not (d / "notes.chart").exists()
+            if ours:
+                shutil.rmtree(d)
+                removed.append(d.name)
+        except OSError:
+            continue
+    return removed
+
+
 def _install_copy(out_dir: Path, root: Path, dest: Path, replace: bool) -> None:
     """Cross-volume fallback: songs_root/.tmp_<slug> without notes.chart, rename to <slug>, then
-    notes.chart.part -> notes.chart. On failure the temp / half folder is removed."""
+    notes.chart.part -> notes.chart. On failure the temp / half folder is removed; after a kill the
+    INSTALLING marker lets the next install sweep it (IN-03)."""
     tmp = root / f".tmp_{dest.name}"
     created_dest = False
     try:
         if tmp.exists():
             shutil.rmtree(tmp)
         tmp.mkdir()
+        (tmp / INSTALLING).write_bytes(b"")
         for f in sorted(out_dir.iterdir()):
             if f.name == "notes.chart":
                 continue
@@ -261,6 +293,10 @@ def _install_copy(out_dir: Path, root: Path, dest: Path, replace: bool) -> None:
         if created_dest:
             shutil.rmtree(dest, ignore_errors=True)
         raise
+    try:
+        (dest / INSTALLING).unlink()  # the song is complete; a leftover marker is harmless (has notes.chart)
+    except OSError:
+        pass
     shutil.rmtree(out_dir, ignore_errors=True)
 
 
@@ -272,6 +308,7 @@ def install_atomic(out_dir: Path, songs_root: Path, slug: str, replace: bool) ->
     root = Path(songs_root).resolve()
     if not (out_dir / "notes.chart").is_file():
         raise JobError("internal", f"{out_dir} has no notes.chart", stage="install")
+    sweep_stale_installs(root)  # IN-03: before picking the name, so a stale half folder frees it
     name = unique_slug(root, slug, replace)
     dest = (root / name).resolve()
     if dest.parent != root or dest == root:  # T-02.2.2-19

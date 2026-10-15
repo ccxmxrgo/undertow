@@ -336,6 +336,52 @@ class InstallTest(_Tmp):
         self.assertEqual(list(self.songs.iterdir()), [])
         self.assertTrue((out / "notes.chart").exists())  # the work copy survives for a retry
 
+    def test_stale_cross_volume_leftovers_are_swept(self):
+        # IN-03: a kill mid _install_copy leaves .tmp_<slug> or <slug> with the marker and no chart.
+        tmp = self.songs / ".tmp_song"
+        tmp.mkdir()
+        (tmp / job.INSTALLING).write_bytes(b"")
+        (tmp / "song.ini").write_text("x", encoding="utf-8")
+        half = self.songs / "song"
+        half.mkdir()
+        (half / job.INSTALLING).write_bytes(b"")
+        (half / "song.mp3").write_bytes(b"x")
+        # Never touched: a player's song without notes.chart (notes.mid) and a finished song that
+        # still carries a marker.
+        mid = self.songs / "my_mid_song"
+        mid.mkdir()
+        (mid / "notes.mid").write_bytes(b"MThd")
+        done = self.songs / "done_song"
+        done.mkdir()
+        (done / job.INSTALLING).write_bytes(b"")
+        (done / "notes.chart").write_text("x", encoding="utf-8")
+        dest = job.install_atomic(self._out(), self.songs, "song", False)
+        self.assertEqual(dest.name, "song")  # the half folder no longer forces song_2
+        self.assertEqual(sorted(p.name for p in self.songs.iterdir()), ["done_song", "my_mid_song", "song"])
+        self.assertEqual(sorted(p.name for p in dest.iterdir()), ["notes.chart", "song.ini", "song.mp3"])
+
+    def test_cross_volume_kill_before_chart_leaves_a_sweepable_folder(self):
+        out = self._out()
+
+        def exdev(a, b):
+            raise OSError(errno.EXDEV, "cross-device link")
+
+        def killed(a, b):
+            if str(b).endswith("notes.chart.part"):
+                raise KeyboardInterrupt  # stands in for the process dying here
+            return job.shutil.copyfile(a, b)
+
+        with mock.patch.object(job, "_move_dir", side_effect=exdev), \
+                mock.patch.object(job, "_copy_file", side_effect=killed), \
+                mock.patch.object(job.shutil, "rmtree"):  # a real kill runs no cleanup
+            with self.assertRaises(KeyboardInterrupt):
+                job.install_atomic(out, self.songs, "song", False)
+        half = self.songs / "song"
+        self.assertTrue((half / job.INSTALLING).is_file())
+        self.assertFalse((half / "notes.chart").exists())
+        self.assertEqual(job.sweep_stale_installs(self.songs), ["song"])
+        self.assertEqual(list(self.songs.iterdir()), [])
+
     def test_missing_chart_refused(self):
         out = self._out()
         (out / "notes.chart").unlink()
