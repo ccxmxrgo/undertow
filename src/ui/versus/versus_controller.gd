@@ -6,10 +6,15 @@ extends Node
 ## the MatchSim referee, the human SubRig (VersusJudge / VersusHull / PayloadStack), bot SubRigs
 ## driven by BotPlayers, and the TrainingDrone. bind_views() creates and binds every versus view.
 ##
-## Per frame (Gameplay._process): pre_tick(t) (rig input time + autoplay) -> judge.tick(t) ->
-## update(t): bots, drone, sim, channel, then the views. Everything is stamped with the audio
-## clock song time, never the frame time. Versus rigs never read Settings.no_fail: versus forces
-## no_fail false, Solo Dive training forces it true (T-03-33).
+## Per frame (Gameplay._process): pre_tick(t) = advance_to(t), then update(t) for the views.
+## Determinism (WR-01, Pitfall 6): advance_to runs every due action in global song-time order
+## exactly like MatchHarness: a fixed TICK_S judge-tick grid for every rig (then the referee and
+## the channel), the autoplay human, the bots by seat and the drone. The human's real presses,
+## releases, fire and target input first advance everything due before their own song time
+## (human_press / human_release / fire / cycle_target), so the referee never sees time run
+## backwards by a frame. The same event log comes out at any frame rate. Everything is stamped
+## with the audio clock song time, never the frame time. Versus rigs never read
+## Settings.no_fail: versus forces no_fail false, Solo Dive training forces it true (T-03-33).
 ##
 ## Modes: versus (a MatchSetup with rivals 1..3); training (practice, drone_mode != -1: one drone
 ## seat); training OFF (practice, no rivals: the meter, bag and buffs run, no periscope column
@@ -20,6 +25,8 @@ extends Node
 static var test_autoplay_human: bool = false
 
 const HUMAN_SEAT := 0
+## Judge tick grid, shared with MatchHarness so live and headless matches tick identically.
+const TICK_S := MatchHarness.TICK_S
 
 var match_setup: MatchSetup
 var versus: bool = false
@@ -44,7 +51,14 @@ var bot_rigs := {}
 var bots: Array[BotPlayer] = []
 var drone: TrainingDrone
 var drone_seat: int = -1
-var autoplay_human: VersusAutoplay
+## The autoplay human (tests, playtest): VersusAutoplay stepped at its own event times.
+var autoplay_human: MatchHarness._AutoActor
+## Song time everything has been advanced to (advance_to).
+var now: float = -INF
+
+## Time-ordered actors (WR-01): tick grid, autoplay human, bots by seat, drone.
+var _actors: Array = []
+var _bot_seats: Array = []
 
 # Views (null when the mode has none).
 var ink_cloud: InkCloudLayer
@@ -111,10 +125,16 @@ func setup(gp: Gameplay, p_chart: ChartData, p_jcfg: JudgeConfig, p_setup: Match
 		bots.append(BotPlayer.new(rig, profile, sim, cfg, chart, hash([match_seed, "bot", s])))
 	if drone_seat != -1:
 		drone = TrainingDrone.new(sim, chart, cfg, drone_seat, HUMAN_SEAT, drone_mode)
+	_actors.append(_TickActor.new(self))
 	if autoplay or (versus and test_autoplay_human):
-		autoplay_human = VersusAutoplay.new(chart, human_judge)
-		human_rig.overlay_added.connect(func(_id: int, _notes: Array) -> void:
-			autoplay_human.refresh(human_judge))
+		autoplay_human = MatchHarness._AutoActor.new(chart, human_rig)
+		_actors.append(autoplay_human)
+	_bot_seats = bot_rigs.keys()
+	_bot_seats.sort()
+	for b in bots:
+		_actors.append(b)
+	if drone != null:
+		_actors.append(drone)
 	channel.received.connect(_on_event)
 	_error_player = AudioStreamPlayer.new()
 	_error_player.name = "ErrorBlip"
@@ -146,6 +166,9 @@ func bind_views(gp: Gameplay) -> void:
 	var highway := gp.highway
 	highway.bind_versus(human_stack, human_judge, cfg)
 	gp.lane_input.payloads = human_stack
+	# WR-01: real presses advance the rivals to the press time first (global time order).
+	gp.lane_input.press_fn = human_press
+	gp.lane_input.release_fn = human_release
 	gp.lane_input.lane_released.connect(highway.on_lane_released)
 	human_judge.ghost_hit.connect(_on_ghost_hit)
 	# Board layers above Feedback / FxLayer / HighwayNotes.
@@ -211,31 +234,87 @@ func bind_views(gp: Gameplay) -> void:
 			and gp.streak_counter.popup_text() != "")
 
 
-## Before the human judge ticks: stamp the rig's input time, then the autoplay presses.
-func pre_tick(t: float) -> void:
-	human_rig.begin(t)
-	if autoplay_human != null:
-		autoplay_human.update(t)
-		human_rig.begin(t)
+## Judge tick grid (WR-01): every rig ticks at k x TICK_S (expiry misses and sustain ticks at
+## frame-rate independent times), then the referee and the channel catch up. Same as
+## MatchHarness._TickActor.
+class _TickActor:
+	var vc: VersusController
+	var k: int
+
+	func _init(p_vc: VersusController) -> void:
+		vc = p_vc
+		k = int(ceil(MatchHarness.START_T / TICK_S))
+
+	func next_time() -> float:
+		return float(k) * TICK_S
+
+	func step() -> void:
+		var t := next_time()
+		k += 1
+		vc._tick_rigs(t)
 
 
-## After the human judge ticked: bots, drone, referee, channel, then the views.
-func update(t: float) -> void:
-	human_stack.prune(t)
-	for b in bots:
-		b.update(t)
-	if drone != null:
-		drone.update(t)
+func _tick_rigs(t: float) -> void:
+	human_rig.tick(t)
+	for s in _bot_seats:
+		bot_rigs[s].tick(t)
 	sim.update(t)
 	channel.update(t)
-	status_chips.update(t)
+
+
+## Runs every action due up to song time t in global time order (ties: tick grid, autoplay
+## human, bots by seat, drone), as MatchHarness.advance_to does.
+func advance_to(t: float) -> void:
+	if not is_finite(t):
+		return
+	var guard := 0
+	while guard < 1000000:
+		guard += 1
+		var best = null
+		var best_t := INF
+		for a in _actors:
+			var at: float = a.next_time()
+			if at < best_t:
+				best_t = at
+				best = a
+		if best == null or best_t > t:
+			break
+		best.step()
+	now = maxf(now, t)
+
+
+## Per frame, before the views: everything due by t (the human's judge ticks on the grid).
+func pre_tick(t: float) -> void:
+	advance_to(t)
+
+
+## A real lane press of the human at song time t (LaneInput routes here in versus): rivals and
+## ticks due before t run first, then the press reaches the judge with the rig stamped at t.
+func human_press(lane: int, t: float) -> void:
+	advance_to(t)
+	human_rig.press(lane, t)
+
+
+func human_release(lane: int, t: float) -> void:
+	advance_to(t)
+	human_rig.release(lane, t)
+
+
+## After pre_tick: the human's payload stack and the views.
+func update(t: float) -> void:
+	human_stack.prune(t)
+	if status_chips != null:
+		status_chips.update(t)
 	if periscope_column != null:
 		periscope_column.update(t)
 		if drone != null:
 			periscope_column.set_drone_status(drone_status_text(drone.bars_until_next(t)))
-	incoming_alert.observe(t)
-	event_banner.observe(t)
-	edge_flash.observe(t)
+	if incoming_alert != null:
+		incoming_alert.observe(t)
+	if event_banner != null:
+		event_banner.observe(t)
+	if edge_flash != null:
+		edge_flash.observe(t)
 
 
 static func drone_status_text(bars: int) -> String:
@@ -246,6 +325,7 @@ static func drone_status_text(bars: int) -> String:
 ## Fire (TORP-02). A refused shot (shielded / no target) plays the error blip; nothing held
 ## plays nothing (UI-SPEC 10).
 func fire(t: float) -> int:
+	advance_to(t)
 	var r := sim.request_fire(HUMAN_SEAT, t)
 	if r == MatchSim.FIRE_SHIELDED or r == MatchSim.FIRE_NO_TARGET:
 		error_blips += 1
@@ -257,6 +337,7 @@ func fire(t: float) -> int:
 
 ## Target cycle (TORP-03, D-01); works without a reward so players can pre-aim.
 func cycle_target(t: float = NAN) -> int:
+	advance_to(t)
 	var r := sim.cycle_target(HUMAN_SEAT, t)
 	if is_finite(t):
 		channel.update(t)
@@ -265,6 +346,7 @@ func cycle_target(t: float = NAN) -> int:
 
 ## Ends the match (MATCH_END once) and returns the VersusResultsScreen data.
 func finish(t: float) -> Dictionary:
+	advance_to(t)
 	sim.update(t)
 	sim.finish(t)
 	channel.update(t)

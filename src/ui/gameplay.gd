@@ -324,10 +324,12 @@ func _process(_delta: float) -> void:
 	if _autoplay_player != null:
 		_autoplay_player.update(t)  # exact note times, never the frame time (D-28)
 	if versus != null:
+		# Every rig (the human's included) ticks on the controller's song-time grid in global
+		# time order with the bots and the drone (WR-01), so no frame-time judge.tick here.
 		versus.pre_tick(t)
-	judge.tick(t)
-	if versus != null:
-		versus.update(t)  # bots, drone, referee, channel, views (after the human's judge)
+		versus.update(t)  # payload stack and the versus views
+	else:
+		judge.tick(t)
 	if state == State.RUNNING and judge.is_finished() and t >= _end_time + END_PAD_SEC:
 		_finish()
 

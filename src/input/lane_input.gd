@@ -21,6 +21,11 @@ var judge: InputJudge
 ## mapped through payloads.input_map(song time) to the judged lane at press time; the release
 ## always releases the lane recorded at press (RESEARCH Pitfall 3). null = identity (solo).
 var payloads: PayloadStack = null
+## Versus (WR-01): when valid, presses / releases go to press_fn(lane, song_time) /
+## release_fn(lane, song_time) instead of judge.press / judge.release, so the VersusController
+## can advance every rival to the press time before the human's judgment reaches the referee.
+var press_fn: Callable = Callable()
+var release_fn: Callable = Callable()
 ## Pause/countdown suppress note input (UI-SPEC). Disabling releases anything still held.
 var enabled: bool = true:
 	set(v):
@@ -107,7 +112,11 @@ func _press(action: int, ticks: int) -> void:
 	if _lane_holders[lane] > 1:
 		return  # another key already holds this judged lane
 	if conductor != null and judge != null:
-		judge.press(lane, conductor.song_time_at(ticks))
+		var t := conductor.song_time_at(ticks)
+		if press_fn.is_valid():
+			press_fn.call(lane, t)
+		else:
+			judge.press(lane, t)
 	lane_pressed.emit(lane, ticks)
 
 
@@ -123,7 +132,11 @@ func _release(action: int, ticks: int) -> void:
 	if _lane_holders[lane] > 0:
 		return
 	if conductor != null and judge != null:
-		judge.release(lane, conductor.song_time_at(ticks))
+		var t := conductor.song_time_at(ticks)
+		if release_fn.is_valid():
+			release_fn.call(lane, t)
+		else:
+			judge.release(lane, t)
 	lane_released.emit(lane, ticks)
 
 

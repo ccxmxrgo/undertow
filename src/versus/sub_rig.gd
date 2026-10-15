@@ -106,7 +106,13 @@ func accuracy() -> float:
 # --- judge -> referee --------------------------------------------------------------------------
 
 func _on_judged(_lane: int, idx: int, j: int, err: float) -> void:
-	var t: float = float(chart.notes[idx]["time"]) + err
+	# A late miss comes from InputJudge._expire with err = tick time - note time, i.e. frame /
+	# tick time. Stamp it at the deterministic deadline instead (WR-01): the meter reset, warhead
+	# kill, debris and elimination times must not depend on when the judge happened to tick.
+	var e := err
+	if j == InputJudge.Judgment.MISS and err > 0.0:
+		e = minf(err, jcfg.good_window + InputJudge.EPS)
+	var t: float = float(chart.notes[idx]["time"]) + e
 	begin(t)
 	match j:
 		InputJudge.Judgment.PERFECT:
@@ -119,13 +125,18 @@ func _on_judged(_lane: int, idx: int, j: int, err: float) -> void:
 	judgment_reported.emit(idx, j, t)
 
 
-func _on_extra_judged(_kind: int, _lane: int, j: int, _err: float) -> void:
-	hull.now = now
+func _on_extra_judged(_kind: int, _lane: int, j: int, err: float) -> void:
+	# err = now - note time. A late Depth Charge miss is stamped at its deadline, like base
+	# notes (WR-01); a press is stamped at the press time (now).
+	var t := now
+	if j == InputJudge.Judgment.MISS and err > jcfg.good_window + InputJudge.EPS:
+		t = now - err + jcfg.good_window + InputJudge.EPS
+	hull.now = t
 	if j == InputJudge.Judgment.PERFECT:
 		depth_perfect += 1
 	else:
 		depth_other += 1
-	sim.on_extra_judged(seat, j, now)
+	sim.on_extra_judged(seat, j, t)
 
 
 func _on_stray(_lane: int) -> void:

@@ -192,3 +192,21 @@ func test_dropped_rig_is_freed() -> void:
 	var refs := _build_and_drop()
 	for r in refs:
 		assert_object((r as WeakRef).get_ref()).is_null()
+
+
+## WR-01: a late miss is stamped at the note's deadline (note + good window), not at the tick
+## that happened to expire it, so live frame rate never changes the referee's times.
+func test_late_miss_is_stamped_at_the_deadline_not_the_tick() -> void:
+	var rig := _rig()
+	var seen: Array = []
+	rig.judgment_reported.connect(func(idx: int, j: int, t: float) -> void: seen.append([idx, j, t]))
+	rig.tick(0.9)  # notes at 0.0 and 0.5 expired by a late tick
+	assert_int(seen.size()).is_equal(2)
+	var gw := JudgeConfig.new().good_window
+	assert_float(seen[0][2]).is_equal_approx(0.0 + gw, 1e-6)
+	assert_float(seen[1][2]).is_equal_approx(0.5 + gw, 1e-6)
+	var other := _rig()
+	var seen2: Array = []
+	other.judgment_reported.connect(func(idx: int, j: int, t: float) -> void: seen2.append([idx, j, t]))
+	other.tick(0.95)
+	assert_float(seen2[1][2]).is_equal(seen[1][2])
