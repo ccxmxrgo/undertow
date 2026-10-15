@@ -25,6 +25,17 @@ into <songs-root>/<slug> (default: Godot user://songs of UNDERTOW). --mode lanes
 (stages/instrument_lanes.py: bass, drums, other, vocals from left to right). Chart stats go to
 build/autochart/<id>/, never tools/autochart/reports/. Never writes outside the Songs folder and never
 replaces an existing song folder without --force. Last line on success: `EXTRACT_OK <song folder>`.
+
+  <pack>/v1/rt/python.exe -I -X utf8 -u autochart.py job <job.json> [--ac-root <dir>]
+  <pack>/v1/rt/python.exe -I -X utf8 -u autochart.py selftest [--models-root <dir>] [--log <file>]
+
+job (Phase 2.2.2, the one process the game spawns, D-05): job.json (stages/job.py load_job) -> decode,
+in-process htdemucs, beats, onsets, in-process Basic Pitch, stem rank, chart, atomic install into
+songs_root/<slug>. stdout carries only ASCII JSON events (start, work, stage, progress, warn, rank, error,
+done); stdout/stderr of the process go to <job folder>/log.txt. A second instrument for the same file reuses
+the SHA-keyed work dir. Exit: 0 ok, 2 an error event was printed, 3 MemoryError, 4 stdin closed (game gone).
+selftest: loads htdemucs, runs beat_this and Basic Pitch on generated audio with sockets blocked; prints
+{"ev":"selftest","ok":true,...} or an error event (code selftest / vcredist).
 """
 from __future__ import annotations
 
@@ -458,6 +469,392 @@ def cmd_extract(args) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- job / selftest (pack entry points, Phase 2.2.2)
+EXIT_OK, EXIT_ERROR, EXIT_MEMORY, EXIT_PARENT_GONE = 0, 2, 3, 4
+BELOW_NORMAL_PRIORITY_CLASS = 0x4000
+VERSION_DIR_RE = re.compile(r"^v\d+$")
+
+
+def job_error_code(e: Exception) -> str:
+    """Stable player-facing code (AutochartJob.ERROR_TEXT key) for a pipeline failure."""
+    from stages import job as jobmod
+    code = getattr(e, "code", "") or ""
+    if code in jobmod.CODES:
+        return code
+    stage = getattr(e, "stage", "")
+    msg = getattr(e, "message", str(e))
+    if (stage == "beats" and "found only" in msg) or (stage == "sections" and "bar lines" in msg):
+        return "no_beats"
+    if (stage == "stem_rank" and "no stem produced" in msg) or (
+            stage == "chart" and ("Expert notes" in msg or "bar window" in msg)):
+        return "no_notes"
+    return "internal"
+
+
+def is_dll_error(e: BaseException) -> bool:
+    """D-15: a native DLL that cannot load (missing VC++ runtime) -> error code vcredist."""
+    if not isinstance(e, (ImportError, OSError)):
+        return False
+    if getattr(e, "winerror", None) in (126, 193):
+        return True
+    text = str(e)
+    return "DLL load failed" in text or "WinError 126" in text or "WinError 193" in text
+
+
+def _pack_version_dir() -> Path | None:
+    """<ac>/v<N> when this interpreter is the pack's <ac>/v<N>/rt/python.exe, else None (dev venvs)."""
+    exe = Path(sys.executable).resolve()
+    if exe.parent.name.lower() == "rt" and VERSION_DIR_RE.match(exe.parents[1].name):
+        return exe.parents[1]
+    return None
+
+
+def _open_protocol(log_path: Path | None):
+    """Protocol stream on a dup of the original stdout; fds 1 and 2 (and sys.stdout / sys.stderr) go to the
+    log so tqdm, prints and native library warnings never reach the game's pipes (Pitfalls 1 and 2)."""
+    proto = os.fdopen(os.dup(1), "w", encoding="ascii", buffering=1, newline="\n")
+    target = None
+    if log_path is not None:
+        try:
+            target = open(log_path, "a", encoding="utf-8", buffering=1)
+        except OSError:
+            target = None
+    if target is None:
+        log_path = None
+        target = open(os.devnull, "w", encoding="utf-8")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.dup2(target.fileno(), 1)
+    os.dup2(target.fileno(), 2)
+    sys.stdout = sys.stderr = target
+    import faulthandler
+    faulthandler.enable(file=target)  # a native crash leaves its Python stack in the log
+    return proto, target, log_path
+
+
+def _process_hygiene() -> None:
+    """Environment before any torch / demucs / huggingface import, lower priority, and the stdin-EOF
+    watchdog (the game died -> exit 4, no orphan keeps burning CPU; Pitfall 4)."""
+    import stat
+    import threading
+
+    os.environ["TQDM_DISABLE"] = "1"
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            k32 = ctypes.windll.kernel32
+            k32.SetPriorityClass(k32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)
+        except (OSError, AttributeError):
+            pass
+    try:
+        is_pipe = stat.S_ISFIFO(os.fstat(0).st_mode)
+    except (OSError, ValueError):
+        is_pipe = False
+    if is_pipe:
+        # The watchdog reads a private dup of the pipe; fd 0 / sys.stdin become NUL. On Windows a pending
+        # synchronous ReadFile serialises every other call on that file object (fstat, isatty,
+        # GetFileType), so a library touching stdin during import would hang behind the watchdog.
+        watch_fd = os.dup(0)
+        null = os.open(os.devnull, os.O_RDONLY)
+        os.dup2(null, 0)
+        os.close(null)
+        sys.stdin = open(os.devnull, "r", encoding="utf-8")
+
+        def _watch():
+            try:
+                while os.read(watch_fd, 4096):
+                    pass
+            except OSError:
+                pass
+            os._exit(EXIT_PARENT_GONE)
+        threading.Thread(target=_watch, name="stdin-eof-watchdog", daemon=True).start()
+
+
+def _bp_mode(raw: dict, version_dir: Path | None):
+    """("worker", python) with a dev "bp_python" key or a pack rt310/python.exe, else ("inprocess", None)."""
+    from stages.job import JobError
+    bp = raw.get("bp_python")
+    if bp is not None:
+        if not isinstance(bp, str) or not bp or not Path(bp).is_absolute() or not Path(bp).is_file():
+            raise JobError("bad_job", "bp_python must be the absolute path of an existing interpreter")
+        return "worker", Path(bp).resolve()
+    if version_dir is not None:
+        rt310 = version_dir / "rt310" / "python.exe"
+        if rt310.is_file():
+            return "worker", rt310
+    return "inprocess", None
+
+
+def _job_run(cfg: dict, emit, log_path: Path | None) -> int:
+    import json
+    import shutil
+
+    from stages import decode, job as jobmod, runtime
+
+    def progress(stage_name):
+        last = [-1.0]
+
+        def cb(frac):
+            f = round(float(frac), 2)
+            if f > last[0]:
+                last[0] = f
+                emit.progress(stage_name, f)
+        return cb
+
+    emit.emit(ev="start", pid=os.getpid())
+    src = cfg["src"]
+    sha = decode._sha256(src)
+    work = jobmod.work_dir_for(cfg["work_root"], sha)
+    work.mkdir(parents=True, exist_ok=True)
+    emit.emit(ev="work", dir=str(work))
+    reused = jobmod.is_analyzed(work, sha)
+    rank_json = work / "stem_rank.json"
+    stems = list(DEFAULT_STEMS)
+    if not reused:
+        if rank_json.exists():
+            rank_json.unlink()
+        emit.stage("decode")
+        info = decode.decode(src, work)
+        if float(info["length_s"]) > jobmod.PACK_MAX_S:
+            raise jobmod.JobError("too_long", "Songs longer than 10 minutes are not supported", stage="decode")
+        emit.progress("decode", 1.0)
+        emit.stage("separate")
+        from stages import separate
+        separate.separate(work, force=False, on_progress=progress("separate"))
+        emit.stage("beats")
+        from stages import beats
+        beats.beats_stage(work)
+        emit.progress("beats", 1.0)
+        emit.stage("onsets")
+        from stages import onsets
+        onsets.onsets_stage(work, stems)
+        emit.progress("onsets", 1.0)
+        emit.stage("pitch")
+        from stages import pitch_bp
+        for i, s in enumerate(stems):
+            pitch_bp.pitch_stage(work, [s])
+            emit.progress("pitch", (i + 1) / len(stems))
+        jobmod.mark_analyzed(work, sha)
+    else:
+        emit.emit(ev="warn", msg="Reusing separated instruments")
+        for name in ("decode", "separate", "beats", "onsets", "pitch"):
+            emit.stage(name)
+            emit.progress(name, 1.0)
+
+    # rank: required for auto, best effort for single / lanes (the UI offers "Re-chart with ...")
+    emit.stage("rank")
+    mode = cfg["mode"]
+    ranking, recommended = [], None
+    res = None
+    if rank_json.is_file():
+        try:
+            res = json.loads(rank_json.read_text(encoding="utf-8"))
+        except ValueError:
+            res = None
+    if res is None:
+        import stem_rank
+        try:
+            res = stem_rank.rank(work)
+            rank_json.write_text(json.dumps(res, indent=2) + "\n", encoding="utf-8")
+        except AutochartError:
+            if mode == "auto":
+                raise
+            res = None
+    if res is not None:
+        ranking, recommended = list(res["ranking"]), res["recommended"]
+        emit.emit(ev="rank", recommended=recommended, ranking=ranking)
+    emit.progress("rank", 1.0)
+
+    emit.stage("chart")
+    if mode == "auto":
+        stem = recommended
+    else:
+        stem = cfg["stem"]
+    chart_mode = "lanes" if mode == "lanes" else "single"
+    out = work / ("out_lanes" if mode == "lanes" else f"out_{stem}")
+    if out.exists():
+        shutil.rmtree(out)
+    slug_base = slugify(cfg["name"])
+    song_id = "user_" + slug_base
+    _chart_core(work, out, work, stem, None, "bars", cfg["target_nps"], cfg["name"], cfg["artist"],
+                cfg["genre"], None, None, None, chart_mode, song_id)
+    stats = json.loads((work / f"{song_id}.chart_stats.json").read_text(encoding="utf-8"))
+    expert_nps = float(stats["difficulties"]["expert"]["notes_per_s"])
+    emit.progress("chart", 1.0)
+
+    emit.stage("install")
+    jobmod.write_song_audio(src, out)
+    slug = jobmod.unique_slug(cfg["songs_root"], slug_base, cfg["replace"])
+    folder = jobmod.install_atomic(out, cfg["songs_root"], slug, cfg["replace"])
+    jobmod.touch(work)
+    emit.progress("install", 1.0)
+    emit.emit(ev="done", folder=str(folder), slug=folder.name, stem="lanes" if mode == "lanes" else stem,
+              mode=mode, expert_nps=round(expert_nps, 4), reused=bool(reused), ranking=ranking,
+              log=str(log_path) if log_path else "")
+    return EXIT_OK
+
+
+def _emit_failure(emit, e: BaseException, stage: str, log_path) -> int:
+    import errno
+    import traceback
+
+    traceback.print_exception(type(e), e, e.__traceback__)
+    log = str(log_path) if log_path else ""
+    if isinstance(e, MemoryError):
+        emit.emit(ev="error", code="memory", stage=stage, msg="Not enough memory for a song this long", log=log)
+        return EXIT_MEMORY
+    if isinstance(e, AutochartError):
+        emit.emit(ev="error", code=job_error_code(e), stage=e.stage, msg=e.message, log=log)
+    elif is_dll_error(e):
+        emit.emit(ev="error", code="vcredist", stage=stage, msg=f"{type(e).__name__}: {e}", log=log)
+    elif isinstance(e, OSError) and (e.errno == errno.ENOSPC or getattr(e, "winerror", None) in (39, 112)):
+        emit.emit(ev="error", code="disk", stage=stage, msg=f"{type(e).__name__}: {e}", log=log)
+    else:
+        emit.emit(ev="error", code="internal", stage=stage, msg=f"{type(e).__name__}: {e}", log=log)
+    return EXIT_ERROR
+
+
+def cmd_job(args) -> int:
+    """Pack entry point (D-05): one process does decode -> separate -> beats -> onsets -> pitch -> rank ->
+    chart -> install. stdout carries only protocol events; everything else goes to <job folder>/log.txt.
+    Exit codes: 0 ok, 2 an error event was printed, 3 MemoryError, 4 the game closed stdin."""
+    from stages import job as jobmod
+
+    job_path = Path(args.job)
+    folder = job_path.parent
+    log_path = folder / "log.txt" if folder.is_dir() else None
+    proto, _log, log_path = _open_protocol(log_path)
+    emit = jobmod.Emitter(proto)
+    _process_hygiene()
+    try:
+        ac_root = Path(args.ac_root).resolve() if args.ac_root else None
+        version_dir = _pack_version_dir()
+        if ac_root is None and version_dir is not None:
+            ac_root = version_dir.parent
+        cfg = jobmod.load_job(job_path, ac_root)
+        # before any numba / librosa / torch import (load_job is stdlib only)
+        numba_cache = (cfg["work_root"].parent / "cache" / "numba").resolve()
+        numba_cache.mkdir(parents=True, exist_ok=True)
+        os.environ["NUMBA_CACHE_DIR"] = str(numba_cache)
+        from stages import runtime
+        bp_mode, bp_python = _bp_mode(cfg["raw"], version_dir)
+        runtime.configure_pack(cfg["models_root"], bp_mode, bp_python, HERE / "bp_worker.py", cfg["threads"])
+        os.environ.update(runtime.model_env())
+        print(f"autochart job {job_path} pid {os.getpid()} bp_mode {bp_mode} threads {cfg['threads']}",
+              flush=True)
+        return _job_run(cfg, emit, log_path)
+    except BaseException as e:  # noqa: BLE001 - every failure becomes one error event
+        if isinstance(e, SystemExit):
+            raise
+        return _emit_failure(emit, e, getattr(e, "stage", "job"), log_path)
+    finally:
+        sys.stdout.flush()
+
+
+def _selftest_run(models_root: Path, emit) -> int:
+    import socket
+    import tempfile
+
+    t0 = time.perf_counter()
+    ckpt = models_root / "torch" / "hub" / "checkpoints" / "beat_this-final0.ckpt"
+    if not (models_root / "hf").is_dir() or not (models_root / "torch").is_dir() or not ckpt.is_file():
+        raise AutochartError("selftest", f"models are missing under {models_root}", code="selftest")
+
+    def _blocked(*_a, **_k):
+        raise OSError("network disabled in selftest")
+    socket.socket.connect = _blocked
+    socket.socket.connect_ex = _blocked
+    socket.create_connection = _blocked
+    socket.getaddrinfo = _blocked
+
+    from stages import runtime
+    bp_mode, bp_python = _bp_mode({}, _pack_version_dir())
+    runtime.configure_pack(models_root, bp_mode, bp_python, HERE / "bp_worker.py", 0)
+    os.environ.update(runtime.model_env())
+
+    import numpy as np
+    import soundfile as sf
+    from demucs.pretrained import get_model
+
+    if get_model("htdemucs") is None:
+        raise AutochartError("selftest", "htdemucs did not load", code="selftest")
+    sr = 22050
+    n = 10 * sr
+    clicks = np.zeros(n, dtype=np.float32)
+    for k in range(0, n, sr // 2):  # 120 BPM
+        clicks[k:k + 200] = np.hanning(400)[200:].astype(np.float32)
+    from beat_this.inference import Audio2Beats
+    a2b = Audio2Beats(checkpoint_path=str(ckpt), device="cpu", dbn=False)
+    beats, _downs = a2b(clicks, sr)
+    if len(beats) < 10:
+        raise AutochartError("selftest", f"beat_this found {len(beats)} beats in 10 s of 120 BPM clicks",
+                             code="selftest")
+    from stages import pitch_bp
+    import json
+    with tempfile.TemporaryDirectory() as td:
+        wav = Path(td) / "sine.wav"
+        t = np.arange(n, dtype=np.float64) / sr
+        sf.write(str(wav), (0.5 * np.sin(2 * np.pi * 440.0 * t)).astype(np.float32), sr, subtype="PCM_16")
+        out = Path(td) / "bp.json"
+        pitch_bp.run_bp(wav, out)
+        notes = json.loads(out.read_text(encoding="utf-8"))["notes"]
+    if not any(abs(int(x[2]) - 69) <= 1 for x in notes):
+        raise AutochartError("selftest", f"Basic Pitch found no A4 in a 440 Hz sine ({len(notes)} notes)",
+                             code="selftest")
+    print(f"selftest: htdemucs ok, {len(beats)} beats, {len(notes)} Basic Pitch notes, bp_mode {bp_mode}",
+          flush=True)
+    emit.emit(ev="selftest", ok=True, seconds=round(time.perf_counter() - t0, 1))
+    return EXIT_OK
+
+
+def cmd_selftest(args) -> int:
+    """Offline model check run right after the pack is installed (RESEARCH Pattern 3 item 11): loads
+    htdemucs, runs beat_this and Basic Pitch on generated audio with every socket call blocked."""
+    from stages import job as jobmod
+
+    version_dir = _pack_version_dir()
+    if args.models_root:
+        models_root = Path(args.models_root).resolve()
+    elif version_dir is not None:
+        models_root = version_dir / "models"
+    else:
+        models_root = (ROOT / "build" / "autochart" / "pack_models").resolve()
+    if args.log:
+        log_path = Path(args.log)
+    else:
+        log_path = models_root.parent / "selftest_log.txt" if models_root.parent.is_dir() else None
+    proto, _log, log_path = _open_protocol(log_path)
+    emit = jobmod.Emitter(proto)
+    _process_hygiene()
+    if version_dir is not None:
+        numba_cache = version_dir.parent / "cache" / "numba"
+        try:
+            numba_cache.mkdir(parents=True, exist_ok=True)
+            os.environ["NUMBA_CACHE_DIR"] = str(numba_cache)
+        except OSError:
+            pass
+    try:
+        return _selftest_run(models_root, emit)
+    except BaseException as e:  # noqa: BLE001
+        if isinstance(e, SystemExit):
+            raise
+        import traceback
+        traceback.print_exception(type(e), e, e.__traceback__)
+        log = str(log_path) if log_path else ""
+        if isinstance(e, MemoryError):
+            emit.emit(ev="error", code="memory", stage="selftest", msg="Not enough memory", log=log)
+            return EXIT_MEMORY
+        code = "vcredist" if is_dll_error(e) else "selftest"
+        msg = e.message if isinstance(e, AutochartError) else f"{type(e).__name__}: {e}"
+        emit.emit(ev="error", code=code, stage="selftest", msg=msg, log=log)
+        return EXIT_ERROR
+    finally:
+        sys.stdout.flush()
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="autochart", description="UNDERTOW audio-to-chart tool")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -495,7 +892,17 @@ def main(argv=None) -> int:
     x.add_argument("--target-nps", type=float, default=3.5)
     x.add_argument("--songs-root", help="Songs folder (default %%APPDATA%%/Godot/app_userdata/UNDERTOW/songs)")
     x.add_argument("--force", action="store_true", help="replace an existing song folder")
+    j = sub.add_parser("job", help="pack entry point: job.json -> song folder, JSON events on stdout")
+    j.add_argument("job", help="job.json written by the game")
+    j.add_argument("--ac-root", help="autocharter folder that must contain work_root (tests / dev runs)")
+    t = sub.add_parser("selftest", help="pack check: load the models offline and run them on generated audio")
+    t.add_argument("--models-root", help="folder with hf/ and torch/ (default: the pack's models folder)")
+    t.add_argument("--log", help="log file (default: selftest_log.txt next to the models folder)")
     args = ap.parse_args(argv)
+    if args.cmd == "job":
+        return cmd_job(args)
+    if args.cmd == "selftest":
+        return cmd_selftest(args)
     try:
         if args.cmd == "analyze":
             return cmd_analyze(args)
