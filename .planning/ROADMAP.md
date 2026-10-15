@@ -181,13 +181,13 @@ Plans:
 **Goal:** Any player can turn an audio file they own into a playable chart from inside the game, with no dev tools: a "Chart a song" flow picks a file, shows progress, and adds the result to the library like any other song. It uses the proven Phase 02.1 pipeline: htdemucs stems, beat_this tempo map, D3 onsets on the chosen stem, Basic Pitch contour lanes, and Hard/Medium/Easy reductions. Charts are made from an extracted instrument, never the full mix (CONT-02 stays rejected). Default delivery is an optional Autocharter pack: the game stays small and offers to download the pack the first time a player uses the feature (this choice was made while the user was away, and they can revisit it at discuss time). Charts made this way must pass the existing sync gate, and timing stays untouched. Ends with a friend zip. (User request 2026-10-13.)
 **Requirements**: STEM-02, STEM-03, STEM-04, STEM-05 (made available to players in-game, not only on the dev PC)
 **Depends on:** Phase 02.2.1.1
-**Plans:** 10 plans
+**Plans:** 4/10 plans executed
 
 Plans:
-- [ ] 02.2.2-01-PLAN.md — Wave 0: uv bootstrap from pinned zip, venvs, pack model layout, merged pins, Basic Pitch parity spike (one vs two interpreters)
-- [ ] 02.2.2-02-PLAN.md — Godot job protocol (job.json, argv, events, error text) + AutochartRunner child process with cancel
-- [ ] 02.2.2-03-PLAN.md — Pack installer: PackSpec pins, LOCALAPPDATA paths, zip-slip-safe extractor, download/verify/extract state machine
-- [ ] 02.2.2-04-PLAN.md — Python runtime paths + stdlib job helpers (validation, stem cache keys, slug, atomic install, FLAC to WAV)
+- [x] 02.2.2-01-PLAN.md — Wave 0: uv bootstrap from pinned zip, venvs, pack model layout, merged pins, Basic Pitch parity spike (one vs two interpreters)
+- [x] 02.2.2-02-PLAN.md — Godot job protocol (job.json, argv, events, error text) + AutochartRunner child process with cancel
+- [x] 02.2.2-03-PLAN.md — Pack installer: PackSpec pins, LOCALAPPDATA paths, zip-slip-safe extractor, download/verify/extract state machine
+- [x] 02.2.2-04-PLAN.md — Python runtime paths + stdlib job helpers (validation, stem cache keys, slug, atomic install, FLAC to WAV)
 - [ ] 02.2.2-05-PLAN.md — autochart.py job/selftest commands, in-process separation and Basic Pitch, e2e on a CC0 song
 - [ ] 02.2.2-06-PLAN.md — Pack builder: pinned CPython + hashed wheels + models, deterministic part zips, regenerated pack_spec.gd
 - [ ] 02.2.2-07-PLAN.md — End-to-end with the real pack through the game classes + D-07 sync gate on synth_wave_april
