@@ -644,7 +644,9 @@ func _build_result(box: VBoxContainer) -> void:
 	play_now_button = _button(row, "Play Now", "dive", "primary", BUTTON_H, _play_now)
 	chart_another_button = _button(row, "Chart Another Instrument", "chart", "default", BUTTON_H, _chart_another)
 	result_back_button = _button(row, "Back to Menu", "chevron_left", "default", BUTTON_H,
-		func() -> void: _go(MENU_SCENE))
+		func() -> void:
+			_adding = false  # WR-10: a pending Play Now scan no longer switches scenes
+			_go(MENU_SCENE))
 
 
 func _build_error(box: VBoxContainer) -> void:
@@ -1224,6 +1226,7 @@ func _show_result() -> void:
 	result_detail.text = "Instrument: %s   Expert: %.1f notes/s" % [
 		_instrument_name(_result), float(nps) if (nps is float or nps is int) else 0.0]
 	_adding = false
+	chart_another_button.disabled = false
 	set_footer("")
 	show_state("result")
 
@@ -1255,6 +1258,8 @@ func _play_now() -> void:
 	if _adding or _result.is_empty():
 		return
 	_adding = true
+	chart_another_button.disabled = true  # WR-10: no other job while the scan is pending
+	_link_focus()
 	set_footer(ADDING_TEXT)
 	if library == null or not library.has_signal("scan_finished") or not library.has_method("rescan"):
 		_open_new_song()
@@ -1266,6 +1271,8 @@ func _play_now() -> void:
 
 
 func _on_prior_scan_finished(_count: int, _unplayable: int) -> void:
+	if not _play_pending():
+		return
 	_rescan_for_play()
 
 
@@ -1275,7 +1282,14 @@ func _rescan_for_play() -> void:
 
 
 func _on_play_scan_finished(_count: int, _unplayable: int) -> void:
+	if not _play_pending():
+		return
 	_open_new_song()
+
+
+## WR-10: a Play Now scan only switches scenes while the player still waits on the result.
+func _play_pending() -> bool:
+	return _adding and _state == "result"
 
 
 ## T-45: the done folder is only turned into a song id; the library scan validates it like any
@@ -1322,6 +1336,7 @@ func _chart_another() -> void:
 
 ## Back to options with the inputs of the last job and `key` selected.
 func _restore_options(key: String) -> void:
+	_adding = false
 	_src = String(_ran.get("src", _src))
 	name_edit.text = String(_ran.get("name", name_edit.text))
 	artist_edit.text = String(_ran.get("artist", artist_edit.text))

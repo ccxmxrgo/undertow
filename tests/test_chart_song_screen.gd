@@ -807,6 +807,42 @@ func test_play_now_waits_for_a_running_scan_first() -> void:
 	assert_array(_calls).is_equal([ChartSongScreen.SONG_SELECT_SCENE])
 
 
+## WR-10: while Play Now waits on the scan, Chart Another Instrument is off, and leaving the
+## result screen means the late scan no longer jumps to Song Select.
+func test_pending_play_now_scan_does_not_switch_scenes_after_leaving() -> void:
+	var s: ChartSongScreen = await _running_screen("bass")
+	_push(s, [_done()])
+	_exit(s, 0)
+	s.play_now_button.pressed.emit()
+	assert_bool(s.chart_another_button.disabled).is_true()
+	s.result_back_button.pressed.emit()
+	assert_array(_calls).is_equal([ChartSongScreen.MENU_SCENE])
+	_lib.scan_finished.emit(5, 0)
+	assert_array(_calls).is_equal([ChartSongScreen.MENU_SCENE])
+	assert_str(_lib.last_song_id).is_equal("")
+
+
+func test_play_now_scan_ignored_once_a_new_job_runs() -> void:
+	var s: ChartSongScreen = await _running_screen("bass")
+	_push(s, [_done()])
+	_exit(s, 0)
+	_lib.scanning = true
+	s.play_now_button.pressed.emit()
+	# Simulate the screen moving on (e.g. a later code path) before the scans finish.
+	s._restore_options("drums")
+	s.start_button.pressed.emit()
+	assert_str(s.state()).is_equal("running")
+	_lib.scanning = false
+	_lib.scan_finished.emit(4, 0)
+	assert_int(_lib.rescans).is_equal(0)
+	assert_array(_calls).is_empty()
+	assert_str(s.state()).is_equal("running")
+	# The next result starts with Chart Another Instrument enabled again.
+	_push(s, [_done("drums")])
+	_exit(s, 0)
+	assert_bool(s.chart_another_button.disabled).is_false()
+
+
 func test_chart_another_instrument_preselects_next_ranked() -> void:
 	var s: ChartSongScreen = await _running_screen("auto")
 	_push(s, [_done("other", "auto")])
