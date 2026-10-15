@@ -280,3 +280,124 @@ func test_drawing_every_state_runs_without_errors() -> void:
 	await get_tree().process_frame
 	assert_str(e.debug_state()["focused"]).is_equal("song")
 	assert_bool(s.is_inside_tree()).is_true()
+
+
+# ---- Task 2: Start Match, song pick round trip, back ----
+
+func test_accept_on_song_opens_pick_mode() -> void:
+	var s := _cal_screen()
+	var calls := _nav(s)
+	s.focus_row_for_test("rivals")
+	s.press_key_for_test(KEY_RIGHT)
+	s.focus_row_for_test("song")
+	s.press_key_for_test(KEY_ENTER)
+	assert_bool(SongSelect.run_pick).is_true()
+	assert_array(calls).is_equal([MatchSetupScreen.SONG_SELECT_SCENE])
+	assert_str(MatchSetupScreen.SONG_SELECT_SCENE).is_equal(MainMenu.SONG_SELECT_SCENE)
+	assert_object(MatchSetup.pending).is_not_null()
+	assert_int(MatchSetup.pending.rivals).is_equal(1)
+
+
+func test_song_pick_round_trip_shows_new_song() -> void:
+	Settings.versus_song_id = "a"
+	Settings.versus_difficulty = "hard"
+	var lib := _lib([_entry("a", "Alpha"), _entry("b", "Beta", ["easy", "expert"])])
+	var s := _screen(lib)
+	_nav(s)
+	s.focus_row_for_test("skill")
+	s.press_key_for_test(KEY_LEFT)
+	s.focus_row_for_test("song")
+	s.press_key_for_test(KEY_ENTER)
+	# What Song Select pick mode does on Pick Song (03-05).
+	Settings.versus_song_id = "b"
+	Settings.versus_difficulty = "expert"
+	MatchSetup.pending.song_id = "b"
+	MatchSetup.pending.difficulty = "expert"
+	SongSelect.run_pick = false
+	var back := _screen(lib)
+	var st := back.debug_state()
+	assert_str(st["song_id"]).is_equal("b")
+	assert_str(st["song_value"]).is_equal("Beta")
+	assert_str(st["difficulty"]).is_equal("expert")
+	assert_str(st["skill"]).is_equal("rookie")
+	assert_str(st["focused"]).is_equal("start")
+
+
+func test_start_match_launches_versus_once() -> void:
+	var s := _cal_screen()
+	var calls := _nav(s)
+	var preview_seed := int(s.debug_state()["seed"])
+	s.focus_row_for_test("rivals")
+	s.press_key_for_test(KEY_LEFT)
+	s.focus_row_for_test("skill")
+	s.press_key_for_test(KEY_RIGHT)
+	s.focus_row_for_test("start")
+	s.press_key_for_test(KEY_ENTER)
+	s.press_key_for_test(KEY_ENTER)
+	assert_array(calls).is_equal([MatchSetupScreen.GAMEPLAY_SCENE])
+	assert_str(MatchSetupScreen.GAMEPLAY_SCENE).is_equal(MainMenu.GAMEPLAY_SCENE)
+	var m := MatchSetup.pending
+	assert_object(m).is_not_null()
+	assert_int(m.mode).is_equal(MatchSetup.MODE_VERSUS)
+	assert_int(m.rivals).is_equal(2)
+	assert_str(m.skill).is_equal("veteran")
+	assert_str(m.song_id).is_equal(SongLibrary.calibration_entry().id)
+	assert_str(m.difficulty).is_equal("expert")
+	assert_int(m.seed).is_not_equal(0)
+	assert_int(m.seed).is_equal(preview_seed)
+	assert_object(Gameplay.pending_chart).is_not_null()
+	assert_bool(Gameplay.pending_autoplay).is_false()
+	assert_bool(Gameplay.pending_practice).is_false()
+	assert_int(Settings.versus_rivals).is_equal(2)
+	assert_str(Settings.versus_skill).is_equal("veteran")
+	assert_str(Settings.versus_song_id).is_equal(m.song_id)
+	assert_str(Settings.versus_difficulty).is_equal("expert")
+	assert_bool(FileAccess.file_exists(SETTINGS_TMP)).is_true()
+	assert_bool(s.debug_state()["start_enabled"]).is_false()
+
+
+func test_start_match_disabled_without_song() -> void:
+	var s := _screen(_lib([]))
+	var calls := _nav(s)
+	s.focus_row_for_test("start")
+	s.press_key_for_test(KEY_ENTER)
+	assert_array(calls).is_empty()
+	assert_object(MatchSetup.pending).is_null()
+	assert_object(Gameplay.pending_chart).is_null()
+
+
+func test_chart_that_fails_to_load_shows_error() -> void:
+	Settings.versus_song_id = "a"
+	Settings.versus_difficulty = "expert"
+	var e := _entry("a", "Alpha")
+	e.chart_path = D + "/missing/notes.chart"
+	var s := _screen(_lib([e]))
+	var calls := _nav(s)
+	s.press_key_for_test(KEY_ENTER)
+	assert_array(calls).is_empty()
+	assert_object(Gameplay.pending_chart).is_null()
+	var st := s.debug_state()
+	assert_str(st["error"]).is_equal("This song's audio could not be loaded. Choose another song.")
+	assert_bool(s.error_label.visible).is_true()
+	assert_str(s.error_label.text).is_equal(st["error"])
+	assert_that(s.error_label.get_theme_color("font_color")).is_equal(Palette.WARNING_RED)
+	assert_object(s.error_label.get_node_or_null("Glyph")).is_not_null()
+	assert_float(s.error_label.position.x).is_equal(64.0)
+	var f := Palette.font()
+	assert_float(s.error_label.position.y + f.get_ascent(Palette.SIZE_LABEL)).is_equal_approx(1000.0, 0.01)
+	assert_bool(st["start_enabled"]).is_true()
+
+
+func test_escape_saves_choices_and_clears_pending() -> void:
+	var s := _cal_screen()
+	var calls := _nav(s)
+	MatchSetup.pending = MatchSetup.from_settings()
+	s.focus_row_for_test("rivals")
+	s.press_key_for_test(KEY_RIGHT)
+	s.press_key_for_test(KEY_ESCAPE)
+	assert_array(calls).is_equal([MatchSetupScreen.MENU_SCENE])
+	assert_object(MatchSetup.pending).is_null()
+	assert_int(Settings.versus_rivals).is_equal(1)
+	assert_str(Settings.versus_song_id).is_equal(SongLibrary.calibration_entry().id)
+	assert_bool(FileAccess.file_exists(SETTINGS_TMP)).is_true()
+	assert_object(Gameplay.pending_chart).is_null()
