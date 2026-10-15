@@ -113,6 +113,17 @@ const GUIDE_HEAD := 8.0
 const GUIDE_DROP := 40.0
 const GUIDE_BULGE := 22.0
 const GUIDE_SAMPLES := 16
+## Overlay notes (03 UI-SPEC 7.2, 7.3) and warhead flashes (7.1).
+const GHOST_PASS_SEC := 0.15  # an ignored ghost fades out below the hit line (no X)
+const SHATTER_SEC := 0.25
+const SHATTER_DRIFT := 12.0
+const SHATTER_W := 3.0
+const SHATTER_DASH := 0.35  # half dash length, x note radius
+const MAX_FRAGS := 8  # ghost-shatter ring buffer (T-03-21)
+const WARHEAD_FLASH_SEC := 0.20
+const MAX_FLASHES := 8
+const MAX_FIRST_DEPTH := 64
+const OV_BEYOND_SCAN := 8  # overlay notes past the far end recorded per frame (Pitfall 1 check)
 
 const S_PENDING := 0
 const S_HIT := 1
@@ -196,6 +207,19 @@ var _keys_down: Array[bool] = [false, false, false, false]
 var _dbg_gem_type := PackedInt32Array([-1, -1, -1, -1])
 var _dbg_warheads: int = 0
 var _dbg_guides: int = 0
+## Overlay notes of this frame: the judge's live sorted list and the visible indices into it.
+var _ov: Array[Dictionary] = []
+var _ovis := PackedInt32Array()
+var _first_depth: Dictionary = {}  # overlay uid -> depth when the board first saw it
+var _shattered: Dictionary = {}  # hit ghost uid -> note time (shattered once)
+var _frags: Array[Dictionary] = []  # {lane, pos, r, t0}
+var _wh_flashed: Dictionary = {}  # base note index -> true (Perfect flash started)
+var _wh_flash: Array[Dictionary] = []  # {idx, lane, t0}
+var _dbg_overlay_drawn: int = 0
+var _dbg_overlay_last: Dictionary = {}
+var _dbg_overlay_types: Array[int] = []
+var _dbg_frags_drawn: int = 0
+var _dbg_flashes_drawn: int = 0
 
 
 ## True while a note is inside the Good window (inclusive); NaN/inf are never ready.
@@ -545,7 +569,12 @@ func _update_window() -> void:
 			break
 		if _state[i] != S_HIT:
 			_vis.append(i)
+		if payloads != null:
+			_check_warhead_flash(i)
 		i += 1
+	if payloads != null or not _wh_flash.is_empty():
+		_prune_flashes()
+	_update_overlay()
 	_fill_beat_lines(_vt, _approach)
 	_update_sweep()
 	if payloads != null or _strip_cols.size() > 0:
@@ -627,7 +656,205 @@ func debug_payload_state() -> Dictionary:
 		"last_gem_type": _dbg_gem_type.duplicate(),
 		"warheads_drawn": _dbg_warheads,
 		"swap_guides": _dbg_guides,
+		"overlay_visible": _ovis.size(),
+		"overlay_drawn": _dbg_overlay_drawn,
+		"overlay_last": _dbg_overlay_last.duplicate(),
+		"overlay_types": _dbg_overlay_types.duplicate(),
+		"first_depth_by_overlay": _first_depth.duplicate(),
+		"fragments": _frags.size(),
+		"fragments_drawn": _dbg_frags_drawn,
+		"fragment_drift": _frag_drift(_vt - float(_frags[-1]["t0"])) if not _frags.is_empty() else 0.0,
+		"warhead_flashes": _wh_flash.size(),
+		"flashes_drawn": _dbg_flashes_drawn,
+		"flash_k": (_vt - float(_wh_flash[-1]["t0"])) / WARHEAD_FLASH_SEC if not _wh_flash.is_empty() else 0.0,
+		"flash_grow": not Settings.reduce_motion,
 	}
+
+
+# ---- Overlay notes, ghost shatter and warhead flashes (03 UI-SPEC 7.1-7.3) ------------------
+
+## Visible overlay notes this frame (binary search from the moving past edge; only the visible
+## window is scanned, T-03-21). Records each note's first-seen depth (Pitfall 1 harness) and
+## starts the shatter of a ghost that was just hit.
+func _update_overlay() -> void:
+	_ovis.clear()
+	if overlay_judge == null:
+		if not _ov.is_empty():
+			_ov = []
+		_frags.clear()
+		return
+	_ov = overlay_judge.overlay_notes()
+	var past := _vt - 0.06 * _approach - GHOST_FADE_SEC - 0.1
+	var lo := 0
+	var hi := _ov.size()
+	while lo < hi:
+		var mid := (lo + hi) >> 1
+		if float(_ov[mid]["time"]) < past:
+			lo = mid + 1
+		else:
+			hi = mid
+	var beyond := 0
+	for i in range(lo, _ov.size()):
+		var n: Dictionary = _ov[i]
+		var t := float(n["time"])
+		var d := Trench.depth_for(t, _vt, _approach)
+		var uid := int(n.get("uid", -1))
+		if not _first_depth.has(uid):
+			if _first_depth.size() >= MAX_FIRST_DEPTH:
+				_first_depth.clear()
+			_first_depth[uid] = d
+		if d > Trench.D_FAR:
+			beyond += 1
+			if beyond >= OV_BEYOND_SCAN:
+				break
+			continue
+		_ovis.append(i)
+		if int(n["kind"]) == VersusJudge.GHOST and n["state"] == "hit" and not _shattered.has(uid):
+			_shatter(n, d, uid, past)
+	while not _frags.is_empty() and _vt - float(_frags[0]["t0"]) >= SHATTER_SEC:
+		_frags.pop_front()
+
+
+func _shatter(n: Dictionary, d: float, uid: int, past: float) -> void:
+	if _shattered.size() >= MAX_FIRST_DEPTH:
+		for k in _shattered.keys():
+			if float(_shattered[k]) < past:
+				_shattered.erase(k)
+	_shattered[uid] = float(n["time"])
+	var lane := clampi(int(n["lane"]), 0, LANES - 1)
+	_frags.append({
+		"lane": lane, "pos": Trench.point(_lane_x[lane], d),
+		"r": Trench.note_radius(Trench.scale_at(d)), "t0": _vt,
+	})
+	if _frags.size() > MAX_FRAGS:
+		_frags.pop_front()
+
+
+## Outward drift of the shatter dashes at `age`: 12 px over 250 ms; none under Reduce motion.
+func _frag_drift(age: float) -> float:
+	if Settings.reduce_motion:
+		return 0.0
+	return SHATTER_DRIFT * clampf(age / SHATTER_SEC, 0.0, 1.0)
+
+
+## Starts the 200 ms Perfect flash once when a warhead note turns CONFIRMED.
+func _check_warhead_flash(idx: int) -> void:
+	if _wh_flashed.has(idx) or payloads.warhead_state(idx) != PayloadStack.CONFIRMED:
+		return
+	if _wh_flashed.size() >= MAX_FIRST_DEPTH:
+		for k in _wh_flashed.keys():
+			if int(k) < _first_visible:
+				_wh_flashed.erase(k)
+	_wh_flashed[idx] = true
+	_wh_flash.append({"idx": idx, "lane": int(chart.notes[idx]["lane"]), "t0": _vt})
+	if _wh_flash.size() > MAX_FLASHES:
+		_wh_flash.pop_front()
+
+
+func _prune_flashes() -> void:
+	while not _wh_flash.is_empty() and _vt - float(_wh_flash[0]["t0"]) >= WARHEAD_FLASH_SEC:
+		_wh_flash.pop_front()
+
+
+## Overlay gems far to near (ghosts NOTE_GHOST in every mode; depth charges NOTE_DISRUPTOR,
+## jammed like real notes). A hit ghost is drawn only as its shatter; an ignored ghost fades
+## over 150 ms below the line with no X; depth charges hide once hit and pin when missed.
+func _draw_overlay(ci: CanvasItem) -> void:
+	for k in range(_ovis.size() - 1, -1, -1):
+		var i := _ovis[k]
+		if i >= _ov.size():
+			continue
+		var n: Dictionary = _ov[i]
+		var state: String = n["state"]
+		if state == "hit":
+			continue
+		var t := float(n["time"])
+		var lane := clampi(int(n["lane"]), 0, LANES - 1)
+		var ghost := int(n["kind"]) == VersusJudge.GHOST
+		var d := Trench.depth_for(t, _vt, _approach)
+		var paint := NotePainter.STATE_FAR
+		var fade := 1.0
+		var mul := 1.0
+		var type := NotePainter.NOTE_GHOST if ghost else NotePainter.NOTE_DISRUPTOR
+		if ghost:
+			if _vt > t:
+				mul = 1.0 - clampf((_vt - t) / GHOST_PASS_SEC, 0.0, 1.0)
+				if mul <= 0.0:
+					continue
+			if state == "open" and note_is_ready(t - _st, _good_window):
+				paint = NotePainter.STATE_READY
+		elif state == "judged" and int(n["judgment"]) != InputJudge.Judgment.MISS:
+			continue
+		elif state == "missed" or state == "judged":
+			fade = 1.0 - clampf(((_vt - t) - 0.06 * _approach) / GHOST_FADE_SEC, 0.0, 1.0)
+			if fade <= 0.0:
+				continue
+			paint = NotePainter.STATE_MISSED
+			d = maxf(d, -0.06)
+		elif note_is_ready(t - _st, _good_window):
+			paint = NotePainter.STATE_READY
+		var r := Trench.note_radius(Trench.scale_at(d))
+		var na := (1.0 if paint == NotePainter.STATE_MISSED else Trench.note_fade(d)) * mul
+		if na < 0.01:
+			continue
+		for j in range(_cols_n[lane]):
+			_draw_gem(ci, type, lane, Trench.point(_cols_f[2 * lane + j], d), r, paint, fade, na * _cols_a[2 * lane + j])
+		var drawn_type := gem_paint_type(type)
+		_dbg_overlay_drawn += 1
+		_dbg_overlay_types.append(drawn_type)
+		_dbg_overlay_last = {
+			"type": drawn_type, "kind": int(n["kind"]), "paint": paint, "alpha": na,
+			"center": Trench.point(_lane_x[lane], d),
+		}
+
+
+## Ready open depth-charge halos (ghosts have none).
+func _draw_overlay_halos(ci: CanvasItem) -> void:
+	for k in range(_ovis.size() - 1, -1, -1):
+		var i := _ovis[k]
+		if i >= _ov.size():
+			continue
+		var n: Dictionary = _ov[i]
+		if int(n["kind"]) != VersusJudge.DEPTH or n["state"] != "open":
+			continue
+		var t := float(n["time"])
+		if note_is_ready(t - _st, _good_window):
+			_halo_columns(ci, clampi(int(n["lane"]), 0, LANES - 1), Trench.depth_for(t, _vt, _approach))
+
+
+## Ghost shatter: 4 rim dashes drifting 12 px outward while fading over 250 ms (drawn here,
+## not particles; Reduce motion: fade only).
+func _draw_fragments(ci: CanvasItem) -> void:
+	for fr in _frags:
+		var age := _vt - float(fr["t0"])
+		if age < 0.0 or age >= SHATTER_SEC:
+			continue
+		var k := age / SHATTER_SEC
+		var drift := _frag_drift(age)
+		var lane: int = fr["lane"]
+		var pos: Vector2 = fr["pos"]
+		var r: float = fr["r"]
+		var col := NotePainter.faded(NotePainter.rim_color(lane, false), 1.0 - k)
+		for q in range(4):
+			var ang := PI * 0.25 + float(q) * PI * 0.5
+			var dir := Vector2(cos(ang), sin(ang))
+			var c := pos + dir * (r + drift)
+			var tan := Vector2(-dir.y, dir.x) * r * SHATTER_DASH
+			ci.draw_line(c - tan, c + tan, col, SHATTER_W, true)
+		_dbg_frags_drawn += 1
+
+
+## Warhead Perfect flash (UI-SPEC 7.1): SONAR_PALE ring r+8 -> r+20, alpha 1 -> 0 over 200 ms
+## at the receptor; Reduce motion keeps flash_k running but does not grow the ring.
+func _draw_warhead_flashes(ci: CanvasItem) -> void:
+	var grow := not Settings.reduce_motion
+	var r := Trench.note_radius(Trench.scale_at(0.0))
+	for fl in _wh_flash:
+		var k := (_vt - float(fl["t0"])) / WARHEAD_FLASH_SEC
+		if k < 0.0 or k >= 1.0:
+			continue
+		NotePainter.draw_warhead_ring(ci, Trench.point(_lane_x[int(fl["lane"])], 0.0), r, PayloadStack.CONFIRMED, k, grow)
+		_dbg_flashes_drawn += 1
 
 
 func _draw() -> void:
@@ -1261,9 +1488,15 @@ func lane_label_center(lane: int) -> Vector2:
 ## Gems far to near, missed remnants and lane numbers, drawn into the HighwayNotes layer.
 func draw_notes_into(ci: CanvasItem) -> void:
 	_dbg_warheads = 0
+	_dbg_overlay_drawn = 0
+	_dbg_overlay_types.clear()
+	_dbg_frags_drawn = 0
+	_dbg_flashes_drawn = 0
 	if chart == null or conductor == null:
 		return
 	if notes_enabled:
+		if not _ovis.is_empty():
+			_draw_overlay(ci)
 		var notes := chart.notes
 		for k in range(_vis.size() - 1, -1, -1):
 			var idx := _vis[k]
@@ -1302,6 +1535,10 @@ func draw_notes_into(ci: CanvasItem) -> void:
 					var wa := (fade if paint == NotePainter.STATE_MISSED else na) * ca
 					NotePainter.draw_warhead_ring(ci, c, r, ws, 0.0, true, wa)
 					_dbg_warheads += 1
+		if not _frags.is_empty():
+			_draw_fragments(ci)
+		if not _wh_flash.is_empty():
+			_draw_warhead_flashes(ci)
 	_draw_lane_numbers(ci)
 
 
@@ -1321,6 +1558,8 @@ func draw_halos_into(ci: CanvasItem) -> void:
 	if chart == null or conductor == null or not notes_enabled or Settings.low_effects:
 		return
 	var notes := chart.notes
+	if not _ovis.is_empty():
+		_draw_overlay_halos(ci)
 	for k in range(_vis.size() - 1, -1, -1):
 		var idx := _vis[k]
 		if _state[idx] != S_PENDING:
@@ -1344,6 +1583,11 @@ func _halo_columns(ci: CanvasItem, lane: int, d: float) -> void:
 	for j in range(_cols_n[lane]):
 		var a := Trench.note_fade(d) * _cols_a[2 * lane + j] * (1.0 - _jam_k)
 		NotePainter.draw_halo(ci, lane, Trench.point(_cols_f[2 * lane + j], d), r, a)
+
+
+## Lane numbers into another layer (InkTopLayer redraws them above the ink with its fade).
+func draw_lane_numbers_into(ci: CanvasItem, alpha_mul: float = 1.0) -> void:
+	_draw_lane_numbers(ci, alpha_mul)
 
 
 ## Bound key under each receptor (Label 20, lane colour 90%), cached per settings change.
