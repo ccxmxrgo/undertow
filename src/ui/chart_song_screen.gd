@@ -1135,7 +1135,7 @@ func _on_runner_finished(result: Dictionary) -> void:
 		"job":
 			_result = result
 			# D-12: keep the stems of the last 3 songs; the one just used always stays.
-			AutochartWorkCache.prune(AutochartPaths.work_root(), AutochartWorkCache.KEEP, runner.work_dir())
+			AutochartWorkCache.prune(AutochartPaths.work_root(), AutochartWorkCache.KEEP, _child_work_dir())
 			_show_result()
 		"selftest":
 			_selftest_finished(_selftest_passed)
@@ -1159,7 +1159,7 @@ func _on_runner_failed(code: String, _message: String, log_path: String) -> void
 func _on_runner_cancelled() -> void:
 	if _end_run() != "job":
 		return
-	AutochartWorkCache.remove_unfinished(runner.work_dir())
+	AutochartWorkCache.remove_unfinished(_child_work_dir())
 	_restore_options(String(_ran.get("instrument", "auto")))
 	set_footer(STOPPED_TEXT)
 
@@ -1267,10 +1267,39 @@ func _on_play_scan_finished(_count: int, _unplayable: int) -> void:
 ## T-45: the done folder is only turned into a song id; the library scan validates it like any
 ## other song folder and Song Select restores the selection from last_song_id.
 func _open_new_song() -> void:
-	var folder := String(_result.get("folder", "")) if _result.get("folder") is String else ""
+	var folder := _new_song_folder()
 	if library != null and folder != "" and "last_song_id" in library:
-		library.set("last_song_id", SongScanner.norm(folder.replace("\\", "/")))
+		library.set("last_song_id", SongScanner.norm(folder))
 	_go(SONG_SELECT_SCENE)
+
+
+## WR-05: the song folder is rebuilt from the Songs folder the library scans plus the reported
+## slug (checked against the slug pattern), never taken from the child's resolved path, whose
+## casing or form (8.3 names, junctions, subst drives) can differ from the scanner's ids.
+func _new_song_folder() -> String:
+	var slug := String(_result.get("slug", "")) if _result.get("slug") is String else ""
+	if not is_valid_slug(slug):
+		return ""
+	return _songs_dir().path_join(slug)
+
+
+## A song folder name the Python side can produce: [a-z0-9_]{1,48} plus an optional _2.._99.
+static func is_valid_slug(slug: String) -> bool:
+	var re := RegEx.create_from_string("^[a-z0-9_]{1,48}(_\\d{1,2})?$")
+	return re.search(slug) != null
+
+
+## WR-05: the work dir the child reported, rebuilt under the Godot-side work_root() when it is a
+## w_* folder directly inside it (case-insensitive on Windows); "" otherwise (nothing is touched).
+func _child_work_dir() -> String:
+	var reported := runner.work_dir().strip_edges() if runner != null else ""
+	if reported == "":
+		return ""
+	var p := AutochartPaths.norm(reported.replace("\\", "/"))
+	var wname := p.get_file()
+	if not wname.begins_with("w_") or not AutochartPaths.same_path(p.get_base_dir(), AutochartPaths.work_root()):
+		return ""
+	return AutochartPaths.work_root().path_join(wname)
 
 
 func _chart_another() -> void:

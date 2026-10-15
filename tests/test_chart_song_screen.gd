@@ -724,6 +724,52 @@ func test_play_now_rescans_then_selects_new_song_in_song_select() -> void:
 	assert_str(ChartSongScreen.SONG_SELECT_SCENE).is_equal("res://scenes/song_select.tscn")
 
 
+## WR-05: the song id comes from the library's own Songs folder plus the reported slug, so a
+## done folder with other casing (or another form of the same path) still selects the new song.
+func test_play_now_uses_songs_dir_and_slug_not_the_child_path() -> void:
+	var s: ChartSongScreen = await _running_screen("bass")
+	var done := _done()
+	done["folder"] = String(done["folder"]).to_upper()
+	done["slug"] = "song_2"
+	_push(s, [done])
+	_exit(s, 0)
+	s.play_now_button.pressed.emit()
+	_lib.scan_finished.emit(5, 0)
+	assert_str(_lib.last_song_id).is_equal(SongScanner.norm(_lib.dir.path_join("song_2")))
+	assert_array(_calls).is_equal([ChartSongScreen.SONG_SELECT_SCENE])
+
+
+func test_play_now_with_a_bad_slug_selects_nothing() -> void:
+	assert_bool(ChartSongScreen.is_valid_slug("song")).is_true()
+	assert_bool(ChartSongScreen.is_valid_slug("song_99")).is_true()
+	for bad in ["", "../x", "Song", "a/b", "x".repeat(60)]:
+		assert_bool(ChartSongScreen.is_valid_slug(bad)).override_failure_message(bad).is_false()
+	var s: ChartSongScreen = await _running_screen("bass")
+	var done := _done()
+	done["slug"] = "../evil"
+	_push(s, [done])
+	_exit(s, 0)
+	s.play_now_button.pressed.emit()
+	_lib.scan_finished.emit(5, 0)
+	assert_str(_lib.last_song_id).is_equal("")
+	assert_array(_calls).is_equal([ChartSongScreen.SONG_SELECT_SCENE])
+
+
+## WR-05: the cancelled run's work dir is found even when the child reports it in other casing.
+func test_cancel_removes_unfinished_work_dir_reported_in_other_case() -> void:
+	if OS.get_name() != "Windows":
+		return
+	var s: ChartSongScreen = await _running_screen()
+	var work := _make_work("w_0123456789abcdef", 1.0, false)
+	# Python resolves the parent folders (real casing); the w_<sha> name is its own lowercase.
+	var reported := work.get_base_dir().to_upper().path_join(work.get_file())
+	_push(s, [{"ev": "work", "dir": reported.replace("/", "\\")}])
+	s.cancel_job_button.pressed.emit()
+	s.dialog.confirmed.emit()
+	_exit(s, 1)
+	assert_bool(DirAccess.dir_exists_absolute(work)).is_false()
+
+
 func test_play_now_waits_for_a_running_scan_first() -> void:
 	var s: ChartSongScreen = await _running_screen("bass")
 	_push(s, [_done()])

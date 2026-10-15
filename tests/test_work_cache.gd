@@ -196,3 +196,22 @@ func test_rm_tree_never_follows_a_junction() -> void:
 	assert_bool(AutochartPaths.rm_tree(link)).is_true()
 	assert_bool(_exists(link)).is_false()
 	assert_bool(FileAccess.file_exists(outside.path_join("keep.txt"))).is_true()
+
+
+## WR-05: the child reports resolved paths whose casing can differ from the Godot-side root.
+## On Windows, the protected dir and the root check still match case-insensitively.
+func test_prune_and_remove_unfinished_ignore_path_case_on_windows() -> void:
+	if OS.get_name() != "Windows":
+		return
+	var now := Time.get_unix_time_from_system()
+	var dirs: Array = []
+	for i in 5:
+		dirs.append(_work("w_%016d" % i, now - 1000.0 + i * 10.0))
+	assert_bool(AutochartPaths.is_under_root(String(dirs[0]).to_upper())).is_true()
+	assert_bool(AutochartPaths.same_path(String(dirs[0]).to_upper(), dirs[0])).is_true()
+	AutochartWorkCache.prune(_wr(), 3, String(dirs[0]).to_upper().replace("/", "\\"))
+	assert_bool(_exists(dirs[0])).is_true()
+	assert_bool(_exists(dirs[1])).is_false()
+	var half := _work("w_half", now, 100, false)
+	assert_bool(AutochartWorkCache.remove_unfinished(half.to_upper())).is_true()
+	assert_bool(_exists(half)).is_false()

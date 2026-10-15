@@ -55,7 +55,7 @@ static func prune(work_root: String, keep: int = KEEP, protect: String = "") -> 
 		if not n.begins_with("w_"):
 			continue
 		var p := wr.path_join(n)
-		if p == prot:
+		if prot != "" and AutochartPaths.same_path(p, prot):
 			continue
 		if is_analyzed(p):
 			finished.append([_last_used(p), p])

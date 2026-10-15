@@ -68,10 +68,21 @@ static func marker_path(v: int = PackSpec.VERSION) -> String:
 
 
 ## True when path is root() itself or inside it (defence in depth for recursive deletes).
+## Comparisons are case-insensitive on Windows (WR-05): the Python side resolves its paths, so
+## the casing it reports can differ from the LOCALAPPDATA / user:// strings built here.
 static func is_under_root(path: String) -> bool:
-	var r := root()
-	var p := norm(path)
-	return p.begins_with(r + "/")
+	return path_key(path).begins_with(path_key(root()) + "/")
+
+
+## Comparison key of a path: norm(), lowercased on Windows (case-insensitive file system).
+static func path_key(p: String) -> String:
+	var n := norm(p)
+	return n.to_lower() if OS.get_name() == "Windows" else n
+
+
+## True when a and b name the same path (case-insensitive on Windows).
+static func same_path(a: String, b: String) -> bool:
+	return path_key(a) == path_key(b)
 
 
 ## Recursive delete that refuses anything outside root() (defence in depth) and never follows a
