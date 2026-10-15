@@ -18,6 +18,7 @@ const NOT_AVAILABLE_TEXT := "The Autocharter pack is not available yet. Check fo
 const NETWORK_TEXT := "Download failed. Check your connection and try again."
 const HASH_TEXT := "The download was damaged. Please try again."
 const DISK_TEXT := "Not enough free disk space. The Autocharter pack needs about 2 GB."
+const DISK_TEXT_N := "Not enough free disk space. The Autocharter pack needs about %.1f GB."
 const EXTRACT_TEXT := "The Autocharter pack could not be installed. Please try again."
 const BUSY_TEXT := "The Autocharter pack is already being installed."
 const DISK_UNKNOWN_TEXT := "Could not check free disk space. Installing anyway."
@@ -151,6 +152,25 @@ func parts_to_fetch() -> Array:
 	return out
 
 
+## Peak disk use of installing `todo` (IN-02): the downloaded zips, the staging tree and,
+## while the old version is still in place, the tree it replaces. A partial update scales the
+## unpacked size by its share of the download. Never below REQUIRED_FREE_BYTES for a full
+## install.
+func required_free_bytes(todo: Array, full: bool) -> int:
+	var dl := 0
+	for p in todo:
+		dl += int(p.get("size", 0))
+	var all := 0
+	for p in _parts():
+		all += int(p.get("size", 0))
+	var unpacked := int(spec.get("unpacked_bytes", 0))
+	if not full and all > 0:
+		unpacked = int(float(unpacked) * float(dl) / float(all))
+	var old := unpacked if DirAccess.dir_exists_absolute(AutochartPaths.version_dir(_version())) else 0
+	var need := dl + unpacked + old
+	return maxi(need, REQUIRED_FREE_BYTES) if full else need
+
+
 # ---- control ----
 
 func _busy() -> bool:
@@ -175,14 +195,15 @@ func start() -> void:
 		installed.emit()
 		return
 	_full = _todo.size() == _parts().size() or _read_marker().is_empty()
-	if _full:
-		var free := _free_space(AutochartPaths.root())
-		if free == 0:
-			push_warning("PackInstaller: free disk space unknown")
-			progress_changed.emit(0, 0, DISK_UNKNOWN_TEXT)
-		elif free < REQUIRED_FREE_BYTES:
-			_fail("disk", DISK_TEXT)
-			return
+	# IN-02: every run is checked (partial updates too), against the peak it really needs.
+	var need := required_free_bytes(_todo, _full)
+	var free := _free_space(AutochartPaths.root())
+	if free == 0:
+		push_warning("PackInstaller: free disk space unknown")
+		progress_changed.emit(0, 0, DISK_UNKNOWN_TEXT)
+	elif free < need:
+		_fail("disk", DISK_TEXT if need <= REQUIRED_FREE_BYTES else DISK_TEXT_N % (need / 1e9))
+		return
 	_index = 0
 	_paths = []
 	_dl_done_bytes = 0

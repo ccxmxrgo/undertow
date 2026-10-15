@@ -195,6 +195,35 @@ func test_disk_too_small() -> void:
 	_assert_nothing_installed()
 
 
+## IN-02: a reinstall over an existing pack needs the zips + staging + the old tree, and a
+## partial update is checked too (scaled by its share of the download).
+func test_required_free_bytes_counts_the_old_tree_and_partial_updates() -> void:
+	var parts := _three()
+	var spec := _spec(parts)
+	spec["unpacked_bytes"] = 2 * GB
+	_inst.spec = spec
+	var dl := 0
+	for p in parts:
+		dl += int(p["size"])
+	assert_int(_inst.required_free_bytes(parts, true)).is_equal(dl + 2 * GB)
+	await _install_three()
+	_inst.spec = spec
+	assert_int(_inst.required_free_bytes(parts, true)).is_equal(dl + 4 * GB)
+	var app_only := [parts[1]]
+	var share := int(float(2 * GB) * float(parts[1]["size"]) / float(dl))
+	assert_int(_inst.required_free_bytes(app_only, false)).is_equal(int(parts[1]["size"]) + 2 * share)
+	# A partial update with too little space now fails instead of skipping the check.
+	var parts2 := _three("v2")
+	var spec2 := _spec(parts2)
+	spec2["unpacked_bytes"] = 2 * GB
+	_inst.spec = spec2
+	_inst.free_space = func(_p: String) -> int: return 1024
+	_failed.clear()
+	_inst.start()
+	await _wait_end()
+	assert_str(_failed[0][0]).is_equal("disk")
+
+
 func test_disk_unknown_warns_and_continues() -> void:
 	_inst.free_space = func(_p: String) -> int: return 0
 	_inst.spec = _spec(_three())
