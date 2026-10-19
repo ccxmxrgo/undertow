@@ -144,7 +144,9 @@ func _on_stray(_lane: int) -> void:
 
 
 func _on_ghost_hit(_lane: int, _payload_id: int) -> void:
-	ghost_hits += 1  # hull damage via connect_versus; never the meter (D-12)
+	ghost_hits += 1  # hull damage via connect_versus
+	# The meter only if cfg.ghost_resets_meter (default off, D-12 / CONTEXT question 4). IN-01.
+	sim.on_ghost_hit(seat, now)
 
 
 func _on_hull_changed(_v: float, _d: float) -> void:

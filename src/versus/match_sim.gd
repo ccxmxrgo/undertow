@@ -233,10 +233,23 @@ func on_extra_judged(seat: int, judgment: int, t: float) -> void:
 			p.meter.on_judgment(InputJudge.Judgment.MISS)
 
 
-## A press with no note (spec req 1: strays never change the meter). Kept as the seam for the
-## ghost_resets_meter option (off by default; Ghost Note hits are not strays, D-12).
+## A press with no note (spec req 1: strays never change the meter). Ghost Note hits are not
+## strays (D-12); they arrive through on_ghost_hit.
 func on_stray(_seat: int, t: float) -> void:
 	_begin(t)
+
+
+## A Ghost Note was hit (hull damage is the rig's VersusHull). The meter is reset only when the
+## ghost_resets_meter tunable is on (CONTEXT open question 4; default off = the ghost hit does
+## not reset the meter). IN-01: the flag used to be read nowhere.
+func on_ghost_hit(seat: int, t: float) -> void:
+	_begin(t)
+	if not cfg.ghost_resets_meter:
+		return
+	var p: PlayerState = _by_seat.get(seat)
+	if p == null or not p.alive or p.is_drone:
+		return
+	p.meter.on_judgment(InputJudge.Judgment.MISS)
 
 
 ## The owner's current hull/score values. t (optional) stamps any BOUNTY_MOVED; without it the

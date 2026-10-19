@@ -236,3 +236,26 @@ func test_reflected_crossed_wires_restores_input_one_beat_after_end() -> void:
 		"immune_until": 14.0}))
 	assert_int(rig.stack.input_map(12.25)[pair.x]).is_equal(pair.y)
 	assert_int(rig.stack.input_map(12.5)[pair.x]).is_equal(pair.x)
+
+
+func _ghost_press(resets: bool) -> Array:
+	var rig := _rig()
+	_sim.cfg.ghost_resets_meter = resets
+	_ch.send(_landed(0, 5, Reward.Id.GHOST_NOTES, 10.0, 18.0))
+	var g: Dictionary = rig.judge.overlay_notes()[0]
+	_players[0].meter.progress = 10
+	rig.press(int(g["lane"]), float(g["time"]))
+	return [rig.ghost_hits, _players[0].meter.progress]
+
+
+## IN-01: ghost_resets_meter is read. Default (CONTEXT): a Ghost Note hit never resets the meter.
+func test_ghost_hit_keeps_meter_by_default() -> void:
+	var r := _ghost_press(false)
+	assert_int(r[0]).is_equal(1)
+	assert_int(r[1]).is_greater_equal(10)
+
+
+func test_ghost_hit_resets_meter_when_tunable_on() -> void:
+	var r := _ghost_press(true)
+	assert_int(r[0]).is_equal(1)
+	assert_int(r[1]).is_less_equal(1)
