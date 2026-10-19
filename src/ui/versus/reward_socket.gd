@@ -56,6 +56,7 @@ var _anim: Anim = Anim.NONE
 var _anim_t: float = 0.0
 var _anim_reward: int = -1
 var _breath_t: float = 0.0
+var _breath_q: int = -1  # last drawn breathing alpha step (WR-10)
 var _arc_from: float = 0.0
 var _arc_to: float = 0.0
 var _arc_t: float = 1.0
@@ -221,7 +222,14 @@ func step(dt: float) -> void:
 	# Redraw only while something animates (WR-10): breathing held arc, a pop / launch / lost
 	# animation, or the arc easing to its target (checked before advancing so the last frame
 	# of an animation still redraws). Events redraw through _refresh().
-	var animating := breathing() or _anim != Anim.NONE or _arc_t < 1.0
+	var animating := _anim != Anim.NONE or _arc_t < 1.0
+	if breathing():
+		# The 1.6 s breath moves alpha by < 0.4 / s: redraw only when it changes by 1/64
+		# (about 24 redraws / s instead of every frame; the step is invisible).
+		var q := int(full_alpha() * 64.0)
+		if q != _breath_q:
+			_breath_q = q
+			animating = true
 	if _anim != Anim.NONE:
 		_anim_t += dt
 		if _anim_t >= _anim_len():
