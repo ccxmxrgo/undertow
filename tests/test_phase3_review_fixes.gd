@@ -139,3 +139,11 @@ func test_periscope_draws_in_tree() -> void:
 	await await_idle_frame()
 	assert_float(p.threat_fraction()).is_equal_approx(0.5, 1e-6)
 	p.queue_free()
+
+
+# ---- WR-07 (V-1): the collision headline fits the alert's headline box ------------------------
+
+func test_collision_headline_fits_without_truncation() -> void:
+	var w := Palette.display_font().get_string_size("BOTH DESTROYED", HORIZONTAL_ALIGNMENT_LEFT, -1,
+		Palette.SIZE_HEADING).x
+	assert_float(w).is_less_equal(IncomingAlert.HEADLINE_MAX)

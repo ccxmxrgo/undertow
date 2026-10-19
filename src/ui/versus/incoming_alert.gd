@@ -79,6 +79,9 @@ var _result_left: float = 0.0
 var _burst_t: float = -1.0
 var _reduce: bool = false
 var _low: bool = false
+## Truncated-text cache (WR-07): text|max -> fitted text, so _draw never re-measures glyphs
+## per frame. Bounded: cleared when it grows past a few entries.
+var _fit_cache: Dictionary = {}
 
 
 func _ready() -> void:
@@ -292,7 +295,7 @@ func _refresh_texts() -> void:
 			_caption = "HEAD-ON COLLISION"
 			_caption_col = Palette.TEXT_HI
 			_hint = ""
-			_headline = "BOTH TORPEDOES DESTROYED"
+			_headline = "BOTH DESTROYED"  # fits HEADLINE_MAX at Heading 40 (WR-07, V-1)
 	queue_redraw()
 
 
@@ -532,17 +535,29 @@ func _draw_texts(off: Vector2, caption: String, caption_col: Color, hint: String
 	var f := Palette.font()
 	var fs := Palette.SIZE_LABEL
 	if caption != "":
-		var c := ProgressTrack.truncate_px(caption, f, fs, CAPTION_MAX)
+		var c := _fit(caption, f, fs, CAPTION_MAX)
 		draw_string(f, Vector2(CAPTION_X, CAPTION_BASE_Y) + off, c, HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
 			Palette.alpha(caption_col, caption_col.a * a))
 	if hint != "":
-		var h := ProgressTrack.truncate_px(hint, f, fs, HINT_MAX)
+		var h := _fit(hint, f, fs, HINT_MAX)
 		var w := f.get_string_size(h, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		draw_string(f, Vector2(HINT_RIGHT_X - w, CAPTION_BASE_Y) + off, h, HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
 			Palette.alpha(hint_col, hint_col.a * a))
 	if headline != "":
 		var df := Palette.display_font()
 		var hs := Palette.SIZE_HEADING
-		var hl := ProgressTrack.truncate_px(headline, df, hs, HEADLINE_MAX)
+		var hl := _fit(headline, df, hs, HEADLINE_MAX)
 		draw_string(df, Vector2(CAPTION_X, HEADLINE_BASE_Y) + off, hl, HORIZONTAL_ALIGNMENT_LEFT, -1, hs,
 			Palette.alpha(Palette.TEXT_HI, a))
+
+
+func _fit(text: String, font: Font, fs: int, max_w: float) -> String:
+	var key := "%s|%d|%d" % [text, fs, int(max_w)]
+	var hit = _fit_cache.get(key)
+	if hit != null:
+		return hit
+	if _fit_cache.size() > 32:
+		_fit_cache.clear()
+	var out := ProgressTrack.truncate_px(text, font, fs, max_w)
+	_fit_cache[key] = out
+	return out

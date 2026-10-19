@@ -165,7 +165,7 @@ func test_alert_result_states_hold_then_fade() -> void:
 	assert_str(a.headline_text()).is_equal("SONAR JAM")
 	ch.send(GameEvent.make(GameEvent.COLLISION, 22.0, {"a": 0, "b": 2, "ids": [3, 4], "reward_a": 0, "reward_b": 1}))
 	assert_str(a.caption_text()).is_equal("HEAD-ON COLLISION")
-	assert_str(a.headline_text()).is_equal("BOTH TORPEDOES DESTROYED")
+	assert_str(a.headline_text()).is_equal("BOTH DESTROYED")
 
 
 func test_alert_ignores_events_not_involving_local_seat() -> void:

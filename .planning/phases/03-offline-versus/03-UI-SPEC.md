@@ -337,7 +337,7 @@ Overclock and Decoy on rivals are not shown (hidden information, default). Balla
 | ACTIVE (reflect failed or no warheads) | edge `WARNING_RED` 60% | same | "ACTIVE · {FROM}" | "{n} BARS LEFT" `TEXT_MID` (n rounds up) | HUD name |
 | REFLECTED (you sent it back) | default edge `SONAR` | ring flash `SONAR_PALE` | "REFLECTED" `SONAR_PALE` | none | "BACK TO {FROM}" |
 | ABSORBED (your Decoy) | default edge | none | "DECOY ABSORBED" `SONAR` | none | HUD name |
-| COLLISION (your shot and theirs met) | default edge | burst (6.2) | "HEAD-ON COLLISION" `TEXT_HI` | none | "BOTH TORPEDOES DESTROYED" |
+| COLLISION (your shot and theirs met) | default edge | burst (6.2) | "HEAD-ON COLLISION" `TEXT_HI` | none | "BOTH DESTROYED" |
 | ENDED | fades out | | | | |
 
 Timing: INCOMING appears at the launch beat (fade + slide down 16 px over `DUR_FAST`; Reduce motion: fade). It switches to ACTIVE at arrival with a 120 ms cross-fade. REFLECTED / ABSORBED / COLLISION hold 1200 ms, then fade over 300 ms. ACTIVE fades out at the payload end.
@@ -696,7 +696,7 @@ Performance: Phase 3 adds at most 1 shared ring/flash pool per board and no new 
 | Target readout | "AUTO TARGET", "TARGET", "ATTACKERS", "DEBRIS TARGET", "NONE", "DRONE", "SHIELDED", "NO TARGET", "BOUNTY +{n}" |
 | Chips | "1ST OF 4" (ordinals 1ST/2ND/3RD/4TH, "OF {n}"), "BOUNTY ON YOU", "DECOY ARMED {n}", "OVERCLOCK {n}", "HULL +25", "IMMUNE", "SOLO DIVE" |
 | Judgment additions | "GHOST" |
-| Alert slot | "INCOMING · {FROM}", "REFLECTED BY {FROM}", "WRECK DEBRIS · {FROM}", "ACTIVE · {FROM}", "HIT RINGED NOTES PERFECT", "CANNOT BE REFLECTED", "DECOY WILL ABSORB", "REFLECT {k}/{n}", "{n} BARS LEFT" (1 -> "1 BAR LEFT"), "REFLECTED", "BACK TO {FROM}", "DECOY ABSORBED", "HEAD-ON COLLISION", "BOTH TORPEDOES DESTROYED" |
+| Alert slot | "INCOMING · {FROM}", "REFLECTED BY {FROM}", "WRECK DEBRIS · {FROM}", "ACTIVE · {FROM}", "HIT RINGED NOTES PERFECT", "CANNOT BE REFLECTED", "DECOY WILL ABSORB", "REFLECT {k}/{n}", "{n} BARS LEFT" (1 -> "1 BAR LEFT"), "REFLECTED", "BACK TO {FROM}", "DECOY ABSORBED", "HEAD-ON COLLISION", "BOTH DESTROYED" |
 | Event banner | "SOLO DUEL", "{min}% PERFECT WINS A REWARD", "{n} NOTES", "YOU {p}%", "YOU --%", "LEADER {NAME} {q}%", "WRECKS SIT THIS ONE OUT", "YOU WIN THE SOLO", "{NAME} WINS THE SOLO", "NO WINNER", "BEST {q}% · NEEDED {min}%", "TIED", "{p}% PERFECT", "LAST HULL STANDING", "YOU WIN", "{NAME} WINS", "SONG PLAYS ON", "HULL BREACHED", "IMPLOSION", "YOU ARE A WRECK" |
 | Wreck caption | "WRECK · PERFECTS CHARGE DEBRIS" |
 | Periscope | callsign, "1ST".."4TH", "{n} M", "SOLO {p}%", "SOLO --%", "SITTING OUT", "WRECK", "TRAINING", "NEXT IN {n} BARS" ("NEXT IN 1 BAR") |
