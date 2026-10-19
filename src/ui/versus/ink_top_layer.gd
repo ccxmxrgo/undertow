@@ -17,6 +17,7 @@ const PRESS_FILL := 0.40
 var highway: Highway
 var _ring := PackedVector2Array()
 var _dbg := {"drawn": false, "ticks": 0, "outlines": 0, "fills": 0}
+var _ink_shown := false
 
 
 func _init() -> void:
@@ -44,12 +45,21 @@ func debug_state() -> Dictionary:
 
 
 func _process(_delta: float) -> void:
-	if highway != null:
+	# Redraw only while ink is visible, plus one frame to clear it (WR-10).
+	if highway == null:
+		return
+	var on := ink_alpha() > 0.0
+	if on or _ink_shown:
 		queue_redraw()
+	_ink_shown = on
 
 
 func _draw() -> void:
-	_dbg = {"drawn": false, "ticks": 0, "outlines": 0, "fills": 0}
+	# Reset in place: no Dictionary allocation per draw (WR-10).
+	_dbg["drawn"] = false
+	_dbg["ticks"] = 0
+	_dbg["outlines"] = 0
+	_dbg["fills"] = 0
 	var a := ink_alpha()
 	if a <= 0.0:
 		return

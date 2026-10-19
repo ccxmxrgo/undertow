@@ -273,7 +273,11 @@ func step(dt: float) -> void:
 	if _lines.is_empty():
 		return
 	var removed := false
+	var moving := false
 	for l in _lines:
+		# Checked before advancing so the frame an animation completes still redraws.
+		if float(l["enter"]) < 1.0 or float(l["move"]) < 1.0 or float(l["age"]) + dt > life_s - FADE_SEC:
+			moving = true
 		l["age"] = float(l["age"]) + dt
 		if float(l["enter"]) < 1.0:
 			l["enter"] = minf(float(l["enter"]) + dt / Palette.DUR_BASE, 1.0)
@@ -288,7 +292,9 @@ func step(dt: float) -> void:
 	if removed:
 		_lines = _lines.filter(func(l: Dictionary) -> bool: return float(l["age"]) < life_s)
 		_reslot()
-	queue_redraw()
+	# Redraw only while a line slides, glides or fades (WR-10); settled lines are static.
+	if moving or removed:
+		queue_redraw()
 
 
 func _process(delta: float) -> void:
@@ -364,13 +370,12 @@ func _draw() -> void:
 			draw_rect(Rect2(x0, y + Palette.CUT_SM, BAR_W, LINE_H - Palette.CUT_SM), Palette.alpha(bc, a))
 		var left := x0 + (PAD_L_BAR if bar else PAD_L)
 		draw_set_transform(Vector2(left, 0.0), 0.0, Vector2(float(l.get("squeeze", 1.0)), 1.0))
-		var x := 0.0
 		var cy := y + LINE_H * 0.5
 		var segs: Array = l["segments"]
+		var xs: PackedFloat32Array = _seg_xs(l)
 		for i in segs.size():
 			var s: Dictionary = segs[i]
-			if i > 0:
-				x += _gap(segs[i - 1], s)
+			var x := xs[i]
 			var c: Color = s["color"]
 			c = Palette.alpha(c, c.a * a)
 			if s["kind"] == "glyph":
@@ -378,5 +383,23 @@ func _draw() -> void:
 			else:
 				var font: Font = name_font() if s["role"] == "name" or s["role"] == "wreck" else f
 				draw_string(font, Vector2(x, cy + base_off), String(s["text"]), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, c)
-			x += _seg_width(s)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## Segment x offsets of a line, measured once and stored on the line (WR-10): no text shaping
+## lookups per frame.
+static func _seg_xs(l: Dictionary) -> PackedFloat32Array:
+	var xs = l.get("xs")
+	if xs is PackedFloat32Array:
+		return xs
+	var segs: Array = l["segments"]
+	var out := PackedFloat32Array()
+	out.resize(segs.size())
+	var x := 0.0
+	for i in segs.size():
+		if i > 0:
+			x += _gap(segs[i - 1], segs[i])
+		out[i] = x
+		x += _seg_width(segs[i])
+	l["xs"] = out
+	return out

@@ -218,6 +218,10 @@ func step(dt: float) -> void:
 	if dt <= 0.0:
 		return
 	_breath_t = fmod(_breath_t + dt, BREATH_SEC)
+	# Redraw only while something animates (WR-10): breathing held arc, a pop / launch / lost
+	# animation, or the arc easing to its target (checked before advancing so the last frame
+	# of an animation still redraws). Events redraw through _refresh().
+	var animating := breathing() or _anim != Anim.NONE or _arc_t < 1.0
 	if _anim != Anim.NONE:
 		_anim_t += dt
 		if _anim_t >= _anim_len():
@@ -225,7 +229,8 @@ func step(dt: float) -> void:
 			_anim_t = 0.0
 	if _arc_t < 1.0:
 		_arc_t = minf(_arc_t + dt / Palette.DUR_BASE, 1.0)
-	queue_redraw()
+	if animating:
+		queue_redraw()
 
 
 func _process(delta: float) -> void:

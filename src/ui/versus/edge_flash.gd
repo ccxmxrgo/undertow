@@ -31,6 +31,7 @@ var _local_seat: int = 0
 ## Accepted pulses: {kind, t, end} (launch: t = launch, end = arrival; arrival: t = arrival).
 var _pulses: Array[Dictionary] = []
 var _t: float = 0.0
+var _shown: bool = false  # last draw had a visible flash (one final redraw clears it)
 var _tex_left: GradientTexture2D
 var _tex_right: GradientTexture2D
 
@@ -146,7 +147,11 @@ func observe(song_time: float) -> void:
 	if not is_finite(song_time):
 		return
 	_t = song_time
-	queue_redraw()
+	# Redraw only while a flash is visible, plus one frame to clear it (WR-10).
+	var on := current_alpha() > 0.0
+	if on or _shown:
+		queue_redraw()
+	_shown = on
 
 
 func current_alpha() -> float:

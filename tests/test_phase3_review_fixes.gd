@@ -159,3 +159,35 @@ func test_alert_and_banner_style_boxes_are_cached() -> void:
 	var fit: Array = b._fit("SOLO DUEL", Palette.font(), Palette.SIZE_LABEL, 0.0)
 	assert_str(fit[0]).is_equal("SOLO DUEL")
 	assert_float(fit[1]).is_greater(0.0)
+
+
+# ---- WR-10 (perf): idle views stop redrawing; killfeed measures once -------------------------
+
+func test_killfeed_segment_offsets_measured_once_and_match_content_width() -> void:
+	var k: Killfeed = auto_free(Killfeed.new())
+	var names := PackedStringArray(["YOU", "ORCA", "MAKO"])
+	k.bind(LoopbackChannel.new(), 0, names, VersusConfig.new())
+	var line := k.line_for(GameEvent.make(GameEvent.LANDED, 1.0, {"id": 1, "from": 1, "to": 2,
+		"reward": Reward.Id.INK_CLOUD, "reflected": false, "debris": false}))
+	assert_bool(line.is_empty()).is_false()
+	var xs := Killfeed._seg_xs(line)
+	assert_bool(line.has("xs")).is_true()
+	assert_object(Killfeed._seg_xs(line)).is_equal(xs)
+	var segs: Array = line["segments"]
+	assert_int(xs.size()).is_equal(segs.size())
+	var last: Dictionary = segs[segs.size() - 1]
+	assert_float(xs[xs.size() - 1] + Killfeed._seg_width(last)).is_equal_approx(Killfeed.content_width(segs), 1e-3)
+
+
+func test_reward_socket_idle_does_not_animate() -> void:
+	var s: RewardSocket = auto_free(RewardSocket.new())
+	assert_bool(s.breathing()).is_false()
+	assert_int(s._anim).is_equal(RewardSocket.Anim.NONE)
+	assert_float(s._arc_t).is_equal(1.0)
+
+
+func test_edge_flash_idle_clears_shown_flag() -> void:
+	var ef: EdgeFlash = auto_free(EdgeFlash.new())
+	ef.observe(1.0)
+	assert_bool(ef._shown).is_false()
+	assert_float(ef.current_alpha()).is_equal(0.0)

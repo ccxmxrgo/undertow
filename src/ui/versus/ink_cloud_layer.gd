@@ -24,6 +24,7 @@ var _poly := PackedVector2Array()
 var _dbg_band := false
 var _dbg_feathers := 0
 var _dbg_edge := false
+var _ink_shown := false
 
 
 func _init() -> void:
@@ -87,8 +88,13 @@ func debug_state() -> Dictionary:
 
 
 func _process(_delta: float) -> void:
-	if highway != null:
+	# Redraw only while ink is visible, plus one frame to clear it (WR-10).
+	if highway == null:
+		return
+	var on := band_alpha() > 0.0
+	if on or _ink_shown:
 		queue_redraw()
+	_ink_shown = on
 
 
 func _draw() -> void:

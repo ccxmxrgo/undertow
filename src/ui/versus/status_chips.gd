@@ -24,6 +24,8 @@ var _overclock_until: float = -1.0
 var _ballast_until: float = -1.0
 var _immune_until: float = -1.0
 var _now: float = 0.0
+## Last bar count shown per countdown chip (WR-10): the chip text is rebuilt only on change.
+var _last_bars := {}
 
 
 func bind(channel: EventChannel, seat: int, hud: Hud, cfg: VersusConfig, chart: ChartData,
@@ -53,6 +55,7 @@ static func ordinal(place: int) -> String:
 
 
 func on_event(e: Dictionary) -> void:
+	_last_bars.clear()  # any event may reset a chip: re-check the countdowns once
 	if _hud == null or not is_instance_valid(_hud):
 		return
 	var t := float(e.get("t", _now))
@@ -125,7 +128,11 @@ func update(song_time: float) -> void:
 
 
 func _set_bars_chip(key: String, fmt: String, glyph: String, until: float, t: float) -> void:
-	var text := fmt % bars_left(t, until)
+	var n := bars_left(t, until)
+	if int(_last_bars.get(key, -1)) == n:
+		return  # unchanged: no string format, no chip_rects() text measuring per frame (WR-10)
+	_last_bars[key] = n
+	var text := fmt % n
 	if _hud.chip_text(key) != text or not _hud.chip_rects().has(key):
 		_hud.set_chip(key, text, "info", glyph, true)
 
