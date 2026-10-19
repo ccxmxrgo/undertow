@@ -23,6 +23,7 @@ extends Control
 enum Kind { NONE, DUEL_ANNOUNCE, DUEL_LIVE, DUEL_RESULT, LAST_STANDING, IMPLOSION }
 enum Phase { IDLE, IN, HOLD, OUT }
 
+const TEXTS_REFRESH_S := 0.1  # live duel texts re-read at 10 Hz (WR-09)
 const RECT := Rect2(640.0, 200.0, 640.0, 72.0)
 const CAPTION_BASE_Y := 24.0  # 224
 const HEADLINE_BASE_Y := 62.0  # 262
@@ -73,6 +74,9 @@ var _reduce: bool = false
 var _low: bool = false
 var _panel_node: Control
 var _vignette_tex: GradientTexture2D
+var _texts_next: float = -INF
+var _style_cache: Dictionary = {}
+var _fit_cache: Dictionary = {}
 
 
 func _ready() -> void:
@@ -360,8 +364,12 @@ func observe(song_time: float) -> void:
 		if not _duel.is_empty() and _t > float(_duel.get("end", 0.0)) + DUEL_STALE_SEC:
 			if _phase != Phase.OUT:
 				_set_phase(Phase.OUT)
-		_refresh_texts()
-	if _panel_node != null:
+		# Live percentages are re-read at 10 Hz, not every frame (WR-09); only the DUEL_LIVE
+		# progress line needs a per-frame redraw.
+		if _t >= _texts_next or _t < _texts_next - 1.0:
+			_texts_next = _t + TEXTS_REFRESH_S
+			_refresh_texts()
+	if _panel_node != null and _phase != Phase.IDLE and kind == Kind.DUEL_LIVE:
 		_panel_node.queue_redraw()
 
 
@@ -379,6 +387,7 @@ func step(dt: float) -> void:
 			_shake_t = -1.0
 	if _phase == Phase.IDLE:
 		return
+	var phase0 := _phase
 	if _xfade_left > 0.0:
 		_xfade_left = maxf(_xfade_left - dt, 0.0)
 	_phase_t += dt
@@ -409,21 +418,26 @@ func step(dt: float) -> void:
 					if not nxt.is_empty():
 						_show(nxt)  # the next banner starts fresh; overshoot is dropped
 						return
-	_apply_visual()
+	_apply_visual(_xfade_left > 0.0 or _phase != phase0 or int(_cur.get("kind", Kind.NONE)) == Kind.DUEL_LIVE)
 
 
 func _process(delta: float) -> void:
 	step(delta)
 
 
-func _apply_visual() -> void:
+## Alpha / slide / shake are node properties; the panel is only re-recorded when its content
+## changes (cross-fade, phase change, live duel line) and the vignette layer only while it
+## runs (WR-09 / WR-10).
+func _apply_visual(redraw_panel: bool = true) -> void:
 	if _panel_node != null:
 		_panel_node.visible = _phase != Phase.IDLE
 		_panel_node.modulate.a = alpha()
 		_panel_node.position = RECT.position + Vector2(shake_offset(), slide_offset())
-		_panel_node.queue_redraw()
+		if redraw_panel:
+			_panel_node.queue_redraw()
 	_sync_suppress()
-	queue_redraw()
+	if _vignette_t >= 0.0:
+		queue_redraw()
 
 
 func _sync_suppress() -> void:
@@ -573,15 +587,37 @@ func _draw() -> void:
 	draw_texture_rect(_vignette_tex, Rect2(Vector2.ZERO, sz), false, Palette.alpha(Palette.WHITE, va))
 
 
+## Cached per (danger, gold win, Low effects) (WR-09): no StyleBoxFlat per draw.
 func _panel_style() -> StyleBoxFlat:
 	var kind: int = _cur.get("kind", Kind.NONE)
-	var sb := UiKit.style_panel("danger" if kind == Kind.IMPLOSION else "default", _low)
+	var danger := kind == Kind.IMPLOSION
+	var gold := _gold_win()
+	var key := int(danger) * 4 + int(gold) * 2 + int(_low)
+	var cached = _style_cache.get(key)
+	if cached != null:
+		return cached
+	var sb := UiKit.style_panel("danger" if danger else "default", _low)
 	sb.bg_color = Color(Palette.ABYSS_700, Palette.HUD_GLASS_ALPHA)
 	sb.corner_radius_top_left = Palette.CUT_SM
 	sb.corner_radius_bottom_right = Palette.CUT_SM
-	if _gold_win():
+	if gold:
 		sb.shadow_color = Palette.alpha(Palette.REWARD_GOLD, Palette.PANEL_GLOW_ALPHA)
+	_style_cache[key] = sb
 	return sb
+
+
+## Fitted text and its width, cached (WR-09): no glyph measuring per frame.
+func _fit(text: String, font: Font, fs: int, max_w: float) -> Array:
+	var key := "%s|%d|%d" % [text, fs, int(max_w)]
+	var hit = _fit_cache.get(key)
+	if hit != null:
+		return hit
+	if _fit_cache.size() > 48:
+		_fit_cache.clear()
+	var t := text if max_w <= 0.0 else ProgressTrack.truncate_px(text, font, fs, max_w)
+	var out := [t, font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x]
+	_fit_cache[key] = out
+	return out
 
 
 func _gold_win() -> bool:
@@ -627,18 +663,20 @@ func _draw_texts(ci: CanvasItem, caption: String, caption_col: Color, headline: 
 	var fs := Palette.SIZE_LABEL
 	var cx := RECT.size.x * 0.5
 	if caption != "":
-		var cw := f.get_string_size(caption, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var cw: float = _fit(caption, f, fs, 0.0)[1]
 		ci.draw_string(f, Vector2(cx - cw * 0.5, CAPTION_BASE_Y), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
 			Palette.alpha(caption_col, caption_col.a * a))
 	if right != "":
-		var rt := ProgressTrack.truncate_px(right, f, fs, RIGHT_MAX)
-		var rw := f.get_string_size(rt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var rf := _fit(right, f, fs, RIGHT_MAX)
+		var rt: String = rf[0]
+		var rw: float = rf[1]
 		ci.draw_string(f, Vector2(RIGHT_X - rw, CAPTION_BASE_Y), rt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
 			Palette.alpha(right_col, right_col.a * a))
 	if headline != "":
 		var df := Palette.display_font()
 		var hs := Palette.SIZE_HEADING
-		var hl := ProgressTrack.truncate_px(headline, df, hs, RECT.size.x - 2.0 * UiKit.PANEL_PAD)
-		var hw := df.get_string_size(hl, HORIZONTAL_ALIGNMENT_LEFT, -1, hs).x
+		var hf := _fit(headline, df, hs, RECT.size.x - 2.0 * UiKit.PANEL_PAD)
+		var hl: String = hf[0]
+		var hw: float = hf[1]
 		ci.draw_string(df, Vector2(cx - hw * 0.5, HEADLINE_BASE_Y), hl, HORIZONTAL_ALIGNMENT_LEFT, -1, hs,
 			Palette.alpha(headline_col, headline_col.a * a))

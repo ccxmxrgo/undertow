@@ -147,3 +147,15 @@ func test_collision_headline_fits_without_truncation() -> void:
 	var w := Palette.display_font().get_string_size("BOTH DESTROYED", HORIZONTAL_ALIGNMENT_LEFT, -1,
 		Palette.SIZE_HEADING).x
 	assert_float(w).is_less_equal(IncomingAlert.HEADLINE_MAX)
+
+
+# ---- WR-09 (perf): alert and banner reuse their style boxes -------------------------------------
+
+func test_alert_and_banner_style_boxes_are_cached() -> void:
+	var a: IncomingAlert = auto_free(IncomingAlert.new())
+	assert_object(a._panel_style()).is_same(a._panel_style())
+	var b: EventBanner = auto_free(EventBanner.new())
+	assert_object(b._panel_style()).is_same(b._panel_style())
+	var fit: Array = b._fit("SOLO DUEL", Palette.font(), Palette.SIZE_LABEL, 0.0)
+	assert_str(fit[0]).is_equal("SOLO DUEL")
+	assert_float(fit[1]).is_greater(0.0)

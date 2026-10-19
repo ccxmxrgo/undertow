@@ -82,6 +82,8 @@ var _low: bool = false
 ## Truncated-text cache (WR-07): text|max -> fitted text, so _draw never re-measures glyphs
 ## per frame. Bounded: cleared when it grows past a few entries.
 var _fit_cache: Dictionary = {}
+var _style_cache: Dictionary = {}
+var _last_bars: int = -1
 
 
 func _ready() -> void:
@@ -242,6 +244,7 @@ func _set_state(s: State) -> void:
 		_xfade_left = 0.0
 		_in_t = 0.0
 	_state = s
+	_last_bars = -1
 	_refresh_texts()
 	_apply_visual()
 
@@ -321,14 +324,18 @@ func observe(song_time: float) -> void:
 	if not is_finite(song_time):
 		return
 	_t = song_time
+	if _state == State.HIDDEN:
+		return  # nothing drawn: no per-frame redraw while idle (WR-09)
 	if _state == State.ACTIVE:
 		if _t > _end_t + 0.5:
 			_end()  # safety net if PAYLOAD_END never arrives
 			return
-		var before := _hint
-		_refresh_texts()
-		if before != _hint:
-			queue_redraw()
+		# Texts only change with the whole-bar count (events refresh the rest), WR-09.
+		var n := bars_left()
+		if n != _last_bars:
+			_last_bars = n
+			_refresh_texts()
+	# The countdown ring / duration line drain with song time.
 	queue_redraw()
 
 
@@ -463,18 +470,29 @@ func keepout_shapes() -> Array[PackedVector2Array]:
 
 # ---- Drawing -----------------------------------------------------------------------------
 
+## Built once per (state edge, Low effects) and reused (WR-09): no StyleBoxFlat per draw.
 func _panel_style() -> StyleBoxFlat:
-	var edge := Palette.alpha(Palette.SONAR, 0.45)
+	var kind := 0
 	match _state:
 		State.INCOMING:
-			edge = Palette.WARNING_RED
+			kind = 1
 		State.ACTIVE:
-			edge = Palette.alpha(Palette.WARNING_RED, ACTIVE_EDGE_ALPHA)
+			kind = 2
+	var key := kind * 2 + (1 if _low else 0)
+	var cached = _style_cache.get(key)
+	if cached != null:
+		return cached
+	var edge := Palette.alpha(Palette.SONAR, 0.45)
+	if kind == 1:
+		edge = Palette.WARNING_RED
+	elif kind == 2:
+		edge = Palette.alpha(Palette.WARNING_RED, ACTIVE_EDGE_ALPHA)
 	var sb := UiKit.chamfer_box(Color(Palette.ABYSS_700, Palette.HUD_GLASS_ALPHA), edge, Palette.EDGE, Palette.CUT_SM)
 	sb.shadow_color = Palette.alpha(Palette.SONAR, Palette.PANEL_GLOW_ALPHA)
 	sb.shadow_size = 0 if _low else Palette.PANEL_GLOW_SIZE
 	sb.shadow_offset = Vector2.ZERO
 	sb.set_content_margin_all(PAD)
+	_style_cache[key] = sb
 	return sb
 
 
