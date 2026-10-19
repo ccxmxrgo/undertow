@@ -243,8 +243,8 @@ func test_pressure_crack_rail_colour_blends_toward_warning_red() -> void:
 	assert_that(_rgb(hw.rail_color())).is_equal(_rgb(Palette.SONAR))
 	_stack(hw, Reward.Id.PRESSURE_CRACK)
 	_set_time(hw, NOTE_T)
-	assert_that(_rgb(hw.rail_color())).is_equal(_rgb(Palette.SONAR.lerp(Palette.WARNING_RED, 0.6)))
-	assert_that(_rgb(hw.debug_payload_state()["rail_color"])).is_equal(_rgb(Palette.SONAR.lerp(Palette.WARNING_RED, 0.6)))
+	assert_that(_rgb(hw.rail_color())).is_equal(_rgb(Palette.WARNING_RED))
+	assert_that(_rgb(hw.debug_payload_state()["rail_color"])).is_equal(_rgb(Palette.WARNING_RED))
 
 
 static func _rgb(c: Color) -> Vector3:

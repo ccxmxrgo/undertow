@@ -448,7 +448,7 @@ All board visuals are drawn by `Highway`/`HighwayNotes`/`NotePainter` and the ne
 ### 7.5 Pressure Crack (PAY-01, D-09)
 
 - Scroll multiplier eases 1.0 -> 1.5 over 1 beat (smoothstep) at arrival and back over 1 beat at the end, capped by `pressure_crack_max_speed`.
-- Cue: both outer rails (U-7.4 row 3) blend toward `WARNING_RED` (rail colour = `mix(SONAR, WARNING_RED, 0.6 * k)` where k is the ease factor 0..1). Rail glow follows the tier rule (none on Low).
+- Cue: both outer rails (U-7.4 row 3) blend toward `WARNING_RED` (rail colour = `mix(SONAR, WARNING_RED, k)` where k is the ease factor 0..1, so the rail is fully `WARNING_RED` at peak; the earlier 0.6 factor gave a pale pink-grey that read as white, 03-REVIEW WR-11). Rail glow follows the tier rule (none on Low).
 - Debris "Groan": x1.25, same cue at k max 0.5.
 - No other change; gems are untouched.
 

@@ -635,11 +635,13 @@ func gem_paint_type(type: int) -> int:
 	return t
 
 
-## Outer-rail colour (UI-SPEC 7.5): SONAR blended toward WARNING_RED by 0.6 x rail_tint.
+## Outer-rail colour (UI-SPEC 7.5): SONAR blended toward WARNING_RED by rail_tint. At full
+## Pressure Crack the rail is WARNING_RED (a 60% RGB mix of cyan and red read as pale pink-grey,
+## WR-11 / V-4); Groan (rail_tint 0.5 k) stays a half blend.
 func rail_color() -> Color:
 	if payloads == null:
 		return Palette.SONAR
-	return Palette.SONAR.lerp(Palette.WARNING_RED, 0.6 * _rail_k)
+	return Palette.SONAR.lerp(Palette.WARNING_RED, _rail_k)
 
 
 ## Test/debug view of the payload-driven drawing state.
