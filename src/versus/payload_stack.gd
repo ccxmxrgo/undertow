@@ -22,6 +22,8 @@ var _cfg: VersusConfig
 var _payloads: Array[Dictionary] = []
 var _warheads: Dictionary = {}  # base note index -> {torpedo, state}
 var _marks: Dictionary = {}  # torpedo id -> Array of note indices
+var _memo_t: float = NAN  # _beat memo (NAN never equals: first call computes)
+var _memo_bt: float = 0.0
 
 
 func _init(chart: ChartData, cfg: VersusConfig) -> void:
@@ -290,8 +292,15 @@ func warhead_progress(torpedo_id: int) -> Vector2i:
 
 # ---- internals ----
 
+## Beat of song time t. Memoized on the last t (IN-06): the views query the stack a dozen times
+## per frame with the same visual time, so the tempo walk runs once instead of each time.
+## Pure function of t (the tempo map never changes), so the cache never changes a result.
 func _beat(t: float) -> float:
-	return BeatClock.beat_at(t, _chart.tempo_map)
+	if t == _memo_t:
+		return _memo_bt
+	_memo_t = t
+	_memo_bt = BeatClock.beat_at(t, _chart.tempo_map)
+	return _memo_bt
 
 
 ## Smoothstep ease factor 0..1 of one payload at beat bt.

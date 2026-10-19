@@ -204,3 +204,23 @@ func test_training_description_clears_the_caption() -> void:
 	# Still below the sections strip.
 	var desc_top := SongSelect.TRAINING_DESC_BASELINE - f.get_ascent(fs) * 0.75
 	assert_float(desc_top).is_greater(SongSelect.SECTION_STRIP.end.y)
+
+
+# ---- IN-06: per-frame beat_at caching and a single strip rebuild ------------------------------
+
+func test_payload_stack_beat_memo_matches_beat_clock() -> void:
+	var chart := TestCharts.click_chart(120.0, 64, 1000)
+	var stack := PayloadStack.new(chart, VersusConfig.new())
+	for t in [0.0, 1.25, 1.25, 7.9, 0.3, 0.3]:
+		assert_float(stack._beat(t)).is_equal(BeatClock.beat_at(t, chart.tempo_map))
+
+
+func test_highway_columns_same_tracks_changes_without_allocating() -> void:
+	var hw: Highway = auto_free(Highway.new())
+	assert_bool(hw._columns_same()).is_true()  # solo: empty key
+	hw.payloads = PayloadStack.new(TestCharts.click_chart(120.0, 64, 1000), VersusConfig.new())
+	assert_bool(hw._columns_same()).is_false()
+	hw._strip_cols = hw._columns_key()
+	assert_bool(hw._columns_same()).is_true()
+	hw._cols_f[2] = 0.25
+	assert_bool(hw._columns_same()).is_false()

@@ -526,8 +526,9 @@ func on_sustain_end(lane: int, completed: bool) -> void:
 
 
 func _process(_delta: float) -> void:
-	_rebuild_strips()
+	# One strip rebuild per frame (IN-06): _update_window rebuilds at its end.
 	if conductor == null:
+		_rebuild_strips()
 		return
 	if show_spike_readout:
 		var st := conductor.song_time()
@@ -542,6 +543,7 @@ func _process(_delta: float) -> void:
 ## Snapshot the clock and the visible note window (shared with HighwayNotes this frame).
 func _update_window() -> void:
 	if chart == null or conductor == null:
+		_rebuild_strips()
 		return
 	_st = conductor.song_time()
 	_vt = _st + Settings.visual_offset
@@ -577,8 +579,7 @@ func _update_window() -> void:
 	_update_overlay()
 	_fill_beat_lines(_vt, _approach)
 	_update_sweep()
-	if payloads != null or _strip_cols.size() > 0:
-		_rebuild_strips()  # crossed strips follow their lane this frame
+	_rebuild_strips()  # crossed strips follow their lane this frame (once per frame, IN-06)
 
 
 ## Crossed Wires columns this frame (UI-SPEC 7.7): the slide moves the swapped lanes along
@@ -913,11 +914,10 @@ func strip_color(lane: int, y: float, tint: float) -> Color:
 func _rebuild_strips() -> void:
 	var tint := strip_tint_alpha()
 	var key := Vector3(clampf(cable_grow, 0.0, 1.0), tint, Palette.HIGHWAY_ALPHA)
-	var ck := _columns_key()
-	if key == _strip_key and ck == _strip_cols:
+	if key == _strip_key and _columns_same():
 		return
 	_strip_key = key
-	_strip_cols = ck
+	_strip_cols = _columns_key()
 	surface.visible = key.x > 0.0
 	if key.x <= 0.0:
 		surface.polygons = []
@@ -961,6 +961,24 @@ func _rebuild_strips() -> void:
 
 
 ## Strip cache key part for the lane columns; empty in solo (no payloads).
+## True when the cached strip columns equal this frame's columns, compared in place (no
+## per-frame PackedFloat32Array allocation, IN-06). Same layout as _columns_key().
+func _columns_same() -> bool:
+	if payloads == null:
+		return _strip_cols.is_empty()
+	var i := 0
+	var n := _strip_cols.size()
+	for lane in range(LANES):
+		if i >= n or _strip_cols[i] != float(_cols_n[lane]):
+			return false
+		i += 1
+		for j in range(_cols_n[lane]):
+			if i + 1 >= n or _strip_cols[i] != _cols_f[2 * lane + j] or _strip_cols[i + 1] != _cols_a[2 * lane + j]:
+				return false
+			i += 2
+	return i == n
+
+
 func _columns_key() -> PackedFloat32Array:
 	var k := PackedFloat32Array()
 	if payloads == null:
