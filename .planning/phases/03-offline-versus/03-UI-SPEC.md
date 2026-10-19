@@ -491,7 +491,7 @@ In Solo Dive mode the detail panel's visualizer area (U-6, x 1080..1832, y 760..
 | Caption | "TRAINING TORPEDOES" Label 20 `TEXT_LO` at (1080, 760) |
 | Stepper | Rect x 1080..1832, y 768..816 (48 tall), compact control look (U-4.2 48 px, chamfer `CUT_SM`): `chevron_left` 24 px at x 1096, value Body 28 `TEXT_HI` centred x 1456, `chevron_right` at x 1792. Value glyph 24 px left of the value text when a single payload is chosen |
 | Values (cycle order) | "OFF", "ALL", "CROSSED WIRES", "GHOST NOTES", "INK CLOUD", "PRESSURE CRACK", "SONAR JAM", "DEPTH CHARGE" |
-| Description | Replaces the section names line (baseline 736) while the stepper value changed in the last 3 s: the reward's one-line description (4.1), "Train without torpedoes." for OFF, "The drone fires every disruptor in turn." for ALL. Label 20 `TEXT_MID` |
+| Description | Replaces the section names line while the stepper value changed in the last 3 s: the reward's one-line description (4.1), "Train without torpedoes." for OFF, "The drone fires every disruptor in turn." for ALL. Label 20 `TEXT_MID` at baseline 728 (8 px above the section names line, so it clears the "TRAINING TORPEDOES" caption at 760; 03-REVIEW WR-12) |
 | Input | Keyboard F3 = next, Shift+F3 = previous. Gamepad right trigger = next, left trigger = previous (both currently unused in Song Select, V). The value persists in `Settings` |
 | Footer hint (Solo Dive mode) | "UP DOWN SONG  ·  LEFT RIGHT DIFFICULTY  ·  F3 TRAINING  ·  ENTER DIVE  ·  ESC BACK"; gamepad "D-PAD SONG  ·  LEFT RIGHT DIFFICULTY  ·  LT RT TRAINING  ·  A DIVE  ·  B BACK" |
 | Start button | "Start Solo Dive" |

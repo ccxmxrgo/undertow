@@ -97,6 +97,9 @@ const TRAINING_VALUE_CX := 1456.0
 const TRAINING_ICON := 24.0
 ## The stepper's description replaces the section names line this long after a change.
 const TRAINING_DESC_SEC := 3.0
+## The description sits 8 px higher than the section names (baseline 728, not 736) so it clears
+## the "TRAINING TORPEDOES" caption at baseline 760 (WR-12, V-7: 24 px apart left ~4 px).
+const TRAINING_DESC_BASELINE := 728.0
 const TRAINING_OFF_DESC := "Train without torpedoes."
 const TRAINING_ALL_DESC := "The drone fires every disruptor in turn."
 ## Trigger edge thresholds (T-03-14): press past 0.5, release below 0.4, so a held trigger steps once.
@@ -1788,7 +1791,7 @@ func _paint_sections(c: CanvasItem, e: SongEntry) -> void:
 		var tx := section_tick_x(float(s.get("time", 0.0)), length)
 		c.draw_rect(Rect2(tx, SECTION_STRIP.position.y, SECTION_TICK_W, SECTION_STRIP.size.y), Palette.TEXT_LO)
 	if training_description_active():
-		_txt(c, Vector2(x0, SECTION_NAMES_BASELINE), _fit(training_description(training_value()),
+		_txt(c, Vector2(x0, TRAINING_DESC_BASELINE), _fit(training_description(training_value()),
 				Palette.SIZE_LABEL, SECTION_NAMES_W), Palette.SIZE_LABEL, Palette.TEXT_MID)
 		return
 	var col := Palette.TEXT_LO if _sections.is_empty() else Palette.TEXT_MID

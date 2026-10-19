@@ -191,3 +191,16 @@ func test_edge_flash_idle_clears_shown_flag() -> void:
 	ef.observe(1.0)
 	assert_bool(ef._shown).is_false()
 	assert_float(ef.current_alpha()).is_equal(0.0)
+
+
+# ---- WR-12 (V-7): the Solo Dive training description clears the stepper caption -------------
+
+func test_training_description_clears_the_caption() -> void:
+	var f := Palette.font()
+	var fs := Palette.SIZE_LABEL
+	var desc_bottom := SongSelect.TRAINING_DESC_BASELINE + f.get_descent(fs)
+	var caption_top := SongSelect.TRAINING_CAPTION_POS.y - f.get_ascent(fs) * 0.75  # cap height
+	assert_float(caption_top - desc_bottom).is_greater_equal(8.0)
+	# Still below the sections strip.
+	var desc_top := SongSelect.TRAINING_DESC_BASELINE - f.get_ascent(fs) * 0.75
+	assert_float(desc_top).is_greater(SongSelect.SECTION_STRIP.end.y)
