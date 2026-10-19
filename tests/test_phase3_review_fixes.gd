@@ -224,3 +224,20 @@ func test_highway_columns_same_tracks_changes_without_allocating() -> void:
 	assert_bool(hw._columns_same()).is_true()
 	hw._cols_f[2] = 0.25
 	assert_bool(hw._columns_same()).is_false()
+
+
+func test_incoming_alert_ring_lives_on_a_dynamic_child() -> void:
+	var a: IncomingAlert = IncomingAlert.new()
+	add_child(a)
+	var ch := LoopbackChannel.new()
+	a.bind(ch, 0, ["YOU", "ORCA"], null, VersusConfig.new())
+	ch.send(GameEvent.make(GameEvent.TORPEDO_LAUNCH, 1.0, {"id": 1, "from": 1, "to": 0,
+		"reward": Reward.Id.INK_CLOUD, "launch_beat": 2, "launch_t": 1.0, "arrive_t": 1.5,
+		"warheads": [], "reflected": false, "debris": false}))
+	a.observe(1.25)
+	a.step(0.05)
+	await await_idle_frame()
+	assert_int(a.get_child_count(true)).is_equal(1)
+	assert_bool(a.get_child(0, true) is Node2D).is_true()
+	assert_float(a.ring_fraction()).is_equal_approx(0.5, 1e-6)
+	a.queue_free()

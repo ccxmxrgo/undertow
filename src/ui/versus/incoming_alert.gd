@@ -86,6 +86,27 @@ var _style_cache: Dictionary = {}
 var _last_bars: int = -1
 
 
+## Perf split (WR-09 follow-up): the countdown ring, burst and duration line live on this child
+## and redraw per frame; the glass panel, glyph and texts redraw only on content changes.
+class _AlertDyn:
+	extends Node2D
+	var alert: IncomingAlert
+
+	func _draw() -> void:
+		if alert != null:
+			alert._draw_dynamic(self)
+
+
+var _dyn: _AlertDyn
+
+
+func _init() -> void:
+	_dyn = _AlertDyn.new()
+	_dyn.name = "Dynamic"
+	_dyn.alert = self
+	add_child(_dyn)
+
+
 func _ready() -> void:
 	position = RECT.position
 	size = RECT.size
@@ -336,13 +357,15 @@ func observe(song_time: float) -> void:
 			_last_bars = n
 			_refresh_texts()
 	# The countdown ring / duration line drain with song time.
-	queue_redraw()
+	_dyn.queue_redraw()
 
 
 ## Advance fades / slide / cross-fade / result holds by dt seconds.
 func step(dt: float) -> void:
 	if dt <= 0.0 or _state == State.HIDDEN:
 		return
+	# Panel content moves only during the appear slide or a cross-fade (checked before advancing).
+	var panel_anim := _xfade_left > 0.0 or (_state == State.INCOMING and _in_t < Palette.DUR_FAST)
 	_in_t += dt
 	if _xfade_left > 0.0:
 		_xfade_left = maxf(_xfade_left - dt, 0.0)
@@ -363,13 +386,15 @@ func step(dt: float) -> void:
 				_state = State.ENDED
 		_:
 			_alpha = minf(_alpha + dt / Palette.DUR_FAST, 1.0)
-	_apply_visual()
+	_apply_visual(panel_anim)
 
 
-func _apply_visual() -> void:
+func _apply_visual(redraw_panel: bool = true) -> void:
 	visible = _state != State.HIDDEN
 	modulate.a = _alpha
-	queue_redraw()
+	if redraw_panel:
+		queue_redraw()
+	_dyn.queue_redraw()
 
 
 func _process(delta: float) -> void:
@@ -509,7 +534,6 @@ func _draw() -> void:
 		bracket = Palette.alpha(Palette.WARNING_RED, ACTIVE_EDGE_ALPHA)
 	UiKit.draw_brackets(self, r, bracket)
 	var off := Vector2(0.0, oy)
-	_draw_ring(off)
 	if _reward >= 0 and _state != State.COLLISION:
 		UiIcons.draw(self, Reward.glyph(_reward), Rect2(GLYPH_RECT.position + off, GLYPH_RECT.size), Palette.TEXT_HI)
 	var k := 1.0 - _xfade_left / XFADE_SEC if _xfade_left > 0.0 else 1.0
@@ -517,33 +541,41 @@ func _draw() -> void:
 		_draw_texts(off, str(_prev["caption"]), _prev["caption_col"], str(_prev["hint"]), _prev["hint_col"],
 			str(_prev["headline"]), 1.0 - k)
 	_draw_texts(off, _caption, _caption_col, _hint, _hint_col, _headline, k)
+	# Ring, burst and duration line: _draw_dynamic on the child (redrawn per frame).
+
+
+func _draw_dynamic(ci: CanvasItem) -> void:
+	if _state == State.HIDDEN:
+		return
+	var oy := slide_offset()
+	_draw_ring(ci, Vector2(0.0, oy))
 	if _state == State.ACTIVE or (_state == State.ENDED and _end_t > _start_t):
 		var f := ring_fraction()
 		var x0 := (1.0 - f) * RECT.size.x
-		draw_rect(Rect2(x0, LINE_Y + oy, RECT.size.x - x0, LINE_H), Palette.alpha(Palette.WARNING_RED, ACTIVE_EDGE_ALPHA))
+		ci.draw_rect(Rect2(x0, LINE_Y + oy, RECT.size.x - x0, LINE_H), Palette.alpha(Palette.WARNING_RED, ACTIVE_EDGE_ALPHA))
 
 
-func _draw_ring(off: Vector2) -> void:
+func _draw_ring(ci: CanvasItem, off: Vector2) -> void:
 	var c := RING_C + off
 	match _state:
 		State.INCOMING, State.ACTIVE, State.ENDED:
 			var col := Palette.WARNING_RED if _state == State.INCOMING else Palette.alpha(Palette.WARNING_RED, ACTIVE_EDGE_ALPHA)
-			draw_arc(c, RING_R, 0.0, TAU, 48, Palette.alpha(col, 0.2), 1.0, true)
+			ci.draw_arc(c, RING_R, 0.0, TAU, 48, Palette.alpha(col, 0.2), 1.0, true)
 			var f := ring_fraction()
 			if f > 0.0:
-				draw_arc(c, RING_R, -PI * 0.5, -PI * 0.5 + TAU * f, 48, col, RING_W, true)
+				ci.draw_arc(c, RING_R, -PI * 0.5, -PI * 0.5 + TAU * f, 48, col, RING_W, true)
 		State.REFLECTED:
 			var a := clampf(_result_left / RESULT_HOLD_SEC, 0.0, 1.0)
-			draw_arc(c, RING_R, 0.0, TAU, 48, Palette.alpha(Palette.SONAR_PALE, 0.4 + 0.6 * a), RING_W, true)
+			ci.draw_arc(c, RING_R, 0.0, TAU, 48, Palette.alpha(Palette.SONAR_PALE, 0.4 + 0.6 * a), RING_W, true)
 		State.COLLISION:
 			if _burst_t >= 0.0:
 				var s := clampf(_burst_t / BURST_SEC, 0.0, 1.0)
 				var rr := RING_R + (BURST_GROW * s if not _reduce else 0.0)
-				draw_arc(c, rr, 0.0, TAU, 48, Palette.alpha(Palette.TEXT_HI, 1.0 - s), RING_W, true)
+				ci.draw_arc(c, rr, 0.0, TAU, 48, Palette.alpha(Palette.TEXT_HI, 1.0 - s), RING_W, true)
 				for i in range(6):
 					var ang := TAU * float(i) / 6.0
 					var d := Vector2(cos(ang), sin(ang))
-					draw_line(c + d * (RING_R * 0.4), c + d * rr * 0.8, Palette.alpha(Palette.WARNING_RED, 1.0 - s), 2.0, true)
+					ci.draw_line(c + d * (RING_R * 0.4), c + d * rr * 0.8, Palette.alpha(Palette.WARNING_RED, 1.0 - s), 2.0, true)
 
 
 func _draw_texts(off: Vector2, caption: String, caption_col: Color, hint: String, hint_col: Color,
