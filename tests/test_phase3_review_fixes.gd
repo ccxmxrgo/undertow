@@ -101,3 +101,41 @@ func test_callsign_cache_follows_bounty_shift() -> void:
 	var w := PeriscopePanel.spaced_font().get_string_size(shifted, HORIZONTAL_ALIGNMENT_LEFT, -1,
 		Palette.SIZE_LABEL).x
 	assert_float(w).is_less_equal(p.call_max())
+
+
+# ---- WR-08 (perf): PeriscopePanel static / dynamic split ---------------------------------------
+
+func test_periscope_dynamic_layer_and_dashes() -> void:
+	var p: PeriscopePanel = auto_free(PeriscopePanel.new())
+	p.setup(1, "orca")
+	assert_int(p.get_child_count(true)).is_equal(1)
+	assert_bool(p.get_child(0, true) is Node2D).is_true()
+	assert_int(PeriscopePanel.dash_points().size()).is_equal(PeriscopePanel.DASHES * PeriscopePanel.DASH_SEG * 2)
+
+
+func test_periscope_flashes_and_blips_still_expire_without_reflection() -> void:
+	var p: PeriscopePanel = auto_free(PeriscopePanel.new())
+	p.setup(1, "orca")
+	p.add_blip()
+	p.add_blip()
+	p.on_event(GameEvent.make(GameEvent.COLLISION, 1.0, {"a": 1, "b": 2}))
+	assert_bool(p.edge_flashing()).is_true()
+	assert_bool(p.dynamic_moving()).is_true()
+	p.step(0.25)
+	assert_int(p.blip_count()).is_equal(2)
+	p.step(0.5)
+	assert_int(p.blip_count()).is_equal(0)
+	assert_bool(p.edge_flashing()).is_false()
+	assert_str(p.threat_state()).is_equal("none")
+
+
+func test_periscope_draws_in_tree() -> void:
+	var p: PeriscopePanel = PeriscopePanel.new()
+	add_child(p)
+	p.setup(1, "orca")
+	p.on_event(GameEvent.make(GameEvent.TORPEDO_LAUNCH, 0.0, {"id": 1, "from": 2, "to": 1,
+		"reward": Reward.Id.INK_CLOUD, "launch_t": 0.0, "arrive_t": 0.5}))
+	p.update(0.25)
+	await await_idle_frame()
+	assert_float(p.threat_fraction()).is_equal_approx(0.5, 1e-6)
+	p.queue_free()

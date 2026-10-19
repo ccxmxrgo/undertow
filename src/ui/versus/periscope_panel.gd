@@ -70,6 +70,8 @@ const GLYPH_SEC := 0.6
 const LAUNCH_FLASH_SEC := 0.3
 const COLLIDE_FLASH_SEC := 0.2
 const DASHES := 16
+const DASH_SEG := 3  # straight segments per dash (one draw_multiline for all 16)
+const PCT_REFRESH_S := 0.1  # live Solo Duel percent re-read at 10 Hz (WR-08)
 
 # Chrome.
 const EDGE_ALPHA := 0.45
@@ -128,6 +130,31 @@ var _call_key: String = ""
 var _call_max: float = CALL_MAX
 var _shown_call: String = ""
 
+## Perf split (WR-08): the panel itself draws the static chrome, text, hull and meter and redraws
+## only on events / flashes; this child draws what moves (sweep, blips, threat block) and is
+## redrawn per frame only while something on it moves.
+var _dyn: _DynLayer
+var _status_key: String = ""
+var _pct_next: float = -INF
+var _outline := PackedVector2Array()
+static var _dash_pts := PackedVector2Array()
+
+
+class _DynLayer:
+	extends Node2D
+	var panel: PeriscopePanel
+
+	func _draw() -> void:
+		if panel != null:
+			panel._draw_dynamic(self)
+
+
+func _init() -> void:
+	_dyn = _DynLayer.new()
+	_dyn.name = "Dynamic"
+	_dyn.panel = self
+	add_child(_dyn)
+
 
 func _ready() -> void:
 	size = SIZE
@@ -148,7 +175,7 @@ func setup(p_seat: int, p_callsign: String, p_drone: bool = false, p_chart: Char
 	if cfg != null:
 		_min_pct = cfg.solo_duel_min_accuracy * 100.0
 	_rng.seed = hash("periscope:%d" % p_seat)  # private RNG, never the global one
-	queue_redraw()
+	_redraw_all()
 
 
 static func clamp_name(s: String) -> String:
@@ -230,7 +257,7 @@ func on_event(e: Dictionary) -> void:
 				_on_meter(e)
 		_:
 			return
-	queue_redraw()
+	_redraw_all()
 
 
 func _on_status(e: Dictionary) -> void:
@@ -297,7 +324,10 @@ func is_targeted() -> bool:
 
 ## Training drone status line, e.g. "NEXT IN 3 BARS".
 func set_drone_status(text: String) -> void:
-	_drone_status = text.to_upper()
+	var s := text.to_upper()
+	if s == _drone_status:
+		return  # called every frame by the controller; redraw only on change (WR-08)
+	_drone_status = s
 	queue_redraw()
 
 
@@ -306,29 +336,63 @@ func set_live_pct(cb: Callable) -> void:
 
 
 ## Song-time pump: countdown rings and the sweep line.
+## Only the dynamic layer is redrawn per frame, and only while something on it moves; the static
+## layer redraws when the live Solo Duel percent text changes (re-read at 10 Hz). WR-08.
 func update(song_time: float) -> void:
 	_now = song_time
+	var was := _threat
 	if (_threat == "immune" or _threat == "active") and _now >= _t1:
 		_threat = "none"
 		_threat_reward = -1
-	queue_redraw()
+	if _threat != "none" or was != _threat or dynamic_moving():
+		_dyn.queue_redraw()
+	if _duel and not drone and not _wreck and (_now >= _pct_next or _now < _pct_next - 1.0):
+		_pct_next = _now + PCT_REFRESH_S
+		var s := status_text()
+		if s != _status_key:
+			_status_key = s
+			queue_redraw()
 
 
 ## Wall-clock pump for one-shot flashes and blips (tests call it directly).
 func step(dt: float) -> void:
-	var dirty := false
-	for v in ["_glyph_left", "_burst_left", "_edge_flash_left", "_dmg_left"]:
-		var left: float = get(v)
-		if left > 0.0:
-			set(v, maxf(left - dt, 0.0))
-			dirty = true
+	var dyn := false
+	var stat := false
+	if _glyph_left > 0.0:
+		_glyph_left = maxf(_glyph_left - dt, 0.0)
+		dyn = true
+	if _burst_left > 0.0:
+		_burst_left = maxf(_burst_left - dt, 0.0)
+		dyn = true
+	if _edge_flash_left > 0.0:
+		_edge_flash_left = maxf(_edge_flash_left - dt, 0.0)
+		stat = true
+	if _dmg_left > 0.0:
+		_dmg_left = maxf(_dmg_left - dt, 0.0)
+		stat = true
 	if not _blips.is_empty():
-		for b in _blips:
+		for i in range(_blips.size() - 1, -1, -1):
+			var b: Dictionary = _blips[i]
 			b["age"] = float(b["age"]) + dt
-		_blips = _blips.filter(func(b: Dictionary) -> bool: return float(b["age"]) < BLIP_SEC)
-		dirty = true
-	if dirty or sweep_on():
+			if float(b["age"]) >= BLIP_SEC:
+				_blips.remove_at(i)
+		dyn = true
+	if dyn or dynamic_moving():
+		_dyn.queue_redraw()
+	if stat:
 		queue_redraw()
+
+
+## True while the dynamic layer animates on its own: the sweep line (Full effects, nothing
+## held), blips, or a collision / absorbed / reflected glyph.
+func dynamic_moving() -> bool:
+	return (sweep_on() and _held < 0) or not _blips.is_empty() or _glyph_left > 0.0 \
+		or _burst_left > 0.0
+
+
+func _redraw_all() -> void:
+	queue_redraw()
+	_dyn.queue_redraw()
 
 
 # ---- Read-only state (tests) ------------------------------------------------------------
@@ -529,7 +593,7 @@ func apply_effect_settings() -> void:
 	var cap := blips_max()
 	while _blips.size() > cap:
 		_blips.pop_front()
-	queue_redraw()
+	_redraw_all()
 
 
 func effect_counts() -> Dictionary:
@@ -549,19 +613,51 @@ func _sweep_angle() -> float:
 	return -PI * 0.5 + TAU * fposmod(turn, 1.0)
 
 
+## Static layer: chrome, scope disc + meter + held reward, text, hull. Redrawn on events and
+## while an edge / damage flash runs (WR-08).
 func _draw() -> void:
 	var r := Rect2(Vector2.ZERO, SIZE)
 	if _box == null:
 		apply_effect_settings()
 	draw_style_box(_box, r)
-	var outline := UiKit.chamfer_points(r.grow(-Palette.EDGE * 0.5), Palette.CUT_SM)
-	outline.append(outline[0])
-	draw_polyline(outline, edge_color(), Palette.EDGE, true)
+	if _outline.is_empty():
+		_outline = UiKit.chamfer_points(r.grow(-Palette.EDGE * 0.5), Palette.CUT_SM)
+		_outline.append(_outline[0])
+	draw_polyline(_outline, edge_color(), Palette.EDGE, true)
 	UiKit.draw_brackets(self, r, bracket_color())
 	_draw_scope()
 	_draw_text()
 	_draw_hull()
-	_draw_threat()
+
+
+## Dynamic layer (the _DynLayer child): sweep line and blips (nothing held), threat block.
+func _draw_dynamic(ci: CanvasItem) -> void:
+	if _held < 0:
+		if sweep_on():
+			var a := _sweep_angle()
+			ci.draw_line(SCOPE_C, SCOPE_C + Vector2(cos(a), sin(a)) * DISC_R,
+				Palette.alpha(Palette.SONAR, SWEEP_ALPHA), 1.0, true)
+		for b in _blips:
+			var k := 1.0 - float(b["age"]) / BLIP_SEC
+			var p := SCOPE_C + Vector2(cos(float(b["a"])), sin(float(b["a"]))) * float(b["r"])
+			ci.draw_circle(p, BLIP_DOT, Palette.alpha(Palette.SONAR, clampf(k, 0.0, 1.0)))
+	_draw_threat(ci)
+
+
+## The 16 idle dashes of the threat ring as one segment list (built once, WR-08).
+static func dash_points() -> PackedVector2Array:
+	if _dash_pts.is_empty():
+		var top := -PI * 0.5
+		var step_a := TAU / DASHES
+		for i in DASHES:
+			var a0 := top + step_a * i
+			var a1 := top + step_a * (i + 0.5)
+			for s in DASH_SEG:
+				var u := a0 + (a1 - a0) * float(s) / DASH_SEG
+				var v := a0 + (a1 - a0) * float(s + 1) / DASH_SEG
+				_dash_pts.append(THREAT_C + Vector2(cos(u), sin(u)) * THREAT_R)
+				_dash_pts.append(THREAT_C + Vector2(cos(v), sin(v)) * THREAT_R)
+	return _dash_pts
 
 
 func _draw_scope() -> void:
@@ -586,14 +682,6 @@ func _draw_scope() -> void:
 			ring = Palette.SONAR
 		draw_arc(SCOPE_C, KIND_R, 0.0, TAU, 40, ring, Palette.EDGE, true)
 		UiIcons.draw(self, g, Rect2(SCOPE_C - Vector2.ONE * HELD_SIZE * 0.5, Vector2.ONE * HELD_SIZE), Palette.TEXT_HI)
-		return
-	if sweep_on():
-		var a := _sweep_angle()
-		draw_line(SCOPE_C, SCOPE_C + Vector2(cos(a), sin(a)) * DISC_R, Palette.alpha(Palette.SONAR, SWEEP_ALPHA), 1.0, true)
-	for b in _blips:
-		var k := 1.0 - float(b["age"]) / BLIP_SEC
-		var p := SCOPE_C + Vector2(cos(float(b["a"])), sin(float(b["a"]))) * float(b["r"])
-		draw_circle(p, BLIP_DOT, Palette.alpha(Palette.SONAR, clampf(k, 0.0, 1.0)))
 
 
 func _draw_text() -> void:
@@ -607,7 +695,8 @@ func _draw_text() -> void:
 	if place != "":
 		draw_string(Palette.font(), Vector2(PLACE_RIGHT - PLACE_BOX, CALL_BASE), place, HORIZONTAL_ALIGNMENT_RIGHT,
 			PLACE_BOX, fs, place_color())
-	var st := ProgressTrack.truncate_px(status_text(), Palette.font(), fs, STATUS_MAX)
+	_status_key = status_text()
+	var st := ProgressTrack.truncate_px(_status_key, Palette.font(), fs, STATUS_MAX)
 	draw_string(Palette.font(), Vector2(STATUS_X, STATUS_BASE), st, HORIZONTAL_ALIGNMENT_LEFT, STATUS_MAX, fs,
 		status_color())
 
@@ -645,15 +734,12 @@ func _draw_hull() -> void:
 				draw_rect(sr, Palette.alpha(Palette.WARNING_RED, _dmg_left / DMG_SEC * maxf(lost, 0.5)))
 
 
-func _draw_threat() -> void:
+func _draw_threat(ci: CanvasItem) -> void:
 	var state := threat_state()
 	var top := -PI * 0.5
 	match state:
 		"none":
-			var step_a := TAU / DASHES
-			for i in DASHES:
-				draw_arc(THREAT_C, THREAT_R, top + step_a * i, top + step_a * (i + 0.5), 4,
-					Palette.alpha(Palette.TEXT_LO, 0.2), 1.0, true)
+			ci.draw_multiline(dash_points(), Palette.alpha(Palette.TEXT_LO, 0.2), 1.0, true)
 		"incoming", "active", "immune":
 			var col := Palette.WARNING_RED
 			if state == "active":
@@ -663,13 +749,13 @@ func _draw_threat() -> void:
 			var f := threat_fraction()
 			if f > 0.0:
 				# Drains clockwise: the remaining arc ends at 12 o'clock.
-				draw_arc(THREAT_C, THREAT_R, top + TAU * (1.0 - f), top + TAU, maxi(4, int(40 * f)), col, THREAT_W, true)
+				ci.draw_arc(THREAT_C, THREAT_R, top + TAU * (1.0 - f), top + TAU, maxi(4, int(40 * f)), col, THREAT_W, true)
 		"collision":
 			if _burst_left > 0.0:
-				draw_arc(THREAT_C, burst_radius(), 0.0, TAU, 40,
+				ci.draw_arc(THREAT_C, burst_radius(), 0.0, TAU, 40,
 					Palette.alpha(Palette.TEXT_HI, _burst_left / BURST_SEC), THREAT_W, true)
 		"reflected":
-			draw_arc(THREAT_C, THREAT_R, 0.0, TAU, 40,
+			ci.draw_arc(THREAT_C, THREAT_R, 0.0, TAU, 40,
 				Palette.alpha(Palette.SONAR_PALE, _glyph_left / GLYPH_SEC), THREAT_W, true)
 	var g := threat_glyph()
 	if g == "":
@@ -679,4 +765,4 @@ func _draw_threat() -> void:
 		gc = Palette.TEXT_LO
 	elif state == "absorbed":
 		gc = Palette.SONAR
-	UiIcons.draw(self, g, Rect2(THREAT_C - Vector2.ONE * HELD_SIZE * 0.5, Vector2.ONE * HELD_SIZE), gc)
+	UiIcons.draw(ci, g, Rect2(THREAT_C - Vector2.ONE * HELD_SIZE * 0.5, Vector2.ONE * HELD_SIZE), gc)
