@@ -114,6 +114,10 @@ func setup(gp: Gameplay, p_chart: ChartData, p_jcfg: JudgeConfig, p_setup: Match
 	sim = MatchSim.new(chart, cfg, jcfg, players, channel, match_seed)
 	human_rig = SubRig.new(HUMAN_SEAT, chart, jcfg, cfg, sim, channel, training)
 	human_rig.approach_s = Trench.approach_for(Settings.scroll_speed)
+	# IN-03: the pause-menu settings can change the scroll speed mid-match; the Ghost Notes /
+	# Depth Charge window (Pitfall 1) must follow it.
+	if not Settings.settings_changed.is_connected(_on_settings_changed):
+		Settings.settings_changed.connect(_on_settings_changed)
 	human_judge = human_rig.judge
 	human_hull = human_rig.hull
 	human_stack = human_rig.stack
@@ -394,6 +398,14 @@ func _on_event(e: Dictionary) -> void:
 		GameEvent.BUFF_ENDED:
 			if int(e.get("seat", -1)) == HUMAN_SEAT and int(e.get("reward", -1)) == Reward.Id.OVERCLOCK:
 				_set_overclock(false)
+
+
+func _on_settings_changed() -> void:
+	if human_rig == null:
+		return
+	var a := Trench.approach_for(Settings.scroll_speed)
+	if not is_equal_approx(human_rig.approach_s, a):
+		human_rig.approach_s = a
 
 
 func _set_overclock(on: bool) -> void:

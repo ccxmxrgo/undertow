@@ -89,3 +89,18 @@ func test_human_press_advances_rivals_first() -> void:
 	for b in vc.bots:
 		assert_float(b.next_time()).is_greater(5.0)
 	vc.free()
+
+
+## IN-03: a scroll-speed change mid-match refreshes the human's approach time (Ghost / Depth
+## Charge window, Pitfall 1).
+func test_scroll_speed_change_refreshes_approach() -> void:
+	var saved := Settings.scroll_speed
+	var vc := VersusController.new()
+	vc.setup(null, TestCharts.hand_chart(1000), JudgeConfig.new(), _setup(SEED), -1, false)
+	Settings.scroll_speed = 2.0  # direct + emit: never writes the real settings file
+	Settings.settings_changed.emit()
+	assert_float(vc.human_rig.approach_s).is_equal_approx(Trench.approach_for(Settings.scroll_speed), 1e-9)
+	assert_float(vc.players[0].approach_s).is_equal_approx(vc.human_rig.approach_s, 1e-9)
+	Settings.scroll_speed = saved
+	Settings.settings_changed.emit()
+	vc.free()
