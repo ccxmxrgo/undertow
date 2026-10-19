@@ -124,8 +124,8 @@ Nothing is on the note path. Every disruptor is readable in Low effects. V-1..V-
 
 ## Friend zip
 
-- `build/dist/UNDERTOW-playtest-v0.6.0.zip`: 65,811,213 bytes (62.76 MB), sha256 `9d4a31188b47b01993083ee8438fd80f60ad98ca7ac6a1e26e0430c8c7c093a2`.
-- It has exactly 3 entries: UNDERTOW.exe (129.47 MB), README.txt and TESTER-CHECKLIST.txt.
+- `build/dist/UNDERTOW-playtest-v0.6.0.zip`: 65,821,334 bytes (62.77 MB), sha256 `8bb56f40a926de26aa653c438acc54d49922720d89434869f406ddd7cd75402e`. Rebuilt 2026-10-20 after the phase 3 code-review fixes (03-REVIEW-FIX.md); the first build was 65,811,213 bytes, sha256 `9d4a3118...c093a2`.
+- It has exactly 3 entries: UNDERTOW.exe (129.48 MB), README.txt and TESTER-CHECKLIST.txt.
 - The unzipped exe printed **BUNDLED_OK 20**.
 - It was built locally only. Nothing was published or uploaded.
 - README: v0.6.0 title and intro, Fire (Space / pad A) and Switch target (H / pad Y) controls, Solo Dive copy, WHAT'S NEW IN v0.6.0. Checklist: v0.6.0 header, Solo Dive line, a "4d. VERSUS (new in v0.6.0)" block. Both are plain ASCII.
