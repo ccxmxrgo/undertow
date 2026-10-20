@@ -101,3 +101,17 @@ The current values are already the best: the mean sits at 3 and about 93% of bot
 4. Keep everything as is and accept the red test as a known deviation.
 
 Until the user decides, `reward_threshold_ratio` stays at 0.12 and Veteran stays at 33 ms / 1.5%.
+
+## Verifier additions (03-VERIFICATION.md, 2026-10-20)
+
+Status: human_needed. No blocking gaps. On the final tree: TIMING GATE OK, and the full suite runs 1726 cases with 1 failure (the known red test_bot_frequency, hrt seat 3 = 5). These items are added to the list above; the sections above are unchanged.
+
+| # | Test | How | Expected | Status |
+|---|------|-----|----------|--------|
+| 13 | Review-fix input feel (CR-01, WR-01, WR-02, WR-03) | During test 12, play real presses in versus (they now route through VersusController's time-ordered stepping). Take a Crossed Wires and press a held lane's second key. Reflect a payload and watch its end | Presses feel the same as Solo Dive. Crossed Wires never swallows a press. A reflected payload eases out on the beat. A bounty claim appears when a shot lands on the leader after a missed first warhead | pending |
+| 14 | Borderline versus perf gate | Decide accept or fix: p95 is 4.18-4.45 ms against the 4.35 ms U-12 gate on the final tree (passed in 1 of 2 runs, noise about +-0.15 ms) | Accept, or plan a perf follow-up (shared glow texture, profile the Full-only effects) | pending |
+| 15 | Unreliable ink-share playtest check | The versus playtest's "Ink Cloud visible on >= 45% of frames" check ranged from 34% to 73% between runs because the harness injects ink outside the controller's time ordering | Decide whether to fix the harness so perf captures are reproducible (tooling follow-up) | pending |
+
+Notes:
+- Zip hash for test 10: the current `build/dist/UNDERTOW-playtest-v0.6.0.zip` is 65,821,334 bytes, sha256 `8bb56f40a926de26aa653c438acc54d49922720d89434869f406ddd7cd75402e` (rebuilt after the review fixes). The `9d4a3118...` hash in test 10 is the first build.
+- For the transition step: ROADMAP Phase 3 SC2 and REQUIREMENTS PAY-02 still name Lane Flip (superseded by Crossed Wires, SPEC req 7). ROADMAP still shows 03-14 and 03-15 unchecked.
