@@ -578,6 +578,7 @@ func _on_match_loading() -> void:
 	Gameplay.pending_chart = chart
 	Gameplay.pending_autoplay = false
 	Gameplay.pending_practice = false
+	Gameplay.pending_online = true
 	print("[autotest] loading seat %d D %d ms" % [int(spec.get("local_seat", -1)),
 		int(round(float(spec.get("d_s", 0.0)) * 1000.0))])
 	get_tree().change_scene_to_file.call_deferred(GAMEPLAY_SCENE)

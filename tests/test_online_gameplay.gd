@@ -87,6 +87,11 @@ class FakeSession extends Node:
 	func host_back_to_lobby() -> void:
 		_hit("host_back_to_lobby")
 
+	var in_lobby := false
+
+	func is_in_lobby() -> bool:
+		return in_lobby
+
 
 var _navs: Array = []
 
@@ -100,6 +105,7 @@ func after_test() -> void:
 	Gameplay.pending_chart = null
 	Gameplay.pending_autoplay = false
 	Gameplay.pending_practice = false
+	Gameplay.pending_online = false
 	Gameplay.pending_intro = IntroTimeline.Mode.FULL
 	MatchSetup.pending = null
 
@@ -510,3 +516,60 @@ func test_returned_to_lobby_navigates_to_the_lobby() -> void:
 	f.returned_to_lobby.emit()
 	assert_int(_navs.size()).is_equal(1)
 	assert_bool(str(_navs[0]) in [Gameplay.LOBBY_SCENE, Gameplay.ONLINE_MENU_SCENE]).is_true()
+
+
+# --- Review fix WR-02: navigation during a wipe -------------------------------------------------
+
+## An online launch whose match is gone by _ready (abort during the lobby -> gameplay wipe) goes
+## back to the lobby and never builds an offline dive.
+func test_online_launch_without_match_returns_to_lobby() -> void:
+	var f := _fake({})
+	f.in_lobby = true
+	Gameplay.pending_online = true
+	var gp := _launch(f)
+	await _frames(2)
+	assert_array(_navs).is_equal([Gameplay.LOBBY_SCENE])
+	assert_object(gp.conductor).is_null()
+	assert_bool(gp.is_online()).is_false()
+	assert_bool(Gameplay.pending_online).is_false()
+
+
+func test_online_launch_without_session_lobby_goes_to_play_online() -> void:
+	var f := _fake({})
+	Gameplay.pending_online = true
+	var gp := _launch(f)
+	await _frames(1)
+	assert_array(_navs).is_equal([Gameplay.ONLINE_MENU_SCENE])
+	assert_object(gp.conductor).is_null()
+
+
+## A scene change refused while ScreenTransition is busy is retried once it is idle.
+func test_refused_scene_change_is_retried_after_the_wipe() -> void:
+	var f := _fake({})
+	f.in_lobby = true
+	Gameplay.pending_online = true
+	var gp := _launch(f)
+	await _frames(1)
+	gp.navigate = Callable()
+	var st: Node = get_node("/root/ScreenTransition")
+	var old_instant: bool = st.instant
+	var old_swap: Callable = st.swap_fn
+	var old_clock: Callable = st.clock_fn
+	var swaps: Array = []
+	var ms := [0.0]
+	st.instant = false
+	st.clock_fn = func() -> float: return ms[0]
+	st.swap_fn = func(p: String) -> void: swaps.append(p)
+	assert_bool(st.change_scene("res://scenes/main_menu.tscn")).is_true()
+	gp._go_lobby()
+	assert_str(gp._nav_pending).is_equal(Gameplay.LOBBY_SCENE)
+	await _frames(2)
+	assert_str(gp._nav_pending).is_equal(Gameplay.LOBBY_SCENE)
+	st.instant = true
+	ms[0] = 1000.0  # past the 400 ms failsafe: the running wipe ends
+	await _frames(3)
+	assert_str(gp._nav_pending).is_equal("")
+	assert_array(swaps).contains([Gameplay.LOBBY_SCENE])
+	st.instant = old_instant
+	st.swap_fn = old_swap
+	st.clock_fn = old_clock

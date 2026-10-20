@@ -278,6 +278,8 @@ var _refresh_t := 0.0
 var _invite := ""
 var _last_pad := false
 var _leaving := false
+## WR-02: a scene change ScreenTransition refused; retried once the wipe is idle.
+var _nav_pending := ""
 var _carry: LogCarry
 var _caption_font: FontVariation
 
@@ -486,6 +488,7 @@ func _on_match_loading() -> void:
 	Gameplay.pending_chart = chart
 	Gameplay.pending_autoplay = false
 	Gameplay.pending_practice = false
+	Gameplay.pending_online = true
 	if _carry != null:
 		_carry.from_pick = false
 	var mm := get_node_or_null("/root/MenuMusic") if is_inside_tree() else null
@@ -1464,12 +1467,18 @@ func _go(path: String) -> void:
 	if navigate.is_valid():
 		navigate.call(path)
 	elif is_inside_tree():
-		ScreenTransition.change_scene(path)
+		# WR-02: a refused change (wipe still running) is retried from _process once idle.
+		if not ScreenTransition.change_scene(path):
+			_nav_pending = path
 
 
 # ---- time --------------------------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	if _nav_pending != "" and not ScreenTransition.is_busy():
+		var p := _nav_pending
+		_nav_pending = ""
+		_go(p)
 	tick(delta)
 
 

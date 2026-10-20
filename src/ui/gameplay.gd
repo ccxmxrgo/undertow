@@ -27,6 +27,10 @@ static var pending_autoplay: bool = false
 static var pending_practice: bool = false
 ## Intro mode for the next run. NOT reset in _ready: test suites set NONE so runs never wait.
 static var pending_intro: int = IntroTimeline.Mode.FULL
+## WR-02: one-shot, set by the lobby next to pending_chart for an online launch. If the match
+## is gone by _ready (an abort arrived during the lobby -> gameplay wipe), the run goes back to
+## the lobby instead of falling through to an offline dive with the match chart.
+static var pending_online: bool = false
 
 ## Solo Dive: No-Fail forced on for this run only (never written to Settings).
 var practice: bool = false
@@ -98,6 +102,10 @@ var _link_weak: bool = false
 var _waiting_n: int = -1
 ## seat -> {hull, depth, alive, left} from the last STATUS / IMPLODED / PLAYER_LEFT events.
 var _last_status: Dictionary = {}
+## WR-02: a scene change ScreenTransition refused (wipe running); retried once it is idle.
+var _nav_pending: String = ""
+## WR-02: an online launch whose match was gone at _ready; nothing runs, only the way back.
+var _launch_lost: bool = false
 
 
 func _ready() -> void:
@@ -118,6 +126,8 @@ func _ready() -> void:
 	match_setup = null
 	if ms != null and ms.mode == MatchSetup.MODE_VERSUS and not practice and not a:
 		match_setup = ms
+	var want_online := pending_online
+	pending_online = false
 	if session == null:
 		session = get_node_or_null("/root/NetSession")
 	var spec: Dictionary = {}
@@ -130,6 +140,19 @@ func _ready() -> void:
 		practice = false
 		_connect_session()
 		start(c, false, IntroTimeline.Mode.NONE)
+		return
+	if want_online:
+		# WR-02: the match ended before this scene was built: back to the lobby (or Play Online
+		# when the session is gone), never an offline dive with the match chart.
+		_launch_lost = true
+		state = State.ERROR
+		chart = c
+		var in_lobby := session != null and session.has_method("is_in_lobby") \
+			and bool(session.call("is_in_lobby"))
+		if in_lobby:
+			_go_lobby()
+		else:
+			_goto(ONLINE_MENU_SCENE if ResourceLoader.exists(ONLINE_MENU_SCENE) else _menu_target())
 		return
 	start(c, a, pending_intro)
 
@@ -392,6 +415,10 @@ func is_done() -> bool:
 
 
 func _process(_delta: float) -> void:
+	if _nav_pending != "":
+		_retry_nav()
+	if _launch_lost:
+		return
 	if is_online():
 		_process_online()
 		return
@@ -414,7 +441,7 @@ func _process(_delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_echo():
+	if event.is_echo() or _launch_lost:
 		return
 	if is_online():
 		_online_input(event)
@@ -590,7 +617,10 @@ func _show_audio_error() -> void:
 	l.position = Vector2(510.0, 500.0)
 	l.add_theme_color_override("font_color", Palette.WARNING_RED)
 	_run_root.add_child(l)
-	get_tree().create_timer(ERROR_RETURN_SEC).timeout.connect(go_to_menu)
+	# WR-02: online the session decides the way out (the abort sends everyone to the lobby);
+	# the timer only falls back to the lobby / menu, never strands a live lobby.
+	get_tree().create_timer(ERROR_RETURN_SEC).timeout.connect(
+		_audio_error_exit_online if is_online() else go_to_menu)
 
 
 ## Restores the Song Select run flags this dive was launched with (SongSelect resets them when it
@@ -961,4 +991,27 @@ func _goto(path: String) -> void:
 	if navigate.is_valid():
 		navigate.call(path)
 		return
-	ScreenTransition.change_scene(path)
+	# WR-02: change_scene refuses while a wipe runs (e.g. an abort inside _ready, mid-wipe);
+	# keep the target and retry from _process once ScreenTransition is idle.
+	if not ScreenTransition.change_scene(path):
+		_nav_pending = path
+
+
+func _retry_nav() -> void:
+	if ScreenTransition.is_busy():
+		return
+	var p := _nav_pending
+	_nav_pending = ""
+	if not ScreenTransition.change_scene(p):
+		_nav_pending = p
+
+
+## Online audio error fallback (WR-02): lobby while the session is in the lobby, the menu once
+## it is offline; mid-match the session's abort / watchdog handles navigation.
+func _audio_error_exit_online() -> void:
+	if _nav_pending != "" or session == null:
+		return
+	if session.has_method("is_in_lobby") and bool(session.call("is_in_lobby")):
+		_go_lobby()
+	elif session.has_method("is_offline") and bool(session.call("is_offline")):
+		_go_main_menu()
