@@ -2,9 +2,12 @@ class_name DebugOverlay
 extends Control
 ## F3 timing overlay (D-29): song_time, raw playback position, time_since_last_mix, cached
 ## output latency, offsets, fps, a 320x96 song_time-per-frame graph and the last 20 hit errors.
-## Hidden by default and unavailable in release builds.
+## Hidden by default and unavailable in release builds. During an online match (04-16) five
+## NetDebugRows lines (RTT, offset, horizon, late inputs, skew, late landings, packets) sit under
+## the timing block in a second Label at y 430; offline that label is empty and hidden.
 
-const PANEL_SIZE := Vector2(360.0, 420.0)
+const PANEL_SIZE := Vector2(360.0, 580.0)  # 420 + 5 net rows (04-UI-SPEC 11.8)
+const NET_ROWS_Y := 430.0  # under the hit-error rows, so the graph never moves
 const GRAPH_SIZE := Vector2(320.0, 96.0)
 const GRAPH_SAMPLES := 160
 const GRAPH_MAX_MS := 33.0
@@ -15,7 +18,10 @@ var _errors: Array[float] = []  # ms, positive = late
 var _graph := PackedFloat32Array()
 var _prev_song_time: float = 0.0
 var _label: Label
+var _net_label: Label
 var _graph_origin := Vector2.ZERO
+## Test seam: the session to read net rows from. null = the /root/NetSession autoload.
+var net_session: Node = null
 
 
 func _ready() -> void:
@@ -31,6 +37,14 @@ func _ready() -> void:
 	_label.position = Vector2(Palette.SP_SM, Palette.SP_SM)
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
+	_net_label = Label.new()
+	_net_label.name = "NetRows"
+	_net_label.add_theme_font_size_override("font_size", Palette.SIZE_LABEL)
+	_net_label.add_theme_color_override("font_color", Palette.TEXT_MID)
+	_net_label.position = Vector2(Palette.SP_SM, NET_ROWS_Y)
+	_net_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_net_label.visible = false
+	add_child(_net_label)
 
 
 func setup(p_conductor: Conductor, judge: InputJudge) -> void:
@@ -71,11 +85,53 @@ func _process(_delta: float) -> void:
 		st, conductor.raw_position(), AudioServer.get_time_since_last_mix(), conductor.output_latency(),
 		Settings.audio_offset * 1000.0, Settings.visual_offset * 1000.0, Engine.get_frames_per_second()]
 	_graph_origin = Vector2(Palette.SP_MD, 150.0)
+	refresh_net_rows()
 	queue_redraw()
+
+
+## The session to read when a match is active, else null (offline, lobby only, or no autoload).
+func _active_session() -> Node:
+	var s: Node = net_session
+	if s == null and is_inside_tree():
+		s = get_node_or_null(^"/root/NetSession")
+	if s == null or not s.has_method("pending_match") or not s.has_method("debug_stats"):
+		return null
+	var m: Variant = s.call("pending_match")
+	if not (m is Dictionary) or (m as Dictionary).is_empty():
+		return null
+	return s
+
+
+## Fills the five net rows during an online match; empty and hidden otherwise.
+func refresh_net_rows() -> void:
+	var s := _active_session()
+	if s == null:
+		_net_label.text = ""
+		_net_label.visible = false
+		return
+	var stats: Variant = s.call("debug_stats")
+	_net_label.text = NetDebugRows.format(stats if stats is Dictionary else {})
+	_net_label.visible = true
+
+
+## Timing block text (tests).
+func timing_text() -> String:
+	return _label.text
+
+
+## Net rows text ("" offline) (tests).
+func net_text() -> String:
+	return _net_label.text if _net_label.visible else ""
 
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Palette.alpha(Palette.ABYSS_900, 0.7))
+	if _net_label != null and _net_label.visible:
+		# The net lines run wider than the 360 px panel; extend the shade behind them only.
+		var nw := _net_label.get_combined_minimum_size().x + Palette.SP_SM * 2.0
+		if nw > size.x:
+			draw_rect(Rect2(size.x, NET_ROWS_Y - Palette.SP_SM, nw - size.x, size.y - NET_ROWS_Y + Palette.SP_SM),
+				Palette.alpha(Palette.ABYSS_900, 0.7))
 	draw_rect(Rect2(_graph_origin, GRAPH_SIZE), Palette.ABYSS_500, false, 1.0)
 	var step := GRAPH_SIZE.x / float(GRAPH_SAMPLES - 1)
 	var prev := Vector2.ZERO
