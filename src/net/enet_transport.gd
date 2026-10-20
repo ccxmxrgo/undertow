@@ -55,6 +55,18 @@ var _members := {}
 ## Host: peers to disconnect on the next poll (after a refusal reply was flushed).
 var _drop_next: Array[int] = []
 var _drop_now: Array[int] = []
+## IN-03 (smoke only, NetAutotest --net-lossy): emulated loss on this endpoint. A lost reliable
+## packet is held (ENet retransmit) for LOSSY_HOLD_MS, and everything behind it on the ordered
+## channel waits too (head-of-line), then the backlog goes out in one burst; unreliable
+## packets are dropped. Applied to sends and receives. 0 (the default) = off; friends never set it.
+const LOSSY_HOLD_MIN_MS := 50
+const LOSSY_HOLD_MAX_MS := 150
+var lossy := 0.0
+var lossy_rng := RandomNumberGenerator.new()
+var _out_hold: Array = []  # [peer, bytes, reliable]
+var _out_until := 0
+var _in_hold: Array = []  # [peer, bytes]
+var _in_until := 0
 ## Client: pending async hostname resolution.
 var _resolve_id := -1
 var _resolve_port := 0
@@ -131,7 +143,24 @@ func send(p_peer: int, bytes: PackedByteArray, reliable: bool = true) -> void:
 		return
 	if not _hosting and (p_peer != HOST_ID or not _client_connected):
 		return
-	var mode := MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable \
+	if lossy > 0.0:
+		if not reliable:
+			if lossy_rng.randf() >= lossy:
+				_send_now(p_peer, bytes, false)
+			return
+		var now := Time.get_ticks_msec()
+		if _out_hold.is_empty() and now >= _out_until and lossy_rng.randf() >= lossy:
+			_send_now(p_peer, bytes, true)
+			return
+		if _out_hold.is_empty() and now >= _out_until:
+			_out_until = now + lossy_rng.randi_range(LOSSY_HOLD_MIN_MS, LOSSY_HOLD_MAX_MS)
+		_out_hold.append([p_peer, bytes, true])
+		return
+	_send_now(p_peer, bytes, reliable)
+
+
+func _send_now(p_peer: int, bytes: PackedByteArray, reliable: bool) -> void:
+	var mode :=MultiplayerPeer.TRANSFER_MODE_RELIABLE if reliable \
 		else MultiplayerPeer.TRANSFER_MODE_UNRELIABLE
 	var ch := NetProtocol.CH_RELIABLE if reliable else NetProtocol.CH_UNRELIABLE
 	api.send_bytes(bytes, p_peer, mode, ch)
@@ -204,6 +233,23 @@ func poll(_now_s: float) -> void:
 	_drop_now = _drop_next
 	_drop_next = []
 	api.poll()
+	if lossy > 0.0:
+		_flush_lossy()
+
+
+## IN-03: releases the held backlogs once their hold expired (in order, one burst).
+func _flush_lossy() -> void:
+	var now := Time.get_ticks_msec()
+	if not _out_hold.is_empty() and now >= _out_until and not _closed:
+		var q := _out_hold
+		_out_hold = []
+		for e in q:
+			_send_now(int(e[0]), e[1], bool(e[2]))
+	if not _in_hold.is_empty() and now >= _in_until and not _closed:
+		var q := _in_hold
+		_in_hold = []
+		for e in q:
+			packet.emit(int(e[0]), e[1])
 
 
 func _poll_resolve() -> void:
@@ -280,6 +326,15 @@ func _on_peer_authenticating(id: int) -> void:
 
 
 func _on_peer_packet(id: int, bytes: PackedByteArray) -> void:
+	if lossy > 0.0:
+		var now := Time.get_ticks_msec()
+		if not _in_hold.is_empty() or now < _in_until:
+			_in_hold.append([id, bytes])
+			return
+		if lossy_rng.randf() < lossy:
+			_in_until = now + lossy_rng.randi_range(LOSSY_HOLD_MIN_MS, LOSSY_HOLD_MAX_MS)
+			_in_hold.append([id, bytes])
+			return
 	packet.emit(id, bytes)
 
 

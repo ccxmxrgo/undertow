@@ -1,5 +1,9 @@
 # Online smoke test (04-17, D-24 layer 4): real headless Godot processes over real ENet on 127.0.0.1.
-# Usage: powershell -NoProfile -File tools/net_smoke.ps1 [-Scenario full|drop|both] [-Port 47591] [-Seconds 30]
+# Usage: powershell -NoProfile -File tools/net_smoke.ps1 [-Scenario full|drop|both] [-Port 47591] [-Seconds 30] [-Lossy 0.05]
+#
+# -Lossy p (IN-03, 0..0.2): client C1 runs with --net-lossy=p (ENetTransport emulates a lossy link: a lost
+# reliable packet is held 50-150 ms with head-of-line blocking, then bursts; unreliable packets drop). The
+# digests must still match and no peer may be strike-kicked; late inputs are then expected and only noted.
 #
 # Scenarios:
 #   full  1 host + 3 clients. The host waits for 4 seats, picks the first bundled song (easy), the clients
@@ -28,7 +32,7 @@
 # Watchdogs: every process gets --net-timeout=Seconds+60 (it writes an error report and exits 3); the script
 # waits at most Seconds+90 s per scenario, kills stragglers with taskkill /T /F ([FAIL]), and its finally
 # block kills every process it started plus any leftover process whose command line has --net-autotest.
-param([ValidateSet("full", "drop", "both")][string]$Scenario = "both", [int]$Port = 47591, [int]$Seconds = 30, [ValidateSet("WASAPI", "Dummy")][string]$AudioDriver = "WASAPI")
+param([ValidateSet("full", "drop", "both")][string]$Scenario = "both", [int]$Port = 47591, [int]$Seconds = 30, [ValidateSet("WASAPI", "Dummy")][string]$AudioDriver = "WASAPI", [double]$Lossy = 0.0)
 
 $godot = $env:GODOT_BIN
 if (-not $godot) { $godot = [Environment]::GetEnvironmentVariable("GODOT_BIN", "User") }
@@ -117,7 +121,7 @@ function Test-Reports([string]$dir, [string]$droppedName) {
         if ($spread -le $maxSpreadMs) { Pass "$msg <= 20" } else { Fail "$msg > 20" }
         foreach ($r in $all) { Note ("{0} start offset vs host {1:N3} ms" -f $r.name, ([double]$r.start_unix_ms - [double]$host_.start_unix_ms)) }
     }
-    if ([int]$host_.late_inputs -eq 0) { Pass "late inputs 0" } else { Fail "late inputs $($host_.late_inputs)" }
+    if ([int]$host_.late_inputs -eq 0) { Pass "late inputs 0" } elseif ($Lossy -gt 0) { Note "late inputs $($host_.late_inputs) (lossy link: clamped, expected)" } else { Fail "late inputs $($host_.late_inputs)" }
     if ([int]$host_.strike_kicks -ne 0) { Fail "strike disconnects $($host_.strike_kicks)" } else { Pass "no strike disconnects (ping overflow dropped: $($host_.ping_dropped))" }
     foreach ($r in $all) {
         $n = @($r.results_rows).Count
@@ -163,6 +167,7 @@ try {
                 "--net-seconds=$Seconds", "--net-profile=$($profiles[$i])", "--net-name=$name", "--net-timeout=$($Seconds + 60)",
                 "--mute", "--no-boot-scan", "--net-report=$report")
             if ($role -eq "client") { $a += "--net-address=127.0.0.1" }
+            if ($Lossy -gt 0 -and $name -eq "C1") { $a += ("--net-lossy={0}" -f $Lossy.ToString([Globalization.CultureInfo]::InvariantCulture)) }
             $p = Start-Process -FilePath $godot -ArgumentList $a -NoNewWindow -PassThru `
                 -RedirectStandardOutput (Join-Path $dir "$name.out.txt") -RedirectStandardError (Join-Path $dir "$name.err.txt")
             $null = $p.Handle  # keeps ExitCode readable after exit

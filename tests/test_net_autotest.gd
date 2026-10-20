@@ -170,3 +170,17 @@ func test_compare_reports_drop_scenario() -> void:
 	for d: Dictionary in reps:
 		d["results_rows"] = _rows(4, 3, false)
 	assert_bool(NetAutotest.compare_reports(reps, {"players": 4, "dropped_seat": 3}).ok).is_false()
+
+
+## IN-03: --net-lossy is parsed and bounded (0..MAX_LOSSY); off by default.
+func test_lossy_arg() -> void:
+	var base := ["--net-autotest=client", "--net-report=build/net_smoke/x.json"]
+	var off := NetAutotest.parse_args(PackedStringArray(base))
+	assert_bool(off.ok).is_true()
+	assert_float(off.lossy).is_equal(0.0)
+	var on := NetAutotest.parse_args(PackedStringArray(base + ["--net-lossy=0.05"]))
+	assert_bool(on.ok).is_true()
+	assert_float(on.lossy).is_equal_approx(0.05, 1e-9)
+	for bad in ["--net-lossy=0.5", "--net-lossy=-1", "--net-lossy=x"]:
+		assert_bool(NetAutotest.parse_args(PackedStringArray(base + [bad])).ok).is_false()
+	assert_float(ENetTransport.new().lossy).is_equal(0.0)

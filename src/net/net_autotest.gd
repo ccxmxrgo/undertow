@@ -19,6 +19,8 @@ extends Node
 ##   --net-seed=<n>               match seed (default 1717)
 ##   --net-timeout=<s>            overall watchdog, 10..3600 (default 120): a report with
 ##                                error "timeout" is written and the process exits with code 3
+##   --net-lossy=<0..0.2>         IN-03: emulate a lossy link on this endpoint (held reliable
+##                                packets + head-of-line burst, dropped unreliable; ENetTransport)
 ##   --mute                       mutes the Master bus
 ## Use with `--net-profile=<n>` (Settings: user://settings_net<n>.cfg, never the real
 ## settings.cfg) and `--no-boot-scan`. The library is scanned by this driver into a private songs
@@ -54,6 +56,8 @@ const HOST_PEERS_WAIT_S := 6.0
 const QUIT_DELAY_S := 1.5
 const JOIN_RETRIES := 5
 const READY_RESEND_S := 1.0
+## IN-03: highest --net-lossy accepted (emulated loss probability per packet).
+const MAX_LOSSY := 0.2
 
 enum Step { SETUP, LOBBY, MATCH, RESULTS, REPORTED }
 
@@ -98,7 +102,7 @@ static func has_arg(args: PackedStringArray) -> bool:
 static func parse_args(args: PackedStringArray) -> Dictionary:
 	var out := {"ok": false, "error": "", "role": "", "address": "127.0.0.1",
 		"port": DEFAULT_PORT, "players": 4, "seconds": 30.0, "diff": "easy", "report": "",
-		"name": "", "seed": DEFAULT_SEED, "timeout": 120.0, "mute": false}
+		"name": "", "seed": DEFAULT_SEED, "timeout": 120.0, "mute": false, "lossy": 0.0}
 	var profile := -1
 	var report_raw := ""
 	for a in args:
@@ -156,6 +160,10 @@ static func parse_args(args: PackedStringArray) -> Dictionary:
 			"--net-profile=":
 				if v.is_valid_int():
 					profile = int(v)
+			"--net-lossy=":
+				if not v.is_valid_float() or float(v) < 0.0 or float(v) > MAX_LOSSY:
+					return _bad(out, "lossy")
+				out.lossy = float(v)
 			_:
 				pass
 	if out.role == "":
@@ -367,6 +375,16 @@ func _ready() -> void:
 		st.set("player_name_set", true)
 		st.set("calibration_done", true)  # no first-launch wizard
 		st.set("menu_music", false)
+	var lossy := float(cfg.get("lossy", 0.0))
+	if lossy > 0.0:
+		# IN-03: this endpoint's ENet transport emulates a lossy link (ENetTransport.lossy).
+		var nm := str(cfg.name)
+		session.set("transport_factory", func(_role: String) -> NetTransport:
+			var t := ENetTransport.new()
+			t.lossy = lossy
+			t.lossy_rng.seed = hash(nm)
+			return t)
+		print("[autotest] lossy link %.3f" % lossy)
 	session.connect("match_loading", _on_match_loading)
 	session.connect("start_scheduled", _on_start_scheduled)
 	session.connect("match_aborted_to_lobby", _on_aborted)
