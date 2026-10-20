@@ -19,8 +19,15 @@ extends Control
 ## full-screen tint drawn only for 600 ms after your implosion (like the U-9.2 vignette); it
 ## carries no information and is excluded from the keep-out contract.
 ## Effect contract: UiKit.register_fx, apply_effect_settings(), effect_counts().
+## Online-only states (04-UI-SPEC 10.3, 11.7), activated only by start_countdown() and
+## show_waiting(), so offline output is unchanged:
+## - MATCH START countdown: "ALL SUBS LINKED" / "DIVE IN 3..1" then "DIVE" / "FLIGHT {n} BEATS",
+##   a SONAR line draining right to left from the START receipt to song time 0. Highest priority
+##   while song_time < 0; "DIVE" holds 600 ms then fades over DUR_SLOW (gone by song_time 0.9).
+##   Digit changes cross-fade over DUR_FAST (swap under Reduce motion). Driven by song time.
+## - MATCH COMPLETE / WAITING FOR RESULTS / "{n} SUBS STILL DIVING" until hide_waiting().
 
-enum Kind { NONE, DUEL_ANNOUNCE, DUEL_LIVE, DUEL_RESULT, LAST_STANDING, IMPLOSION }
+enum Kind { NONE, DUEL_ANNOUNCE, DUEL_LIVE, DUEL_RESULT, LAST_STANDING, IMPLOSION, COUNTDOWN, WAITING }
 enum Phase { IDLE, IN, HOLD, OUT }
 
 const TEXTS_REFRESH_S := 0.1  # live duel texts re-read at 10 Hz (WR-09)
@@ -43,6 +50,8 @@ const VIGNETTE_SEC := 0.6
 const BRACKET_ALPHA := 0.8
 const DUEL_STALE_SEC := 1.0
 const SEP := " · "
+const DIVE_HOLD := 0.6  # "DIVE" holds 600 ms after song time 0 (10.3)
+const COUNTDOWN_GONE := DIVE_HOLD + Palette.DUR_SLOW  # 0.9: never shown after song time 0 + 900 ms
 
 var _channel: EventChannel
 var _local_seat: int = 0
@@ -68,6 +77,8 @@ var _right: String = ""
 var _right_col: Color = Palette.TEXT_MID
 var _prev: Dictionary = {}
 var _xfade_left: float = 0.0
+var _xfade_dur: float = XFADE_SEC
+var _cd: Dictionary = {}  # countdown {receipt, beats}
 var _shake_t: float = -1.0
 var _vignette_t: float = -1.0
 var _reduce: bool = false
@@ -124,11 +135,13 @@ func _min_pct() -> int:
 
 static func priority_of(kind: Kind) -> int:
 	match kind:
+		Kind.COUNTDOWN:
+			return 4
 		Kind.IMPLOSION:
 			return 3
 		Kind.LAST_STANDING:
 			return 2
-		Kind.DUEL_ANNOUNCE, Kind.DUEL_LIVE, Kind.DUEL_RESULT:
+		Kind.DUEL_ANNOUNCE, Kind.DUEL_LIVE, Kind.DUEL_RESULT, Kind.WAITING:
 			return 1
 	return 0
 
@@ -178,6 +191,81 @@ func _request(kind: Kind, data: Dictionary) -> void:
 	_queue(r)
 
 
+# ---- Online states (04-UI-SPEC 10.3, 11.7) -----------------------------------------------
+
+## MATCH START countdown from the START receipt (song time, < 0) to "DIVE" at song time 0.
+## flight_beats is the lobby torpedo flight (right caption). Song-time driven via observe().
+func start_countdown(start_receipt_song_t: float, flight_beats: int) -> void:
+	var r := start_receipt_song_t if is_finite(start_receipt_song_t) else 0.0
+	_cd = {"receipt": minf(r, 0.0), "beats": maxi(flight_beats, 1)}
+	_t = r
+	_drop_pending(Kind.COUNTDOWN)
+	if r >= COUNTDOWN_GONE:
+		return
+	_request(Kind.COUNTDOWN, {})
+
+
+## Headline for the countdown at song time t: "DIVE IN 3".."DIVE IN 1" (digit = ceil(-t)
+## clamped 1..3), "DIVE" from t 0, "" once the state is gone (t >= 0.9).
+static func countdown_text_at(song_time: float) -> String:
+	if song_time >= COUNTDOWN_GONE:
+		return ""
+	if song_time >= 0.0:
+		return "DIVE"
+	return "DIVE IN %d" % clampi(ceili(-song_time), 1, 3)
+
+
+## 1.0 at the START receipt, draining to 0.0 at song time 0 (the progress line width share).
+func countdown_progress() -> float:
+	if _cd.is_empty():
+		return 0.0
+	var r := float(_cd.get("receipt", 0.0))
+	if r >= 0.0:
+		return 0.0
+	return clampf(_t / r, 0.0, 1.0)
+
+
+## MATCH COMPLETE / WAITING FOR RESULTS (11.7). still_diving > 0 adds "{n} SUBS STILL DIVING"
+## (host side); <= 0 leaves the right caption empty (clients). Calling it again updates in place.
+func show_waiting(still_diving: int) -> void:
+	var data := {"n": still_diving}
+	if _phase != Phase.IDLE and int(_cur.get("kind", Kind.NONE)) == Kind.WAITING:
+		_cur["data"] = data
+		if _phase == Phase.OUT:
+			_set_phase(Phase.HOLD)
+		_refresh_texts()
+		_apply_visual()
+		return
+	_request(Kind.WAITING, data)
+
+
+func hide_waiting() -> void:
+	_drop_pending(Kind.WAITING)
+	if _phase != Phase.IDLE and int(_cur.get("kind", Kind.NONE)) == Kind.WAITING and _phase != Phase.OUT:
+		_set_phase(Phase.OUT)
+		_apply_visual()
+
+
+func _drop_pending(kind: int) -> void:
+	var keep: Array[Dictionary] = []
+	for p in _pending:
+		if int(p["kind"]) != kind:
+			keep.append(p)
+	_pending = keep
+
+
+static func waiting_right_text(still_diving: int) -> String:
+	if still_diving <= 0:
+		return ""
+	if still_diving == 1:
+		return "1 SUB STILL DIVING"
+	return "%d SUBS STILL DIVING" % still_diving
+
+
+static func flight_text(beats: int) -> String:
+	return "FLIGHT 1 BEAT" if beats == 1 else "FLIGHT %d BEATS" % beats
+
+
 func _queue(r: Dictionary) -> void:
 	var kind: int = r.get("kind", Kind.NONE)
 	if kind == Kind.NONE:
@@ -200,6 +288,8 @@ func _pop_next() -> Dictionary:
 			if int(p["kind"]) != Kind.DUEL_ANNOUNCE and int(p["kind"]) != Kind.DUEL_LIVE:
 				keep.append(p)
 		_pending = keep
+	if _t >= COUNTDOWN_GONE:
+		_drop_pending(Kind.COUNTDOWN)
 	var best := -1
 	for i in range(_pending.size()):
 		if best < 0 or priority_of(_pending[i]["kind"]) > priority_of(_pending[best]["kind"]):
@@ -217,6 +307,7 @@ func _show(r: Dictionary) -> void:
 		_prev = {"caption": _caption, "caption_col": _caption_col, "headline": _headline,
 			"headline_col": _headline_col, "right": _right, "right_col": _right_col}
 		_xfade_left = XFADE_SEC
+		_xfade_dur = XFADE_SEC
 	else:
 		_prev = {}
 		_xfade_left = 0.0
@@ -321,6 +412,21 @@ func _refresh_texts() -> void:
 			_headline_col = Palette.WARNING_RED
 			_right = "YOU ARE A WRECK"
 			_right_col = Palette.TEXT_MID
+		Kind.COUNTDOWN:
+			_caption = "ALL SUBS LINKED"
+			_caption_col = Palette.SONAR
+			var hl := countdown_text_at(minf(_t, 0.0))  # "DIVE" stays through its fade
+			_headline = hl
+			_headline_col = Palette.SONAR_PALE if _t >= 0.0 else Palette.TEXT_HI
+			_right = flight_text(int(_cd.get("beats", 2)))
+			_right_col = Palette.TEXT_MID
+		Kind.WAITING:
+			_caption = "MATCH COMPLETE"
+			_caption_col = Palette.SONAR
+			_headline = "WAITING FOR RESULTS"
+			_headline_col = Palette.TEXT_HI
+			_right = waiting_right_text(int(d.get("n", 0)))
+			_right_col = Palette.TEXT_MID
 	if _panel_node != null:
 		_panel_node.queue_redraw()
 
@@ -369,8 +475,53 @@ func observe(song_time: float) -> void:
 		if _t >= _texts_next or _t < _texts_next - 1.0:
 			_texts_next = _t + TEXTS_REFRESH_S
 			_refresh_texts()
+	if _phase != Phase.IDLE and kind == Kind.COUNTDOWN:
+		_observe_countdown()
+		return
 	if _panel_node != null and _phase != Phase.IDLE and kind == Kind.DUEL_LIVE:
 		_panel_node.queue_redraw()
+
+
+## Countdown from song time: digit swaps (cross-fade DUR_FAST, swap under Reduce motion),
+## "DIVE" hold, the DUR_SLOW fade from 0.6 s and the end at 0.9 s, all on the song clock.
+func _observe_countdown() -> void:
+	if _t >= COUNTDOWN_GONE:
+		_finish_current()
+		return
+	if _t >= DIVE_HOLD:
+		if _phase != Phase.OUT:
+			_set_phase(Phase.OUT)
+		_phase_t = maxf(_phase_t, _t - DIVE_HOLD)
+	var hl := countdown_text_at(minf(_t, 0.0))
+	if hl != _headline:
+		if _reduce:
+			_prev = {}
+			_xfade_left = 0.0
+		else:
+			_prev = {"caption": _caption, "caption_col": _caption_col, "headline": _headline,
+				"headline_col": _headline_col, "right": _right, "right_col": _right_col}
+			_xfade_dur = Palette.DUR_FAST
+			_xfade_left = Palette.DUR_FAST
+		_refresh_texts()
+	_apply_visual()
+
+
+## Ends the shown banner now and shows the next waiting one (if any).
+func _finish_current() -> void:
+	_set_phase(Phase.IDLE)
+	_cur = {}
+	_prev = {}
+	_xfade_left = 0.0
+	var nxt := _pop_next()
+	if not nxt.is_empty():
+		_show(nxt)
+		return
+	_apply_visual()
+
+
+## Fade-out length of the shown banner: DUR_SLOW for the countdown "DIVE", else 0.3 s.
+func _out_sec() -> float:
+	return Palette.DUR_SLOW if int(_cur.get("kind", Kind.NONE)) == Kind.COUNTDOWN else OUT_SEC
 
 
 func step(dt: float) -> void:
@@ -409,7 +560,7 @@ func step(dt: float) -> void:
 					_phase_t = over2
 					moved = true
 			Phase.OUT:
-				if _phase_t >= OUT_SEC:
+				if _phase_t >= _out_sec():
 					_set_phase(Phase.IDLE)
 					_cur = {}
 					_prev = {}
@@ -502,7 +653,7 @@ func alpha() -> float:
 		Phase.HOLD:
 			return 1.0
 		Phase.OUT:
-			return clampf(1.0 - _phase_t / OUT_SEC, 0.0, 1.0)
+			return clampf(1.0 - _phase_t / _out_sec(), 0.0, 1.0)
 	return 0.0
 
 
@@ -646,13 +797,17 @@ func _draw_panel() -> void:
 	var r := Rect2(Vector2.ZERO, RECT.size)
 	ci.draw_style_box(_panel_style(), r)
 	UiKit.draw_brackets(ci, r, _bracket_color())
-	var k := 1.0 - _xfade_left / XFADE_SEC if _xfade_left > 0.0 else 1.0
+	var k := 1.0 - _xfade_left / _xfade_dur if _xfade_left > 0.0 else 1.0
 	if _xfade_left > 0.0 and not _prev.is_empty():
 		_draw_texts(ci, str(_prev["caption"]), _prev["caption_col"], str(_prev["headline"]), _prev["headline_col"],
 			str(_prev["right"]), _prev["right_col"], 1.0 - k)
 	_draw_texts(ci, _caption, _caption_col, _headline, _headline_col, _right, _right_col, k)
 	if int(_cur.get("kind", Kind.NONE)) == Kind.DUEL_LIVE:
 		ci.draw_rect(Rect2(0.0, LINE_Y, RECT.size.x * duel_progress(), LINE_H), Palette.SONAR)
+	elif int(_cur.get("kind", Kind.NONE)) == Kind.COUNTDOWN:
+		var w := RECT.size.x * countdown_progress()  # drains right to left
+		if w > 0.0:
+			ci.draw_rect(Rect2(0.0, LINE_Y, w, LINE_H), Palette.SONAR)
 
 
 func _draw_texts(ci: CanvasItem, caption: String, caption_col: Color, headline: String, headline_col: Color,

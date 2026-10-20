@@ -42,12 +42,17 @@ const CHIP_AUTOPLAY := "AUTOPLAY"
 const CHIP_SOLO_DIVE := "SOLO DIVE"
 ## Right-console status chip stack (03-UI-SPEC 5.3): top-down from y 824 with a 40 px pitch,
 ## 6 slots, max width 208 (x 1552..1760). Only visible chips take slots, in this order.
+## LINK (04-UI-SPEC 11.5, online clients only) is slot priority 0: the "NO HOST SIGNAL" chip.
 const CHIP_ORDER: Array[String] = [
-	"NO-FAIL", "AUTOPLAY", "SOLO DIVE", "PLACE", "BOUNTY", "DECOY", "OVERCLOCK", "BALLAST", "IMMUNE"]
+	"LINK", "NO-FAIL", "AUTOPLAY", "SOLO DIVE", "PLACE", "BOUNTY", "DECOY", "OVERCLOCK", "BALLAST", "IMMUNE"]
 const CHIP_NO_FAIL_Y := 824.0  # top slot
 const CHIP_PITCH := 40.0
 const CHIP_SLOTS := 6
 const CHIP_MAX_W := 208.0
+const CHIP_LINK := "LINK"
+## Overflow rule (04-UI-SPEC 11.5): when the LINK chip would make a 7th visible chip, these
+## lowest-priority chips hide first, in this order.
+const CHIP_OVERFLOW_DROP: Array[String] = ["BALLAST", "IMMUNE"]
 ## Wreck caption in the HULL CRITICAL slot (03-UI-SPEC 5.5).
 const WRECK_CAPTION := "WRECK · PERFECTS CHARGE DEBRIS"
 ## HULL CRITICAL caption: centred x 960, baseline 1028, 3 px KEYLINE outline.
@@ -210,7 +215,7 @@ func set_solo_dive(on: bool) -> void:
 
 
 ## Shows or hides chip `key` (one of CHIP_ORDER) with `text`, UiKit chip `variant`
-## (mode | info | reward | muted) and an optional 16 px UiIcons `glyph`. The stack re-packs.
+## (mode | info | reward | muted | danger) and an optional 16 px UiIcons `glyph`. The stack re-packs.
 ## While a wreck, the PLACE chip is frozen at its last value.
 func set_chip(key: String, text: String, variant: String, glyph: String, p_visible: bool) -> void:
 	if not CHIP_ORDER.has(key):
@@ -376,12 +381,21 @@ func depth_unit_x() -> float:
 
 ## Visible chips in stack order: {key: Rect2}. Slot i is y 824 + 40 i (32 tall); only visible
 ## chips take slots and at most CHIP_SLOTS are shown (03-UI-SPEC 5.3).
+## With the LINK chip on, BALLAST then IMMUNE hide first when the stack would overflow (04-UI-SPEC
+## 11.5); without it the Phase 3 order cut-off applies unchanged.
 func chip_rects() -> Dictionary:
+	var keys: Array[String] = []
+	for key in CHIP_ORDER:
+		if _chip_on(key):
+			keys.append(key)
+	if keys.has(CHIP_LINK):
+		for drop in CHIP_OVERFLOW_DROP:
+			if keys.size() <= CHIP_SLOTS:
+				break
+			keys.erase(drop)
 	var out := {}
 	var i := 0
-	for key in CHIP_ORDER:
-		if not _chip_on(key):
-			continue
+	for key in keys:
 		if i >= CHIP_SLOTS:
 			break
 		out[key] = Rect2(RC_X, CHIP_NO_FAIL_Y + CHIP_PITCH * i, _chip_w(key), UiKit.CHIP_H)

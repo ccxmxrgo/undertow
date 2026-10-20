@@ -10,6 +10,7 @@ extends Node
 
 const BALLAST_SHOW_SEC := 1.6
 const EPS_BEATS := 1e-4
+const LINK_TEXT := "NO HOST SIGNAL"
 
 var _channel: EventChannel
 var _seat: int = 0
@@ -24,6 +25,7 @@ var _overclock_until: float = -1.0
 var _ballast_until: float = -1.0
 var _immune_until: float = -1.0
 var _now: float = 0.0
+var _link_weak: bool = false
 ## Last bar count shown per countdown chip (WR-10): the chip text is rebuilt only on change.
 var _last_bars := {}
 
@@ -108,6 +110,20 @@ func on_event(e: Dictionary) -> void:
 		_:
 			return
 	_now = maxf(_now, t)
+
+
+## Online clients only (04-UI-SPEC 11.5, D-17 watchdog): shows the danger chip "NO HOST
+## SIGNAL" at slot priority 0 while no host packet arrived for >= 1 s; hides it when packets
+## resume (Hud pops it in and fades it out like every chip). Never called offline.
+func set_link_weak(on: bool) -> void:
+	_link_weak = on
+	if _hud == null or not is_instance_valid(_hud):
+		return
+	_hud.set_chip(Hud.CHIP_LINK, LINK_TEXT, "danger", "", on)
+
+
+func is_link_weak() -> bool:
+	return _link_weak
 
 
 ## Refreshes the bar countdowns and expires IMMUNE / HULL +p at song time t.
