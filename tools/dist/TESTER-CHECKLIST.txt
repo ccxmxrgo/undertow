@@ -83,9 +83,11 @@ Write down anything odd as: song, difficulty, time (e.g. "HRT, Easy, 1:20").
 4c. CHART A SONG (new in v0.5.4)
 --------------------------------
 [ ] Main menu shows Chart a Song.
-[ ] The one-time download (about 400 MB), or the "not available yet"
-    message, is clear. The download + install took: ______ min
-[ ] After the download, pick a song you own (MP3, OGG, WAV or FLAC) and
+[ ] The first time, Chart a Song installs the Autocharter pack by itself
+    from the "Autocharter Pack" folder that came with the game (no
+    download, keep that folder next to UNDERTOW.exe). The install took:
+    ______ min
+[ ] After the install, pick a song you own (MP3, OGG, WAV or FLAC) and
     chart it with Auto.
 [ ] The progress moves, and Cancel stops it.
 [ ] Play Now opens Song Select on the new song, and it plays in sync.

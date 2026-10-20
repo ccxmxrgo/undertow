@@ -29,7 +29,8 @@ HOW TO RUN
 ----------
 1. Unzip the whole folder somewhere (e.g. your Desktop).
 2. Double-click UNDERTOW.exe. The game opens fullscreen. The whole game is
-   in that one file.
+   in that one file. Keep the "Autocharter Pack" folder next to it: Chart a
+   Song installs itself from there (see WHAT'S NEW IN v0.5.4).
 3. Windows may say "Windows protected your PC" because the game isn't
    signed. Click "More info", then "Run anyway".
 4. On first launch the CALIBRATE SONAR wizard opens. Please do it! It
@@ -154,16 +155,20 @@ WHAT'S NEW IN v0.5.4
   into a song you can play, with Easy to Expert charts. It splits the
   music into instruments and charts one of them (or Instrument Lanes:
   each lane is one instrument).
-- The first time, the game offers a one-time download, the Autocharter
-  pack: about 400 MB, about 1 GB on disk (have about 2 GB free while it
-  installs), stored in %LOCALAPPDATA%\UNDERTOW\ac. Installing after the
-  download takes about 1.5 minutes. You can remove it again on the Chart
-  a Song screen.
-- If the screen says the pack is not available yet, it has not been
-  published yet: try again later. Everything else works without it.
+- No download needed: the Autocharter pack (the part that does the
+  charting) comes with the game, in the "Autocharter Pack" folder next to
+  UNDERTOW.exe. The first time you open Chart a Song it installs itself
+  from that folder automatically (one time, about 1-2 minutes). It is
+  stored in %LOCALAPPDATA%\UNDERTOW\ac, about 1 GB on disk (have about
+  2 GB free while it installs). You can remove it again on the Chart a
+  Song screen.
+- If Chart a Song asks for the pack instead (for example because
+  UNDERTOW.exe was moved away from the "Autocharter Pack" folder), press
+  "Install from Folder..." and pick the "Autocharter Pack" folder from the
+  zip. Everything else works without it.
 - Charting a 4-minute song takes about 1 to 3 minutes on a typical gaming
   PC (on the developer's PC a 2-minute song took about 36 seconds, so a
-  4-minute song about 1 minute); the first run after the download is
+  4-minute song about 1 minute); the first run after the install is
   slower. Your music never leaves your PC.
 - Charted songs appear in Song Select like any other song (charter:
   UNDERTOW autochart). Use "Chart Another Instrument" to try a different
