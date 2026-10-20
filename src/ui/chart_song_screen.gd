@@ -4,8 +4,14 @@ extends Control
 ## owns into a chart. Seven states, one container each inside the glass content panel:
 ##   pack_missing - the one-time Autocharter pack download (Download / Install from Folder / Back);
 ##                  when the build has no pinned parts the not-available text replaces the size
-##                  line and both install buttons are disabled.
+##                  line and both install buttons are disabled. A hint line points at the
+##                  "Autocharter Pack" folder that ships next to UNDERTOW.exe (Install from Folder).
 ##   installing   - PackInstaller progress (label + bar) with Cancel (confirmed).
+## Opening the screen without an installed pack first looks for the bundled pack folder
+## (AutochartBundle.find: every pinned part at its pinned size next to the exe). When found it
+## skips pack_missing and installs from it right away (installing state, the bundled line shown);
+## the installer still copies and SHA-256-checks every part (CR-01). A failed bundled install
+## falls back to pack_missing with Download / Install from Folder.
 ##   pick         - Choose File... (native dialog, Godot FileDialog fallback) or drop a file on
 ##                  the window; Remove Autocharter Pack / Clear Chart Cache.
 ##   options      - Name / Artist (prefilled from ID3 or the file name) and the instrument choice;
@@ -60,6 +66,10 @@ const STOPPED_TEXT := "Charting stopped."
 const ADDING_TEXT := "Adding to your library..."
 const DETAILS_TEXT := "Details: log.txt in the autocharter folder"
 const SELFTEST_TEXT := "Testing the autocharter..."
+const BUNDLED_TEXT := "Installing the Autocharter pack that came with the game (one time, about 1-2 minutes)."
+const FOLDER_HINT_TEXT := "No download? Press Install from Folder and choose the \"Autocharter Pack\" folder that came with the game (next to UNDERTOW.exe)."
+const RELEASE_MISSING_TEXT := "The Autocharter pack cannot be downloaded. Press Install from Folder and choose the \"Autocharter Pack\" folder that came with the game (next to UNDERTOW.exe)."
+const BUNDLED_DAMAGED_TEXT := "The \"Autocharter Pack\" folder that came with the game is damaged. Unzip the game again, or press Install from Folder or Download."
 const CLEARED_TEXT := "Chart cache cleared (%d MB freed)."
 const CLEAR_FAILED_TEXT := "The chart cache could not be cleared."
 const CLEAR_BODY := "Separated instruments of recent songs are deleted. Your charted songs stay."
@@ -167,6 +177,10 @@ var _containers: Dictionary = {}  # state -> VBoxContainer
 var _headings: Dictionary = {}  # state -> Label
 var _bodies: Dictionary = {}  # state -> Array[Label]
 var _size_label: Label
+var _folder_hint_label: Label
+var _bundled_label: Label
+## True while the current install run reads the bundled pack folder.
+var _bundled_run := false
 var _footer_error := false
 var _src := ""
 var _instrument := "auto"
@@ -236,7 +250,11 @@ func _ready() -> void:
 	if installer.is_installed():
 		_enter_installed()
 	else:
-		show_state("pack_missing")
+		var bundled := _find_bundled()
+		if bundled != "":
+			_install_bundled(bundled)
+		else:
+			show_state("pack_missing")
 
 
 func _exit_tree() -> void:
@@ -272,7 +290,8 @@ func heading_text() -> String:
 func body_text() -> String:
 	var lines := PackedStringArray()
 	for l: Label in _bodies.get(_state, []):
-		lines.append(l.text)
+		if l.visible:
+			lines.append(l.text)
 	return "\n".join(lines)
 
 
@@ -497,6 +516,7 @@ func _build_pack_missing(box: VBoxContainer) -> void:
 	_heading(box, "pack_missing", "AUTOCHARTER PACK NEEDED")
 	_body(box, "pack_missing", INTRO_TEXT)
 	_size_label = _body(box, "pack_missing", "")
+	_folder_hint_label = _body(box, "pack_missing", FOLDER_HINT_TEXT)
 	_body(box, "pack_missing", PRIVACY_TEXT)
 	var row := _button_row(box)
 	download_button = _button(row, "Download", "dive", "primary", BUTTON_H, _start_download)
@@ -507,6 +527,8 @@ func _build_pack_missing(box: VBoxContainer) -> void:
 
 func _build_installing(box: VBoxContainer) -> void:
 	_heading(box, "installing", "INSTALLING THE AUTOCHARTER")
+	_bundled_label = _body(box, "installing", BUNDLED_TEXT)
+	_bundled_label.visible = false
 	progress_label = _body(box, "installing", "Checking the Autocharter pack...")
 	progress_bar = ProgressBar.new()
 	progress_bar.name = "Progress"
@@ -838,6 +860,7 @@ func _refresh_pack_missing() -> void:
 			float(installer.spec.get("unpacked_bytes", 0)) / 1e9]
 	else:
 		_size_label.text = PackInstaller.NOT_AVAILABLE_TEXT
+	_folder_hint_label.visible = ok
 	download_button.disabled = not ok
 	install_folder_button.disabled = not ok
 
@@ -846,6 +869,7 @@ func _start_download() -> void:
 	if not _available():
 		return
 	installer.source_dir = ""
+	_bundled_run = false
 	_begin_install()
 
 
@@ -856,11 +880,27 @@ func _install_from_folder() -> void:
 		if _state != "pack_missing" or path.strip_edges().is_empty():
 			return
 		installer.source_dir = path.strip_edges()
+		_bundled_run = false
 		_begin_install())
+
+
+## The bundled pack folder next to the exe ("" = none, or the build has no pinned parts).
+func _find_bundled() -> String:
+	if not _available():
+		return ""
+	return AutochartBundle.find(installer.spec.get("parts", []))
+
+
+## Installs from the pack folder that ships with the game, without asking (one time).
+func _install_bundled(dir: String) -> void:
+	installer.source_dir = dir
+	_bundled_run = true
+	_begin_install()
 
 
 func _begin_install() -> void:
 	set_footer("")
+	_bundled_label.visible = _bundled_run
 	progress_label.text = "Checking the Autocharter pack..."
 	progress_bar.max_value = 1.0
 	progress_bar.value = 0.0
@@ -877,6 +917,8 @@ func _on_progress(done: int, total: int, label: String) -> void:
 
 func _on_installed() -> void:
 	_close_dialog()
+	_bundled_run = false
+	_bundled_label.visible = false
 	set_footer("")
 	_enter_installed()
 
@@ -889,10 +931,17 @@ func _enter_installed() -> void:
 		_run_selftest()
 
 
-func _on_failed(_code: String, message: String) -> void:
+func _on_failed(code: String, message: String) -> void:
 	_close_dialog()
+	var text := message
+	if _bundled_run and (code == "hash_mismatch" or code == "not_available"):
+		text = BUNDLED_DAMAGED_TEXT
+	elif code == "not_available" and installer.source_dir == "" and _available():
+		text = RELEASE_MISSING_TEXT  # the release is not published: point at the shipped folder
+	_bundled_run = false
+	_bundled_label.visible = false
 	show_state("pack_missing")
-	set_footer(message, true)
+	set_footer(text, true)
 
 
 func _confirm_stop_install() -> void:
@@ -908,12 +957,15 @@ func _confirm_stop_install() -> void:
 				_go(MENU_SCENE),
 			cancel_install_button)
 		return
-	_open_dialog("STOP THE INSTALL?", "The download so far is discarded. You can install again later.",
+	_open_dialog("STOP THE INSTALL?", "The install so far is discarded. You can install again later."
+		if installer.source_dir != "" else "The download so far is discarded. You can install again later.",
 		"Stop Install", "Keep Installing",
 		func() -> void:
 			if _state != "installing" or _run_mode != "":
 				return  # WR-09: the install already ended
 			installer.cancel()
+			_bundled_run = false
+			_bundled_label.visible = false
 			show_state("pack_missing"),
 		cancel_install_button)
 
@@ -968,11 +1020,15 @@ func _pick(mode: String, done: Callable) -> void:
 	var is_dir := mode == "dir"
 	var title := "Choose the Autocharter pack folder" if is_dir else "Choose a song"
 	var filters := PackedStringArray() if is_dir else PackedStringArray([FILE_FILTER])
+	# The pack folder ships next to UNDERTOW.exe, so the folder picker starts there.
+	var start_dir := OS.get_system_dir(OS.SYSTEM_DIR_MUSIC)
+	if is_dir and AutochartBundle.base_dir() != "":
+		start_dir = AutochartBundle.base_dir()
 	if DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
 		var cb := func(ok: bool, paths: PackedStringArray, _filter: int) -> void:
 			if ok and not paths.is_empty():
 				done.call_deferred(paths[0])
-		DisplayServer.file_dialog_show(title, OS.get_system_dir(OS.SYSTEM_DIR_MUSIC), "", false,
+		DisplayServer.file_dialog_show(title, start_dir, "", false,
 			DisplayServer.FILE_DIALOG_MODE_OPEN_DIR if is_dir else DisplayServer.FILE_DIALOG_MODE_OPEN_FILE,
 			filters, cb)
 		return
@@ -984,7 +1040,7 @@ func _pick(mode: String, done: Callable) -> void:
 	_file_dialog.use_native_dialog = false
 	_file_dialog.title = title
 	_file_dialog.filters = filters
-	_file_dialog.current_dir = OS.get_system_dir(OS.SYSTEM_DIR_MUSIC)
+	_file_dialog.current_dir = start_dir
 	if is_dir:
 		_file_dialog.dir_selected.connect(func(p: String) -> void: done.call(p))
 	else:
@@ -1199,6 +1255,7 @@ func _run_selftest() -> void:
 	if is_job_running():
 		return
 	_selftest_passed = false
+	_bundled_label.visible = false
 	progress_label.text = SELFTEST_TEXT
 	progress_bar.max_value = 1.0
 	progress_bar.value = 0.0

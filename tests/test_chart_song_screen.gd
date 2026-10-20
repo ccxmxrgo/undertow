@@ -89,6 +89,7 @@ func before_test() -> void:
 func after_test() -> void:
 	SongFixture.rm_tree(D)
 	AutochartPaths.root_override = ""
+	AutochartBundle.base_dir_override = ""
 
 
 func _part(name: String, size: int = 410 * 1000 * 1000) -> Dictionary:
@@ -1053,3 +1054,145 @@ func test_new_states_are_focus_reachable() -> void:
 	s.show_state("error")
 	await get_tree().process_frame
 	_assert_reachable(s)
+
+
+# ---- bundled pack (ships next to UNDERTOW.exe) ---------------------------------------------
+
+
+## A real zip part in D/exe/<folder>; returns its pinned entry (real size and SHA-256).
+func _bundled_part(pname: String, entries: Dictionary, folder: String = "Autocharter Pack") -> Dictionary:
+	var path := D.path_join("exe").path_join(folder).path_join(pname)
+	SongFixture.make_zip(path, entries)
+	var f := FileAccess.open(path, FileAccess.READ)
+	var size := f.get_length()
+	f.close()
+	return {"name": pname, "size": size, "sha256": FileAccess.get_sha256(path), "roots": ["rt"]}
+
+
+func _bundled_dir(folder: String = "Autocharter Pack") -> String:
+	return ProjectSettings.globalize_path(D.path_join("exe").path_join(folder)).simplify_path()
+
+
+func _use_exe_dir() -> void:
+	SongFixture.mkdir(D + "/exe")
+	AutochartBundle.base_dir_override = ProjectSettings.globalize_path(D + "/exe")
+
+
+func _wait_until(cond: Callable, max_frames: int = 1200) -> void:
+	for i in max_frames:
+		if bool(cond.call()):
+			return
+		await get_tree().process_frame
+
+
+func test_bundled_pack_installs_automatically_then_runs_the_selftest() -> void:
+	var part := _bundled_part("undertow-ac-v1-rt.zip", {"rt/python.exe": "MZ", "rt/Lib/x.py": "print(1)"})
+	_use_exe_dir()
+	var s := _screen(_spec([part]))
+	# No pack_missing, no download: straight into installing from the shipped folder.
+	assert_str(s.state()).is_equal("installing")
+	assert_str(s.heading_text()).is_equal("INSTALLING THE AUTOCHARTER")
+	assert_str(s.body_text()).contains(ChartSongScreen.BUNDLED_TEXT)
+	assert_str(ChartSongScreen.BUNDLED_TEXT).contains(
+		"Installing the Autocharter pack that came with the game (one time, about 1-2 minutes)")
+	assert_str(s.installer.source_dir).is_equal(_bundled_dir())
+	assert_array(_fetches).is_empty()
+	await _wait_until(func() -> bool: return _fake.starts.size() > 0 or s.state() != "installing")
+	# Installed (hash-checked copy), then the selftest gate runs exactly as after a download.
+	assert_bool(s.installer.is_installed()).is_true()
+	assert_str(s.state()).is_equal("installing")
+	assert_str(s.progress_label.text).is_equal(ChartSongScreen.SELFTEST_TEXT)
+	assert_str(s.body_text()).not_contains(ChartSongScreen.BUNDLED_TEXT)
+	assert_int(_fake.starts.size()).is_equal(1)
+	assert_array(Array(_fake.starts[0][1])).is_equal(
+		Array(AutochartJob.build_args(AutochartPaths.app_dir(), "selftest")))
+	# The shipped folder is never modified.
+	assert_bool(FileAccess.file_exists(_bundled_dir().path_join("undertow-ac-v1-rt.zip"))).is_true()
+	_push(s, [{"ev": "selftest", "ok": true, "seconds": 6.3}])
+	_exit(s, 0)
+	assert_str(s.state()).is_equal("pick")
+
+
+func test_bundled_pack_progress_shows_in_the_installing_state() -> void:
+	var part := _bundled_part("undertow-ac-v1-rt.zip", {"rt/python.exe": "MZ"})
+	_use_exe_dir()
+	var s := _screen(_spec([part]))
+	assert_str(s.state()).is_equal("installing")
+	s.installer.progress_changed.emit(1, 4, "Checking part 2 / 4")
+	assert_str(s.progress_label.text).is_equal("Checking part 2 / 4")
+	assert_float(s.progress_bar.value / s.progress_bar.max_value).is_equal_approx(0.25, 0.001)
+	assert_str(s.body_text()).contains(ChartSongScreen.BUNDLED_TEXT)
+	await _wait_until(func() -> bool: return _fake.starts.size() > 0 or s.state() != "installing")
+
+
+func test_bundled_folder_named_autocharter_is_used() -> void:
+	var part := _bundled_part("undertow-ac-v1-rt.zip", {"rt/python.exe": "MZ"}, "autocharter")
+	_use_exe_dir()
+	var s := _screen(_spec([part]))
+	assert_str(s.state()).is_equal("installing")
+	assert_str(AutochartPaths.path_key(s.installer.source_dir)).is_equal(
+		AutochartPaths.path_key(_bundled_dir("autocharter")))
+	await _wait_until(func() -> bool: return _fake.starts.size() > 0 or s.state() != "installing")
+	assert_bool(s.installer.is_installed()).is_true()
+
+
+func test_damaged_bundled_pack_falls_back_to_pack_missing() -> void:
+	var part := _bundled_part("undertow-ac-v1-rt.zip", {"rt/python.exe": "MZ"})
+	part["sha256"] = "ab".repeat(32)  # right size, wrong bytes: the hash check must refuse it
+	_use_exe_dir()
+	var s := _screen(_spec([part]))
+	assert_str(s.state()).is_equal("installing")
+	await _wait_until(func() -> bool: return s.state() != "installing")
+	assert_str(s.state()).is_equal("pack_missing")
+	assert_str(s.footer_text()).is_equal(ChartSongScreen.BUNDLED_DAMAGED_TEXT)
+	assert_bool(s.footer_is_error()).is_true()
+	assert_bool(s.installer.is_installed()).is_false()
+	assert_bool(DirAccess.dir_exists_absolute(AutochartPaths.version_dir(1))).is_false()
+	# Fallbacks stay: Download and Install from Folder.
+	assert_bool(s.download_button.disabled).is_false()
+	assert_bool(s.install_folder_button.disabled).is_false()
+	assert_bool(FileAccess.file_exists(_bundled_dir().path_join("undertow-ac-v1-rt.zip"))).is_true()
+	assert_int(_fake.starts.size()).is_equal(0)
+
+
+func test_wrong_size_bundled_folder_is_ignored() -> void:
+	var part := _bundled_part("undertow-ac-v1-rt.zip", {"rt/python.exe": "MZ"})
+	part["size"] = int(part["size"]) + 1
+	_use_exe_dir()
+	var s := _screen(_spec([part]))
+	await get_tree().process_frame
+	assert_str(s.state()).is_equal("pack_missing")
+	assert_str(s.installer.state()).is_equal("idle")
+
+
+func test_no_bundled_folder_shows_pack_missing_with_folder_hint() -> void:
+	_use_exe_dir()
+	var s := _screen(_spec([_part("a.zip")]))
+	await get_tree().process_frame
+	assert_str(s.state()).is_equal("pack_missing")
+	assert_str(s.body_text()).contains(ChartSongScreen.FOLDER_HINT_TEXT)
+	assert_str(s.body_text()).contains("\"Autocharter Pack\"")
+	assert_str(s.body_text()).not_contains("not available yet")
+	assert_str(s.installer.state()).is_equal("idle")
+
+
+func test_download_404_points_at_the_shipped_folder() -> void:
+	var s := _screen(_spec([_part("a.zip")]))
+	await get_tree().process_frame
+	s.installer.fetcher = func(_url: String, _dest: String, _size: int, done: Callable) -> void:
+		done.call(false, 404, "not found")
+	s.download_button.pressed.emit()
+	assert_str(s.state()).is_equal("pack_missing")
+	assert_str(s.footer_text()).is_equal(ChartSongScreen.RELEASE_MISSING_TEXT)
+	assert_str(s.footer_text()).contains("Install from Folder")
+	assert_str(s.footer_text()).contains("\"Autocharter Pack\"")
+
+
+func test_installed_pack_ignores_the_bundled_folder() -> void:
+	var part := _bundled_part("undertow-ac-v1-rt.zip", {"rt/python.exe": "MZ"})
+	_use_exe_dir()
+	var s := _screen(_spec([part]), true)
+	await get_tree().process_frame
+	assert_str(s.state()).is_equal("pick")
+	assert_str(s.installer.state()).is_equal("idle")
+	assert_str(s.installer.source_dir).is_equal("")

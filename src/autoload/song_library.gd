@@ -404,6 +404,10 @@ func _run_selftest(_count: int, _unplayable: int) -> void:
 	if FileAccess.file_exists(abs_cache):
 		DirAccess.remove_absolute(abs_cache)
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(SELFTEST_SONGS_DIR))
+	# Informational (tools/dist.ps1 -WithPack asserts it): the shipped Autocharter pack folder
+	# next to the exe, as Chart a Song will find it. Never changes the exit code.
+	var pack_dir := AutochartBundle.find()
+	print("AC_PACK_FOUND %s" % pack_dir if pack_dir != "" else "AC_PACK_NONE")
 	if fails.is_empty():
 		print("BUNDLED_OK %d" % ok_count)
 	else:
