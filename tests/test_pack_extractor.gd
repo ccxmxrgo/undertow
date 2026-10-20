@@ -26,7 +26,7 @@ func test_spec_contract() -> void:
 	# Plan 06 pins the real parts; the pinned values are checked in test_pack_spec.gd.
 	assert_str(PackSpec.TAG).is_equal("autocharter-pack-v1")
 	assert_str(PackSpec.url({"name": "undertow-ac-v1-app.zip"})).is_equal(
-		"https://github.com/ccxmxrgo/undertow/releases/download/autocharter-pack-v1/undertow-ac-v1-app.zip")
+		"https://github.com/ccxmxrgo/Undertow-autocharter/releases/download/autocharter-pack-v1/undertow-ac-v1-app.zip")
 	var d := PackSpec.as_dict()
 	assert_int(d["version"]).is_equal(1)
 	assert_str(d["tag"]).is_equal(PackSpec.TAG)

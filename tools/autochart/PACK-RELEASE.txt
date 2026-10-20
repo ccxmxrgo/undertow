@@ -4,10 +4,10 @@ UNDERTOW AUTOCHARTER PACK v1 - HOW TO PUBLISH THE RELEASE
 PURPOSE
 -------
 Chart a Song downloads the Autocharter pack from the GitHub Release with tag autocharter-pack-v1 on
-https://github.com/ccxmxrgo/undertow. The game (v0.5.4 and later) has the name, size and SHA-256 of every
+https://github.com/ccxmxrgo/Undertow-autocharter. The game (v0.5.4 and later) has the name, size and SHA-256 of every
 part compiled into src/autocharter/pack_spec.gd. It downloads
 
-  https://github.com/ccxmxrgo/undertow/releases/download/autocharter-pack-v1/<part name>
+  https://github.com/ccxmxrgo/Undertow-autocharter/releases/download/autocharter-pack-v1/<part name>
 
 and refuses any file whose size or hash differs. Until this release exists, the game shows
 "The Autocharter pack is not available yet. Check for a newer UNDERTOW build." (the pinned URL answers 404).
@@ -24,7 +24,7 @@ repo uploads anything.
 
 PREREQUISITES
 -------------
-- A GitHub account with push rights on ccxmxrgo/undertow (to create the tag and the release).
+- A GitHub account with push rights on ccxmxrgo/Undertow-autocharter (to create the tag and the release).
 - Optional: the GitHub CLI (gh, https://cli.github.com), logged in with `gh auth login`. Without gh, use
   the web steps (2b).
 - The built pack in build/pack/out (tools/autochart/build_pack.ps1), or the archived copy (see DURABILITY).
@@ -41,16 +41,16 @@ STEP 2a - PUBLISH WITH gh (one command, repo root)
 --------------------------------------------------
 PowerShell does not expand * for native commands, so the files are listed one by one:
 
-  gh release create autocharter-pack-v1 build/release/autocharter-pack-v1/undertow-ac-v1-app.zip build/release/autocharter-pack-v1/undertow-ac-v1-rt-core.zip build/release/autocharter-pack-v1/undertow-ac-v1-rt-torch.zip build/release/autocharter-pack-v1/undertow-ac-v1-models.zip build/release/autocharter-pack-v1/SHA256SUMS.txt --repo ccxmxrgo/undertow --title "UNDERTOW Autocharter pack v1" --notes-file build/release/autocharter-pack-v1/RELEASE_NOTES.md --latest=false
+  gh release create autocharter-pack-v1 build/release/autocharter-pack-v1/undertow-ac-v1-app.zip build/release/autocharter-pack-v1/undertow-ac-v1-rt-core.zip build/release/autocharter-pack-v1/undertow-ac-v1-rt-torch.zip build/release/autocharter-pack-v1/undertow-ac-v1-models.zip build/release/autocharter-pack-v1/SHA256SUMS.txt --repo ccxmxrgo/Undertow-autocharter --title "UNDERTOW Autocharter pack v1" --notes-file build/release/autocharter-pack-v1/RELEASE_NOTES.md --latest=false
 
 (In Git Bash the short form also works:
-  gh release create autocharter-pack-v1 build/release/autocharter-pack-v1/*.zip build/release/autocharter-pack-v1/SHA256SUMS.txt --repo ccxmxrgo/undertow --title "UNDERTOW Autocharter pack v1" --notes-file build/release/autocharter-pack-v1/RELEASE_NOTES.md --latest=false )
+  gh release create autocharter-pack-v1 build/release/autocharter-pack-v1/*.zip build/release/autocharter-pack-v1/SHA256SUMS.txt --repo ccxmxrgo/Undertow-autocharter --title "UNDERTOW Autocharter pack v1" --notes-file build/release/autocharter-pack-v1/RELEASE_NOTES.md --latest=false )
 
 gh creates the tag autocharter-pack-v1 on the default branch (main) if it does not exist yet.
 
 STEP 2b - PUBLISH IN THE WEB UI (no gh)
 ---------------------------------------
-1. Open https://github.com/ccxmxrgo/undertow and sign in.
+1. Open https://github.com/ccxmxrgo/Undertow-autocharter and sign in.
 2. Releases (right-hand side) -> Draft a new release.
 3. Choose a tag -> type autocharter-pack-v1 -> "Create new tag: autocharter-pack-v1 on publish".
    Target: main.

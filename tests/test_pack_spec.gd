@@ -41,7 +41,7 @@ func test_parts_are_well_formed() -> void:
 
 func test_urls_and_sizes() -> void:
 	assert_bool(PackSpec.BASE_URL.begins_with(
-		"https://github.com/ccxmxrgo/undertow/releases/download/autocharter-pack-v1/")).is_true()
+		"https://github.com/ccxmxrgo/Undertow-autocharter/releases/download/autocharter-pack-v1/")).is_true()
 	var total := 0
 	for p in PackSpec.PARTS:
 		total += int(p["size"])

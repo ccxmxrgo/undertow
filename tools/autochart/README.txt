@@ -350,7 +350,7 @@ Results on the dev PC (2026-10-15, 8 logical cores, reports/pack_e2e.txt):
 
 RELEASING THE PACK (02.2.2-10)
 ------------------------------
-The game downloads the pack from the GitHub Release autocharter-pack-v1 on ccxmxrgo/undertow. Full
+The game downloads the pack from the GitHub Release autocharter-pack-v1 on ccxmxrgo/Undertow-autocharter. Full
 steps (gh command and web UI) are in tools/autochart/PACK-RELEASE.txt. In short:
   powershell -NoProfile -File tools/autochart/release_pack.ps1                  stage + verify + archive
       (build/release/autocharter-pack-v1 and C:\Users\User\UNDERTOW-release-archive\autocharter-pack-v1;

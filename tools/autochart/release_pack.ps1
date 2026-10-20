@@ -189,6 +189,6 @@ $rel = "build/release/$tag"
 $assets = (($names | ForEach-Object { "$rel/$_" }) + "$rel/SHA256SUMS.txt") -join " "
 Write-Host ""
 Write-Host "Publish (user action, see tools/autochart/PACK-RELEASE.txt):"
-Write-Host "  gh release create $tag $assets --repo ccxmxrgo/undertow --title `"UNDERTOW Autocharter pack v1`" --notes-file $rel/RELEASE_NOTES.md --latest=false"
+Write-Host "  gh release create $tag $assets --repo ccxmxrgo/Undertow-autocharter --title `"UNDERTOW Autocharter pack v1`" --notes-file $rel/RELEASE_NOTES.md --latest=false"
 Write-Host "Then: powershell -NoProfile -File tools/autochart/release_pack.ps1 -VerifyPublished"
 Write-Host ("RELEASE_STAGE_OK {0} parts {1:N1} MB" -f $parts.Count, ($total / 1e6))

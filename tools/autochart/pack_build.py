@@ -36,7 +36,7 @@ REPO = HERE.parents[1]
 
 VERSION = 1
 TAG = "autocharter-pack-v%d" % VERSION
-BASE_URL = "https://github.com/ccxmxrgo/undertow/releases/download/%s/" % TAG
+BASE_URL = "https://github.com/ccxmxrgo/Undertow-autocharter/releases/download/%s/" % TAG
 PART_PREFIX = "undertow-ac-v%d-" % VERSION
 
 # One constant for both the zip writer and the split (below PackExtractor.MAX_ENTRIES = 60000).

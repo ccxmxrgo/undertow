@@ -166,7 +166,7 @@ class SpecTest(unittest.TestCase):
         self.assertIn("class_name PackSpec", txt)
         self.assertIn("const VERSION := 1\n", txt)
         self.assertIn('const TAG := "autocharter-pack-v1"', txt)
-        self.assertIn('const BASE_URL := "https://github.com/ccxmxrgo/undertow/releases/download/autocharter-pack-v1/"',
+        self.assertIn('const BASE_URL := "https://github.com/ccxmxrgo/Undertow-autocharter/releases/download/autocharter-pack-v1/"',
                       txt)
         self.assertIn("const UNPACKED_BYTES := 987654321\n", txt)
         for fn in ("static func available() -> bool:", "static func download_bytes() -> int:",
