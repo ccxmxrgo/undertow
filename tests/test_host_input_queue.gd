@@ -334,10 +334,9 @@ func test_duel_live_once_per_beat_only_during_duel() -> void:
 	ch.received.connect(func(e: Dictionary) -> void: got.append(e))
 	var sim := _sim(chart, 2, ch)
 	var q := HostInputQueue.new(sim, ch, D)
-	var seq := 0
+	var remote: Array = []
 	for n in range(40, 60):
-		q.push_item(1, [NetProtocol.IN_JUDGED, n * 0.5, seq, n, PF if n % 4 != 0 else GD])
-		seq += 1
+		remote.append([NetProtocol.IN_JUDGED, n * 0.5, n - 40, n, PF if n % 4 != 0 else GD])
 		q.on_judged(0, n, PF, n * 0.5)
 	var last_live := {}
 	var frame := 0
@@ -345,6 +344,8 @@ func test_duel_live_once_per_beat_only_during_duel() -> void:
 	while true:
 		frame += 1
 		var ft := frame / FPS
+		while not remote.is_empty() and float(remote[0][1]) <= ft + 0.02:
+			q.push_item(1, remote.pop_front())
 		q.pump(ft)
 		var lives := got.filter(func(e: Dictionary) -> bool: return e["type"] == GameEvent.DUEL_LIVE)
 		if not lives.is_empty():
