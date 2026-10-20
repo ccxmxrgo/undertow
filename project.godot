@@ -18,6 +18,7 @@ SongLibrary="*res://src/autoload/song_library.gd"
 MenuMusic="*res://src/autoload/menu_music.gd"
 ScreenTransition="*res://src/ui/screen_transition.gd"
 UiSounds="*res://src/autoload/ui_sounds.gd"
+NetSession="*res://src/autoload/net_session.gd"
 
 [audio]
 

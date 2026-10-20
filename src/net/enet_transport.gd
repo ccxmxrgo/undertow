@@ -27,6 +27,10 @@ extends NetTransport
 ##   blocks; a failed lookup is reported as connect_failed("resolve") from poll().
 ## Never blocks, never throws: methods return Error codes or do nothing.
 
+## Client only (ENet extra, not on NetTransport): the UDP link to the host is up and the auth
+## exchange has started. NetSession uses it for the "auth" connect stage when present.
+signal authing
+
 const CHANNELS := 2
 const PEER_TIMEOUT_LIMIT := 32
 const PEER_TIMEOUT_MIN_MS := 4000
@@ -40,6 +44,8 @@ var peer: ENetMultiplayerPeer
 var _hosting := false
 var _client_connected := false
 var _closed := false
+## Client: AUTH payload held until the link is up (see send_auth).
+var _pending_auth := PackedByteArray()
 ## Host: admitted member ids (peer_left is emitted exactly once per member).
 var _members := {}
 ## Host: peers to disconnect on the next poll (after a refusal reply was flushed).
@@ -125,10 +131,16 @@ func send(p_peer: int, bytes: PackedByteArray, reliable: bool = true) -> void:
 	api.send_bytes(bytes, p_peer, mode, ch)
 
 
+## Client: a payload sent before the ENet link is up is held and sent when authing starts
+## (so the session can send its AUTH right after join, as with MemTransport).
 func send_auth(p_peer: int, bytes: PackedByteArray) -> void:
-	if peer == null or _closed or bytes.is_empty():
+	if _closed or bytes.is_empty():
 		return
-	if not api.get_authenticating_peers().has(p_peer):
+	if not _hosting and p_peer == HOST_ID and not _client_connected \
+			and (peer == null or not api.get_authenticating_peers().has(HOST_ID)):
+		_pending_auth = bytes
+		return
+	if peer == null or not api.get_authenticating_peers().has(p_peer):
 		return
 	api.send_auth(p_peer, bytes)
 
@@ -254,6 +266,11 @@ func _on_peer_authenticating(id: int) -> void:
 	var pp := peer.get_peer(id)
 	if pp != null:
 		pp.set_timeout(PEER_TIMEOUT_LIMIT, PEER_TIMEOUT_MIN_MS, PEER_TIMEOUT_MAX_MS)
+	if not _hosting and id == HOST_ID:
+		authing.emit()
+		if not _pending_auth.is_empty():
+			api.send_auth(HOST_ID, _pending_auth)
+			_pending_auth = PackedByteArray()
 
 
 func _on_peer_packet(id: int, bytes: PackedByteArray) -> void:
