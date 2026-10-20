@@ -475,16 +475,20 @@ func _on_peer_left(id: int) -> void:
 | A9 | ENet fragments reliable packets larger than the path MTU without problems over Tailscale | Pitfall 12 | Low. Packets are kept small anyway. |
 | A10 | Third-party "plan reworked 2026-04" history for Tailscale | State of the Art | None for the decision. The current numbers came from tailscale.com directly. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Is a 2-beat online flight acceptable to the user's sense of "torpedoes fast"?**
    - What we know: the math (Latency Budget) shows that 1 beat cannot meet TORP-04 online. Offline stays 1 beat.
    - Unclear: feel.
    - Recommendation: default 2 (D-08), with a lobby toggle for 1 beat on LAN. Ask in UAT.
+   - RESOLVED: default per D-08 (2-beat online flight, 1-beat LAN option in the lobby; plans 04-03, 04-13, 04-15). Feel is UAT item 4 in 04-HUMAN-UAT.md.
 2. **Should the client predict its own landing/launch FX?** (D-10)
    - Recommendation: measure `landed_late_ms` in UAT first. Add prediction only if a jump is visible.
+   - RESOLVED: default per D-10 (no prediction in v1; landed-late is measured in the F3 rows, plan 04-16). Visibility is UAT item 5.
 3. **Rematch from results:** "Back to Lobby" keeps the roster. Should the host be able to start immediately with the same song? Default: yes. Ready flags reset, and Start needs everyone Ready again.
+   - RESOLVED: default per D-19 (Back to Lobby keeps the roster, song and difficulty; Ready is cleared; plans 04-10, 04-12, 04-14). Checked in UAT item 1.
 4. **Dev PC lacks Tailscale** (Environment). The human UAT needs Tailscale installed by the user (or LAN with a second PC).
+   - RESOLVED: human action, recorded as UAT item 1 (the user installs Tailscale; Claude creates no accounts). Automation uses the 4-process localhost smoke (plan 04-17).
 
 ## Environment Availability
 
