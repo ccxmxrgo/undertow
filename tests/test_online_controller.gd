@@ -282,3 +282,49 @@ func test_client_finish_returns_empty() -> void:
 	var client: VersusController = p["client"]
 	assert_dict(client.finish(2.0)).is_empty()
 	_free(p)
+
+
+# --- Review fix CR-01: a seat gap never builds a phantom player ---------------------------------
+
+## Roster seats [0, 2] (seat 1 left the lobby): two PlayerStates, LAST_STANDING fires when seat 2
+## drops, and the RESULTS built from finish() pass the client-side codec.
+func test_seat_gap_builds_no_phantom_and_results_validate() -> void:
+	var host := VersusController.new()
+	host.setup_online(null, TestCharts.hand_chart(1000), JudgeConfig.new(), {"role": "host",
+		"local_seat": 0, "names": PackedStringArray(["HOSTY", "", "THIRD"]), "seats": [0, 2],
+		"seed": SEED, "flight": 1, "d_s": D_S, "autoplay": false,
+		"margins": {0: 0.0, 2: 0.05}})
+	var seats: Array = []
+	for p in host.players:
+		seats.append(p.seat)
+		assert_str(p.callsign).is_not_empty()
+	assert_array(seats).is_equal([0, 2])
+	assert_int(host.names.size()).is_equal(3)
+	assert_str(host.names[1]).is_equal("")
+	assert_array(host.rival_seats()).is_equal([2])
+	_host_run(host, MatchHarness.START_T, 6.0)
+	host.queue.drop_seat(2, "disconnected")
+	_host_run(host, 6.0, 7.0)
+	var data := host.finish(8.0)
+	assert_int(int(data["last_standing_seat"])).is_equal(0)
+	var rows: Array = data["rows"]
+	assert_int(rows.size()).is_equal(2)
+	for r in rows:
+		assert_str(str(r["name"])).is_not_empty()
+	var msg := {"type": NetProtocol.RESULTS}
+	for k in ["rows", "medals", "last_standing_seat", "title", "artist", "difficulty", "seed",
+			"online", "is_host", "host_seat", "host_name"]:
+		if data.has(k):
+			msg[k] = data[k]
+	msg["local_seat"] = 2
+	msg["is_host"] = false
+	assert_dict(NetCodec.validate(msg, {"from_host": true})).is_not_empty()
+	host.free()
+
+
+## Without spec.seats the named seats are the roster (the empty gap name builds no player).
+func test_roster_seats_falls_back_to_named_seats() -> void:
+	assert_array(VersusController.roster_seats({}, PackedStringArray(["A", "", "C"]), 0)) \
+		.is_equal([0, 2])
+	assert_array(VersusController.roster_seats({"seats": [0, 3]},
+		PackedStringArray(["A", "", "", "D"]), 3)).is_equal([0, 3])

@@ -192,7 +192,14 @@ func setup_online(gp: Gameplay, p_chart: ChartData, p_jcfg: JudgeConfig, spec: D
 	players.clear()
 	names = PackedStringArray()
 	var spec_names := PackedStringArray(spec.get("names", PackedStringArray()))
+	# CR-01: players come from the roster seats, never from the name indices. A seat gap (seat 1
+	# left the lobby, seat 2 stayed) keeps `names` indexable by seat with "" in the gap but
+	# builds no PlayerState there (a phantom would never die and would break RESULTS).
+	var roster := roster_seats(spec, spec_names, local_seat)
 	for s in range(mini(spec_names.size(), NetProtocol.MAX_SEATS)):
+		if not roster.has(s):
+			names.append("")
+			continue
 		var nm := spec_names[s]
 		players.append(PlayerState.new(s, nm, s == local_seat))
 		names.append("YOU" if s == local_seat else nm)
@@ -226,6 +233,25 @@ func setup_online(gp: Gameplay, p_chart: ChartData, p_jcfg: JudgeConfig, spec: D
 		_actors.append(autoplay_human)
 	_bot_seats = []
 	_finish_wiring(gp)
+
+
+## CR-01: the seats that hold a player online. spec.seats when present (the LOAD roster), else
+## every seat with a non-empty name; the local seat always counts.
+static func roster_seats(spec: Dictionary, spec_names: PackedStringArray, p_local: int) -> Array:
+	var out: Array = []
+	var v: Variant = spec.get("seats", [])
+	if v is Array and not (v as Array).is_empty():
+		for s: Variant in v:
+			if (s is int or s is float) and not out.has(int(s)):
+				out.append(int(s))
+	else:
+		for s in spec_names.size():
+			if spec_names[s] != "":
+				out.append(s)
+	if p_local >= 0 and not out.has(p_local):
+		out.append(p_local)
+	out.sort()
+	return out
 
 
 ## The human rig at local_seat on `sim` / `channel` (shared by setup and setup_online).
