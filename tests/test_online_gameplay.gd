@@ -573,3 +573,21 @@ func test_refused_scene_change_is_retried_after_the_wipe() -> void:
 	st.instant = old_instant
 	st.swap_fn = old_swap
 	st.clock_fn = old_clock
+
+
+# --- Review fix WR-03: LOBBY_CLOSED while this client still dives ---------------------------------
+
+func test_lobby_closed_while_diving_shows_host_left_dialog() -> void:
+	var f := _fake(_spec("client", 1, ["NEMO", "MAKO"]))
+	var gp := await _started(f, 0.6)
+	await _until_time(gp, 0.1)
+	assert_object(gp.versus_results).is_null()
+	f.left_lobby.emit("closed")
+	assert_object(gp.host_left_dialog).is_not_null()
+	assert_str(gp.host_left_dialog.title_text()).is_equal("HOST LEFT")
+	assert_bool(_conductor_idle(gp)).is_true()
+	assert_bool(gp.lane_input.enabled).is_false()
+	# A second signal never stacks a second dialog.
+	var dlg := gp.host_left_dialog
+	f.left_lobby.emit("lost")
+	assert_object(gp.host_left_dialog).is_same(dlg)

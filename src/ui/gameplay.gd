@@ -864,10 +864,16 @@ func _on_match_aborted(_code: String, _who: String) -> void:
 	_go_lobby()
 
 
-## LOBBY_CLOSED while the results show (the host left from RESULTS).
-func _on_left_lobby(_code: String) -> void:
+## LOBBY_CLOSED while the results show (the host left from RESULTS). WR-03: with no results
+## screen up yet (this client still diving / waiting for RESULTS) the session is already
+## offline, so the HOST LEFT dialog shows the last known standings instead.
+func _on_left_lobby(code: String) -> void:
 	if versus_results != null and is_instance_valid(versus_results):
 		versus_results.set_lobby_closed()
+		return
+	if _online_over:
+		return
+	_on_host_left("connection_lost" if code == "lost" else "host_left")
 
 
 ## MATCH_ABORT, server loss or the 4 s watchdog (NET-06, UI-SPEC 11.6): the conductor stops,
