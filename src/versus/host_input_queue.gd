@@ -20,8 +20,14 @@ extends Referee
 
 ## Internal kind for host-local inject_fire (never on the wire).
 const _K_INJECT := -1
-const MARGIN_CAP_S := 0.3
-const MARGIN_EXTRA_S := 0.033
+## WR-01 (F-1): two 60 Hz client frames (the client applies events in _client_pump, after
+## versus.update in the same frame, so the real delay is D + L + 2F) plus a little jitter.
+const MARGIN_EXTRA_S := 0.050
+## One-way latency covered by the cap; past this the lobby already warns HIGH LATENCY.
+const L_CAP_S := 0.25
+## D_MAX + L_CAP + extra = 0.5 s. payload_span keeps the full bar length when the window start
+## moves later, so a larger margin never shortens a payload.
+const MARGIN_CAP_S := NetProtocol.D_MAX_S + L_CAP_S + MARGIN_EXTRA_S
 
 var sim: MatchSim
 var channel: EventChannel
@@ -60,7 +66,8 @@ func _init(p_sim: MatchSim, p_channel: EventChannel, p_d_s: float) -> void:
 	players = sim.players
 
 
-## min(D + L_p90 + 33 ms, 0.3 s) where L_p90 is the one-way p90 latency (rtt_p90 / 2) (D-09).
+## min(D + L_p90 + 50 ms, 0.5 s) where L_p90 is the one-way p90 latency (rtt_p90 / 2) (D-09,
+## WR-01).
 static func margin_for(p_d_s: float, rtt_p90_s: float) -> float:
 	return minf(p_d_s + rtt_p90_s * 0.5 + MARGIN_EXTRA_S, MARGIN_CAP_S)
 

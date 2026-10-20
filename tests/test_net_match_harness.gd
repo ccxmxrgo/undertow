@@ -147,9 +147,8 @@ func test_two_beat_flight_warns_at_least_one_beat_one_beat_flight_does_not() -> 
 
 ## Link-derived margin (margin_rtt_p90_s -1). The link is the RESEARCH "DERP relay" class with
 ## jitter (L 0.07 +- 0.02) and D from the D-05 formula (L_p90 + 53 ms = 0.143 s), so the D-09
-## margin D + L_p90 + 33 ms = 0.266 s stays under its 0.3 s cap. At the D-05 cap (D 0.2, L 0.15)
-## the capped 0.3 s margin cannot cover D + L + F = 0.367 s (measured 50 ms pop-in on
-## beat-aligned spans; see 04-09-SUMMARY), so that link is not asserted here.
+## margin D + L_p90 + 50 ms = 0.283 s stays under its cap. The D-05 cap link (D 0.2, L 0.15) is
+## covered by the WR-01 test below (the old 0.3 s cap measured a 50 ms pop-in there).
 func test_overlay_notes_never_start_before_landed_receipt_plus_approach() -> void:
 	var total := 0
 	var slack := INF
@@ -165,6 +164,26 @@ func test_overlay_notes_never_start_before_landed_receipt_plus_approach() -> voi
 				.is_greater_equal(float(row["receipt_t"]) - 1e-6)
 	assert_int(total).is_greater(5)
 	print("OVERLAY rows=%d min_slack_s=%.4f" % [total, slack])
+
+
+## WR-01 (F-1): RTT p90 300 ms at the D-05 cap (D 0.2, L 0.15, 60 fps clients). The margin
+## D + L + 50 ms = 0.4 s (cap 0.5 s) covers D + L + 2 frames, so no overlay note starts before
+## its LANDED reached the target.
+func test_overlay_no_pop_in_at_rtt_p90_300ms() -> void:
+	var total := 0
+	var slack := INF
+	for sd in [1, 2, 3, 7]:
+		var r := NetMatchHarness.run(_chart(), _opts({"seed": sd, "d_s": NetProtocol.D_MAX_S,
+			"latency_s": 0.15, "fps": 60.0, "margin_rtt_p90_s": 0.3}))
+		var rows: Array = r["overlay"]
+		total += rows.size()
+		for row in rows:
+			var visible: float = float(row["active_start"]) - float(row["approach_local"])
+			slack = minf(slack, visible - float(row["receipt_t"]))
+			assert_float(visible).override_failure_message("overlay pop-in: %s" % str(row)) \
+				.is_greater_equal(float(row["receipt_t"]) - 1e-6)
+	assert_int(total).is_greater(5)
+	print("OVERLAY300 rows=%d min_slack_s=%.4f" % [total, slack])
 
 
 # --- 6: disconnect (NET-05, D-16) ---------------------------------------------------------------

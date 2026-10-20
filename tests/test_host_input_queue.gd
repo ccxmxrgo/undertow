@@ -311,8 +311,8 @@ func test_approach_margin_applied_and_capped() -> void:
 	q.set_net_margin(1, 0.12)
 	q.set_approach(1, 1.2)
 	assert_float(sim.players[1].approach_s).is_equal_approx(1.32, 1e-9)
-	q.set_net_margin(1, 0.5)  # capped at 0.3, re-applied to the last reported s
-	assert_float(sim.players[1].approach_s).is_equal_approx(1.5, 1e-9)
+	q.set_net_margin(1, 0.8)  # capped at 0.5 (WR-01), re-applied to the last reported s
+	assert_float(sim.players[1].approach_s).is_equal_approx(1.7, 1e-9)
 	q.set_net_margin(1, 0.05)
 	assert_float(sim.players[1].approach_s).is_equal_approx(1.25, 1e-9)
 	# The host's own seat gets the margin path too; network APPROACH items as well.
@@ -322,8 +322,11 @@ func test_approach_margin_applied_and_capped() -> void:
 	q.push_item(1, [NetProtocol.IN_APPROACH, 0.5, 0, 2.0])
 	q.pump(1.0)
 	assert_float(sim.players[1].approach_s).is_equal_approx(2.05, 1e-9)
-	assert_float(HostInputQueue.margin_for(0.1, 0.06)).is_equal_approx(0.163, 1e-9)
-	assert_float(HostInputQueue.margin_for(0.2, 0.4)).is_equal_approx(0.3, 1e-9)
+	assert_float(HostInputQueue.margin_for(0.1, 0.06)).is_equal_approx(0.18, 1e-9)
+	# WR-01: D 0.2 + L 0.2 + 50 ms is no longer capped; the cap is D_MAX + L_CAP + extra.
+	assert_float(HostInputQueue.margin_for(0.2, 0.4)).is_equal_approx(0.45, 1e-9)
+	assert_float(HostInputQueue.margin_for(0.2, 0.8)).is_equal_approx(0.5, 1e-9)
+	assert_float(HostInputQueue.MARGIN_CAP_S).is_equal_approx(0.5, 1e-9)
 
 
 func test_duel_live_once_per_beat_only_during_duel() -> void:
