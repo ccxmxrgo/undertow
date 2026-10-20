@@ -1,5 +1,5 @@
 class_name MatchSim
-extends RefCounted
+extends Referee
 ## The versus referee (RESEARCH Pattern 2, D-28): one pure object decides every rule from
 ## song-time-stamped inputs and announces each outcome as a GameEvent through an EventChannel.
 ## Bots, the human, the HUD and (Phase 4) the network host all go through the same code.
@@ -53,7 +53,6 @@ const _DUEL_DONE := 3
 var chart: ChartData
 var cfg: VersusConfig
 var jcfg: JudgeConfig
-var players: Array[PlayerState] = []
 var channel: EventChannel
 var match_seed: int = 0
 ## Reward threshold for every meter in this match (D-30).
@@ -431,6 +430,13 @@ func duel_active() -> int:
 ## Process everything due up to song time t.
 func update(t: float) -> void:
 	_advance(t)
+
+
+## D-09: the seconds a gem travels on `seat`'s highway (the same assignment SubRig makes).
+func set_approach(seat: int, approach_s: float) -> void:
+	var p: PlayerState = _by_seat.get(seat)
+	if p != null:
+		p.approach_s = approach_s
 
 
 # --- Time walk -----------------------------------------------------------------------------

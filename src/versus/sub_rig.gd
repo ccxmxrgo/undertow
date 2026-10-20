@@ -16,7 +16,7 @@ var seat: int
 var chart: ChartData
 var jcfg: JudgeConfig
 var cfg: VersusConfig
-var sim: MatchSim
+var sim: Referee
 var channel: EventChannel
 var judge: VersusJudge
 var hull: VersusHull
@@ -39,12 +39,14 @@ var approach_s: float = 1.5:
 		approach_s = v
 		if _player != null:
 			_player.approach_s = v
+		if sim != null:
+			sim.set_approach(seat, v)
 
 var _player: PlayerState
 
 
 func _init(p_seat: int, p_chart: ChartData, p_jcfg: JudgeConfig, p_cfg: VersusConfig,
-		p_sim: MatchSim, p_channel: EventChannel, no_fail: bool) -> void:
+		p_sim: Referee, p_channel: EventChannel, no_fail: bool) -> void:
 	seat = p_seat
 	chart = p_chart
 	jcfg = p_jcfg
