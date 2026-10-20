@@ -14,7 +14,7 @@ UNDERTOW is built as a series of vertical slices, each playable on its own. Firs
 - [x] **Phase 1: Timing Core & Calibration** - A solo song on a 4-lane sonar highway that feels tight, with hull, calibration and rebindable input (completed 2026-10-07)
 - [ ] **Phase 2: Chart Import & Songs** - Import Clone Hero charts, browse a song library, and ship bundled starter songs
 - [x] **Phase 3: Offline Versus** - Torpedoes, five payloads, Return to Sender, elimination, wreck ghosts and results against bot rivals
-- [ ] **Phase 4: Online Play** - Host a lobby, start in sync, and have torpedoes land mid-song across 2-4 PCs
+- [x] **Phase 4: Online Play** - Host a lobby, start in sync, and have torpedoes land mid-song across 2-4 PCs
 - [ ] **Phase 5: Polish & Packaging** - Sonar CRT look, underwater audio, juice, low-effects toggle and a Windows build
 
 ## Phase Details
@@ -276,27 +276,27 @@ Plans:
   4. A torpedo, hull change, elimination or score update from one player reaches the others mid-song, and torpedoes land on the intended beat
   5. A player who disconnects counts as eliminated while the match continues, and if the host leaves, everyone sees a message and the match ends cleanly
 
-**Plans:** 18 plans
+**Plans:** 18/18 plans executed (human UAT pending: real-internet play)
 
 Plans:
-- [ ] 04-01-PLAN.md — Wave 1: net core (NetProtocol, NetCodec choke point + fuzz, ClockSync, NetTransport seam, MemTransport, VersusSig)
-- [ ] 04-02-PLAN.md — Wave 1: Referee seam (MatchSim extends Referee, SubRig sim: Referee, set_approach), GameEvent PLAYER_LEFT + DUEL_LIVE (27 types)
-- [ ] 04-03-PLAN.md — Wave 1: game version 0.7.0, Settings net keys + --net-profile, LobbyState (start gate), NetAddress (Tailscale-first)
-- [ ] 04-04-PLAN.md — Wave 1: SonarTextField, 6 UiIcons glyphs, danger chip, contrast C26-C30
-- [ ] 04-05-PLAN.md — Wave 2: HostInputQueue (horizon D, late clamp, drop_seat, approach margin, DUEL_LIVE), RemoteReferee, NetHost/ClientChannel
-- [ ] 04-06-PLAN.md — Wave 2: ENetTransport + NetSession autoload lobby half (auth/version, roster, ready, song match, clock sync, kick, strikes)
-- [ ] 04-07-PLAN.md — Wave 2: StartSyncOverlay, LeaveOverlay (non-pausing), HostLeftDialog + layout/keep-out/effect tests
-- [ ] 04-08-PLAN.md — Wave 2: event banner countdown + results wait, NO HOST SIGNAL link chip, PLAYER_LEFT in killfeed/periscope
-- [ ] 04-12-PLAN.md — Wave 2: online versus results variant (LEFT AT, host glyph, Back to Lobby / Leave Lobby)
-- [ ] 04-09-PLAN.md — Wave 3: NetMatchHarness over MemTransport (NET-04 determinism across latency, telegraph >= 1 beat, D-09 margin, NET-05 drop)
-- [ ] 04-10-PLAN.md — Wave 3: NetSession match flow (LOAD/LOADED/START synced start, match link pump, disconnect/abort/watchdog, DONE/RESULTS, back to lobby)
-- [ ] 04-11-PLAN.md — Wave 3: main menu 10 items (Play Online), Play Online screen, connect dialog
-- [ ] 04-13-PLAN.md — Wave 3: VersusController online backends (host/client), local_seat, FIRE_REFUSED blip, online finish
-- [ ] 04-14-PLAN.md — Wave 4: Gameplay online flow (scheduled begin, countdown, leave overlay, link chip, host-left, DONE/results/back to lobby)
-- [ ] 04-15-PLAN.md — Wave 4: Lobby screen + Song Select online pick mode
-- [ ] 04-16-PLAN.md — Wave 4: Settings ONLINE section + F3 net debug rows
-- [ ] 04-17-PLAN.md — Wave 5: NetAutotest driver + tools/net_smoke.ps1 (4-process localhost smoke + drop scenario)
-- [ ] 04-18-PLAN.md — Wave 6: final gates, docs/ONLINE_SETUP.md, friend zip v0.7.0, 04-HUMAN-UAT.md (non-blocking checkpoint)
+- [x] 04-01-PLAN.md — Wave 1: net core (NetProtocol, NetCodec choke point + fuzz, ClockSync, NetTransport seam, MemTransport, VersusSig)
+- [x] 04-02-PLAN.md — Wave 1: Referee seam (MatchSim extends Referee, SubRig sim: Referee, set_approach), GameEvent PLAYER_LEFT + DUEL_LIVE (27 types)
+- [x] 04-03-PLAN.md — Wave 1: game version 0.7.0, Settings net keys + --net-profile, LobbyState (start gate), NetAddress (Tailscale-first)
+- [x] 04-04-PLAN.md — Wave 1: SonarTextField, 6 UiIcons glyphs, danger chip, contrast C26-C30
+- [x] 04-05-PLAN.md — Wave 2: HostInputQueue (horizon D, late clamp, drop_seat, approach margin, DUEL_LIVE), RemoteReferee, NetHost/ClientChannel
+- [x] 04-06-PLAN.md — Wave 2: ENetTransport + NetSession autoload lobby half (auth/version, roster, ready, song match, clock sync, kick, strikes)
+- [x] 04-07-PLAN.md — Wave 2: StartSyncOverlay, LeaveOverlay (non-pausing), HostLeftDialog + layout/keep-out/effect tests
+- [x] 04-08-PLAN.md — Wave 2: event banner countdown + results wait, NO HOST SIGNAL link chip, PLAYER_LEFT in killfeed/periscope
+- [x] 04-12-PLAN.md — Wave 2: online versus results variant (LEFT AT, host glyph, Back to Lobby / Leave Lobby)
+- [x] 04-09-PLAN.md — Wave 3: NetMatchHarness over MemTransport (NET-04 determinism across latency, telegraph >= 1 beat, D-09 margin, NET-05 drop)
+- [x] 04-10-PLAN.md — Wave 3: NetSession match flow (LOAD/LOADED/START synced start, match link pump, disconnect/abort/watchdog, DONE/RESULTS, back to lobby)
+- [x] 04-11-PLAN.md — Wave 3: main menu 10 items (Play Online), Play Online screen, connect dialog
+- [x] 04-13-PLAN.md — Wave 3: VersusController online backends (host/client), local_seat, FIRE_REFUSED blip, online finish
+- [x] 04-14-PLAN.md — Wave 4: Gameplay online flow (scheduled begin, countdown, leave overlay, link chip, host-left, DONE/results/back to lobby)
+- [x] 04-15-PLAN.md — Wave 4: Lobby screen + Song Select online pick mode
+- [x] 04-16-PLAN.md — Wave 4: Settings ONLINE section + F3 net debug rows
+- [x] 04-17-PLAN.md — Wave 5: NetAutotest driver + tools/net_smoke.ps1 (4-process localhost smoke + drop scenario)
+- [x] 04-18-PLAN.md — Wave 6: final gates, docs/ONLINE_SETUP.md, friend zip v0.7.0, 04-HUMAN-UAT.md (non-blocking checkpoint)
 
 **UI hint**: yes
 
@@ -327,5 +327,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Timing Core & Calibration | 10/10 | Complete   | 2026-10-07 |
 | 2. Chart Import & Songs | 5/6 | In Progress|  |
 | 3. Offline Versus | 15/15 | Complete (UAT pending) | 2026-10-20 |
-| 4. Online Play | 0/18 | Planned | - |
+| 4. Online Play | 18/18 | Complete (UAT pending) | 2026-10-20 |
 | 5. Polish & Packaging | 0/TBD | Not started | - |
