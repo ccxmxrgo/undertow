@@ -27,6 +27,7 @@ func before_test() -> void:
 	_old_vs_diff = Settings.versus_difficulty
 	Settings.training_payload = "off"
 	SongSelect.run_pick = false
+	SongSelect.pick_online = false
 	MatchSetup.pending = null
 	_old_reduce = Settings.reduce_motion
 	_old_music = Settings.volume_music
@@ -53,6 +54,7 @@ func after_test() -> void:
 	SongSelect.run_autoplay = false
 	SongSelect.run_practice = false
 	SongSelect.run_pick = false
+	SongSelect.pick_online = false
 	MatchSetup.pending = null
 	Settings.training_payload = _old_training
 	Settings.versus_song_id = _old_vs_song
@@ -512,6 +514,74 @@ func test_run_pick_resets_when_screen_exits() -> void:
 	var s := _screen(_lib(_songs(2)))
 	s.free()
 	assert_bool(SongSelect.run_pick).is_false()
+
+
+# ---- 04-15: online pick mode (04-UI-SPEC 9.4) ----
+
+func test_versus_pick_chip_reads_versus() -> void:
+	SongSelect.run_pick = true
+	var s := _screen(_lib(_songs(2)))
+	assert_str(s.debug_state()["pick_chip"]).is_equal("VERSUS")
+	assert_str(SongSelect.pick_return_scene()).is_equal(SongSelect.MATCH_SETUP_SCENE)
+
+
+func test_online_pick_chip_reads_online() -> void:
+	SongSelect.run_pick = true
+	SongSelect.pick_online = true
+	var s := _screen(_lib(_songs(2)))
+	assert_str(s.debug_state()["pick_chip"]).is_equal("ONLINE")
+	assert_str(SongSelect.PICK_CHIP_ONLINE).is_equal("ONLINE")
+	await get_tree().process_frame
+	assert_bool(s.is_inside_tree()).is_true()
+
+
+func test_online_pick_returns_to_lobby_with_pending_song() -> void:
+	SongSelect.run_pick = true
+	SongSelect.pick_online = true
+	MatchSetup.pending = MatchSetup.new()
+	Settings.versus_song_id = "keep_me"
+	Settings.versus_difficulty = "hard"
+	var s := _screen(_lib(_songs(3)))
+	var calls := _nav(s)
+	s.select_for_test("s01")
+	var diff: String = s.debug_state()["difficulty"]
+	assert_str(s._start_label(s._selected())).is_equal("Pick Song")
+	s.press_key_for_test(KEY_ENTER)
+	s.press_key_for_test(KEY_ENTER)
+	assert_array(calls).is_equal([SongSelect.LOBBY_SCENE])
+	assert_str(SongSelect.LOBBY_SCENE).is_equal("res://scenes/lobby.tscn")
+	assert_str(MatchSetup.pending.song_id).is_equal("s01")
+	assert_str(MatchSetup.pending.difficulty).is_equal(diff)
+	assert_object(Gameplay.pending_chart).is_null()
+	# The offline versus defaults are untouched by an online pick.
+	assert_str(Settings.versus_song_id).is_equal("keep_me")
+	assert_str(Settings.versus_difficulty).is_equal("hard")
+
+
+func test_online_pick_back_returns_to_lobby() -> void:
+	SongSelect.run_pick = true
+	SongSelect.pick_online = true
+	MatchSetup.pending = MatchSetup.new()
+	var s := _screen(_lib(_songs(3)))
+	var calls := _nav(s)
+	s.select_for_test("s02")
+	s.press_key_for_test(KEY_ESCAPE)
+	assert_array(calls).is_equal([SongSelect.LOBBY_SCENE])
+	assert_str(MatchSetup.pending.song_id).is_equal("")
+
+
+func test_pick_online_resets_with_run_pick() -> void:
+	SongSelect.run_pick = true
+	SongSelect.pick_online = true
+	var s := _screen(_lib(_songs(2)))
+	s.free()
+	assert_bool(SongSelect.run_pick).is_false()
+	assert_bool(SongSelect.pick_online).is_false()
+
+
+func test_online_chip_has_glyphs() -> void:
+	for ch in SongSelect.PICK_CHIP_ONLINE:
+		assert_bool(UiKit.chip_font().has_char(ch.unicode_at(0))).is_true()
 
 
 func test_failed_build_shows_message_and_stays() -> void:

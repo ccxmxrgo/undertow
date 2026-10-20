@@ -8,6 +8,8 @@ const MENU_SCENE := "res://scenes/main_menu.tscn"
 const GAMEPLAY_SCENE := "res://scenes/gameplay.tscn"
 ## Versus song pick mode (03 UI-SPEC 9.3) returns here on Pick Song and on Esc.
 const MATCH_SETUP_SCENE := "res://scenes/match_setup.tscn"
+## Online pick mode returns here (04-UI-SPEC 9.4).
+const LOBBY_SCENE := "res://scenes/lobby.tscn"
 const AUDIO_ERR_USER := "This song's audio could not be loaded. Choose another song."
 const AUDIO_ERR_BUNDLED := "Song audio could not be loaded. Reinstall the game files or choose another song."
 const CREDITS := "Music: Pro Sensory (Alex McCulloch), CC0, via OpenGameArt.org"
@@ -107,6 +109,8 @@ const TRIGGER_PRESS := 0.5
 const TRIGGER_RELEASE := 0.4
 ## Versus pick mode header chip, right-aligned to x 744 (16 px left of the sort chip).
 const PICK_CHIP := "VERSUS"
+## Online pick mode header chip (04-UI-SPEC 9.4).
+const PICK_CHIP_ONLINE := "ONLINE"
 const PICK_CHIP_RIGHT := 744.0
 
 ## Run flags set by MainMenu; reset when Song Select exits (a dive copies them first).
@@ -114,6 +118,9 @@ static var run_autoplay: bool = false
 static var run_practice: bool = false
 ## Versus song pick mode (03 UI-SPEC 9.3), set by the match setup screen.
 static var run_pick: bool = false
+## With run_pick: the online lobby host picks the song (04-UI-SPEC 9.4). The chip reads ONLINE
+## and Pick / Back return to the lobby. Reset together with run_pick.
+static var pick_online: bool = false
 
 
 ## A Control that draws through a Callable in absolute screen coordinates.
@@ -306,6 +313,7 @@ func _exit_tree() -> void:
 	run_autoplay = false
 	run_practice = false
 	run_pick = false
+	pick_online = false
 
 
 func _pane(pane_name: String, r: Rect2, painter: Callable) -> Pane:
@@ -734,8 +742,19 @@ func _go(path: String) -> void:
 
 func _back() -> void:
 	_stop_preview(true)
-	# Pick mode: back to match setup with the song unchanged (03 UI-SPEC 9.3).
-	_go(MATCH_SETUP_SCENE if run_pick else MENU_SCENE)
+	# Pick mode: back to match setup (or the online lobby) with the song unchanged (03 UI-SPEC
+	# 9.3, 04-UI-SPEC 9.4).
+	_go(pick_return_scene() if run_pick else MENU_SCENE)
+
+
+## Where pick mode returns: the lobby when online, else match setup.
+static func pick_return_scene() -> String:
+	return LOBBY_SCENE if pick_online else MATCH_SETUP_SCENE
+
+
+## The pick mode header chip text ("ONLINE" or "VERSUS").
+static func pick_chip_text() -> String:
+	return PICK_CHIP_ONLINE if pick_online else PICK_CHIP
 
 
 ## Pick mode (03 UI-SPEC 9.3): stores the chosen song and difficulty for the match setup screen.
@@ -745,14 +764,17 @@ func _pick() -> void:
 	var e := _selected()
 	_picked = true
 	var id := e.id.left(Settings.MAX_PATH_LEN)
-	Settings.versus_song_id = id
-	Settings.versus_difficulty = _diff
+	if not pick_online:
+		# Online picks never overwrite the offline versus defaults.
+		Settings.versus_song_id = id
+		Settings.versus_difficulty = _diff
 	if MatchSetup.pending != null:
 		MatchSetup.pending.song_id = id
 		MatchSetup.pending.difficulty = _diff
-	Settings.save_to(Settings.save_path)
+	if not pick_online:
+		Settings.save_to(Settings.save_path)
 	_stop_preview(true)
-	_go(MATCH_SETUP_SCENE)
+	_go(pick_return_scene())
 
 
 func _open_folder() -> void:
@@ -1343,6 +1365,7 @@ func debug_state() -> Dictionary:
 		"sections": _sections_debug(),
 		"training": training_value() if training_row_visible() else "",
 		"pick": run_pick,
+		"pick_chip": pick_chip_text() if run_pick else "",
 	}
 
 
@@ -1489,7 +1512,8 @@ func _paint_header(c: CanvasItem) -> void:
 	if run_autoplay:
 		_chip(c, x, 88.0, "AUTOPLAY", "mode")
 	if run_pick:
-		_chip(c, PICK_CHIP_RIGHT - UiKit.chip_width(PICK_CHIP, "info"), 88.0, PICK_CHIP, "info")
+		var chip := pick_chip_text()
+		_chip(c, PICK_CHIP_RIGHT - UiKit.chip_width(chip, "info"), 88.0, chip, "info")
 
 
 func _paint_sort(c: CanvasItem) -> void:
