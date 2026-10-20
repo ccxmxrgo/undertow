@@ -27,6 +27,8 @@ const EXPECTED := {
 		"EventBanner", "IncomingAlert", "InkCloudLayer"],
 	"match_setup": ["ScreenTransition"],
 	"versus_results": ["VersusResultsScreen", "ScreenTransition"],
+	# 04-04 (04-UI-SPEC 14): the shared online text field, editing.
+	"sonar_text_field": ["SonarTextField", "ScreenTransition"],
 }
 
 ## Owners that must be registered in a context but only change under Reduce motion (so they
@@ -64,6 +66,8 @@ const REDUCE := {
 	"InkCloudLayer": {"drift": false},
 	"VersusResultsScreen": {"rise": false, "medal_pop": false},
 	"MatchSetupScreen": {"roster_fade": false},
+	# 04-04 (04-UI-SPEC 14): steady caret; the editing glow stays (static) under Reduce motion.
+	"SonarTextField": {"caret_blink": false},
 }
 
 var _low := false
@@ -397,6 +401,32 @@ func test_match_setup_effect_nodes_follow_settings() -> void:
 func test_versus_results_effect_nodes_follow_settings() -> void:
 	var r := _versus_results()
 	await _check_context("versus_results", r)
+
+
+func _sonar_text_field() -> Control:
+	var host := Control.new()
+	host.size = Vector2(1200, 200)
+	add_child(host)
+	auto_free(host)
+	var f := SonarTextField.new()
+	f.setup("name", "MAKO")
+	f.size = Vector2(512, 48)
+	host.add_child(f)
+	f.begin_editing()
+	return host
+
+
+func test_sonar_text_field_effect_nodes_follow_settings() -> void:
+	var host := _sonar_text_field()
+	await _check_context("sonar_text_field", host)
+	var f := _find(host, "SonarTextField")
+	assert_object(f).is_not_null()
+	assert_dict(f.effect_counts()).is_equal({"caret_blink": true, "glow": true})
+	_apply(true, false)
+	assert_dict(f.effect_counts()).is_equal({"caret_blink": true, "glow": false})
+	_apply(false, true)
+	assert_dict(f.effect_counts()).is_equal({"caret_blink": false, "glow": true})
+	_apply(false, false)
 
 
 func test_results_screen_has_one_focus_marker() -> void:
