@@ -1,4 +1,4 @@
-UNDERTOW v0.6.0 - tester checklist
+UNDERTOW v0.7.0 - tester checklist
 ==================================
 
 Thanks for testing! Tick the boxes as you go ([x]) and write a few words
@@ -117,6 +117,39 @@ Write down anything odd as: song, difficulty, time (e.g. "HRT, Easy, 1:20").
 [ ] The frame rate stayed smooth with 3 bots.
 [ ] Pressing Space while holding 3 lane keys still fires and still hits
     the notes (keyboard rollover). If not, your keyboard model: ______
+
+
+4e. ONLINE (new in v0.7.0, needs 2 to 4 PCs)
+--------------------------------------------
+Read ONLINE_SETUP.md first. Everyone uses this same v0.7.0 zip.
+[ ] Install Tailscale (free, your own account) and join the host's
+    tailnet (accept the host's invite). Tailscale shows Connected.
+[ ] Host: Play Online > Host Match. The address list shows one address
+    marked TAILSCALE (starts with 100.).
+[ ] First time hosting: Windows Firewall asked, and you clicked Allow
+    (Private networks).   Did it ask?  yes / no
+[ ] Friend: Play Online, type the host's address, keep port 47474,
+    Join Match. You see CONNECTING, CHECKING VERSION, SYNCING CLOCKS,
+    then the LOBBY.
+[ ] The lobby shows NAME, PING, SONG and READY for every sub.
+    My PING to the host: ______ ms
+[ ] The host picks a song one friend does not have: that friend shows
+    MISSING (then pick a bundled song).
+[ ] Friends press Ready Up, the host presses Start Match.
+[ ] The DIVE IN 3 / 2 / 1 countdown is the same on both PCs (count it
+    out loud on voice chat).
+[ ] The song starts together by ear on every PC.
+[ ] A torpedo aimed at you shows its warning (INCOMING) before it lands.
+    Enough time to react?  yes / no / sometimes
+[ ] Notes feel as tight online as offline.
+[ ] A friend leaves mid-match (Esc > Leave Match): the others see LEFT
+    on that sub's panel, and the song keeps going.
+[ ] The host leaves mid-match: the friends see HOST LEFT.
+[ ] Results show on every PC, and the host's Back to Lobby brings
+    everyone back to the lobby.
+[ ] Anything odd? Note the error title (e.g. NO ANSWER) and how you
+    connected (Tailscale / ZeroTier / LAN / port forward):
+    ______________________________________________________________
 
 
 5. RESULTS SCREEN

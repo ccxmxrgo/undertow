@@ -1,26 +1,37 @@
 # Builds the friend playtest zip (D-07 / D-09): debug export with embedded pck -> staging folder -> .zip.
 # Usage: powershell -NoProfile -File tools/dist.ps1   (Windows)
 #        pwsh -NoProfile -File tools/dist.ps1         (PowerShell 7, Windows or Linux; GODOT_BIN must be set)
-# Output: build/dist/UNDERTOW-playtest-v0.6.0.zip (zip only; no other archive formats are produced).
-# Allow-list: UNDERTOW.exe (pck embedded), README.txt, TESTER-CHECKLIST.txt. No .pck, no console exe.
-# The bundled songs live inside the exe. After zipping, the zip is asserted to hold exactly those 3 files,
-# then expanded to build/dist/v0.6.0_final_check and the unzipped exe must print BUNDLED_OK 20.
-# Older version folders/zips are left alone.
+# The version comes from project.godot (config/version, e.g. "0.7.0" -> "v0.7.0"), the same string the
+# online handshake compares (D-21), so the zip name and the in-game VERSION never drift apart.
+# Output: build/dist/UNDERTOW-playtest-<version>.zip (zip only; no other archive formats are produced).
+# Allow-list: UNDERTOW.exe (pck embedded), README.txt, TESTER-CHECKLIST.txt, ONLINE_SETUP.md (from docs/).
+# No .pck, no console exe. The bundled songs live inside the exe. After zipping, the zip is asserted to
+# hold exactly those 4 files, then expanded to build/dist/<version>_final_check and the unzipped exe
+# must print BUNDLED_OK 20. Older version folders/zips are left alone.
 # Paths use forward slashes: Windows PowerShell accepts them, and on Linux a backslash would be part
 # of the file name.
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$version = "v0.6.0"
+$projectFile = Join-Path $root "project.godot"
+if (-not (Test-Path $projectFile)) { Write-Error "project.godot not found at $projectFile"; exit 1 }
+$verMatch = Select-String -Path $projectFile -Pattern 'config/version="([^"]+)"' | Select-Object -First 1
+if (-not $verMatch) {
+    Write-Error 'project.godot has no config/version="x.y.z" line; cannot name the zip'
+    exit 1
+}
+$version = "v" + $verMatch.Matches[0].Groups[1].Value
+Write-Host "Building friend zip $version (from project.godot config/version)"
 $name = "UNDERTOW-playtest-$version"
 $distDir = Join-Path $root "build/dist"
 $stage = Join-Path $distDir $name
 $zip = Join-Path $distDir "$name.zip"
 $check = Join-Path $distDir "${version}_final_check"
-$allowed = @("README.txt", "TESTER-CHECKLIST.txt", "UNDERTOW.exe")
+$allowed = @("README.txt", "TESTER-CHECKLIST.txt", "UNDERTOW.exe", "ONLINE_SETUP.md")
 # Staging allow-list for the text files: source path -> name inside the zip.
 $docs = [ordered]@{
     (Join-Path $root "tools/dist/README.txt") = "README.txt"
     (Join-Path $root "tools/dist/TESTER-CHECKLIST.txt") = "TESTER-CHECKLIST.txt"
+    (Join-Path $root "docs/ONLINE_SETUP.md") = "ONLINE_SETUP.md"
 }
 
 # Windows PowerShell is "powershell"; PowerShell 7 (and Linux) only has "pwsh".
@@ -47,7 +58,7 @@ try {
 
     if (Test-Path $zip) { Remove-Item $zip -Force }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    # One top-level folder holding the three files.
+    # One top-level folder holding the four files.
     [System.IO.Compression.ZipFile]::CreateFromDirectory($stage, $zip,
         [System.IO.Compression.CompressionLevel]::Optimal, $true)
     if (-not (Test-Path $zip)) { Write-Error "Zip was not created: $zip"; exit 1 }

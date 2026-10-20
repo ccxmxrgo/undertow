@@ -1,9 +1,10 @@
-UNDERTOW - early playtest build (v0.6.0, 2026-10-15)
+UNDERTOW - early playtest build (v0.7.0, 2026-10-20)
 ====================================================
 
-You're a submarine sinking into a deep-sea trench. This build is still the
-core game plus offline versus against bots: it's for checking that timing,
-the look, real songs and torpedoes feel good. Online versus comes later.
+You're a submarine sinking into a deep-sea trench. This build adds online
+play with friends: up to 4 subs, each on their own PC, in the same song,
+firing torpedoes at each other. Versus Bots and solo play are still here.
+To play online, read ONLINE_SETUP.md (next to this file) first.
 
 v0.5 gives every screen a new look: a deep-sea submarine cockpit looking
 through a neon sonar into the abyss. v0.5.1 makes the hit windows wider
@@ -16,6 +17,8 @@ v0.5.4 adds Chart a Song: turn an audio file you own into a playable chart
 (see WHAT'S NEW IN v0.5.4).
 v0.6.0 adds Versus Bots: race up to 3 bot subs down the trench, with killstreak
 torpedoes (see WHAT'S NEW IN v0.6.0).
+v0.7.0 adds Play Online: 2 to 4 friends on their own PCs, over Tailscale or
+LAN (see the v0.7.0 notes below and ONLINE_SETUP.md).
 This build is for friends only: please don't share it further.
 
 Want to help test? Open TESTER-CHECKLIST.txt (next to this file). It is a
@@ -72,7 +75,8 @@ changed them yourself. Settings > Reset Controls always gives you 1 2 3 4.
 
 Menu: "Start Dive" opens SELECT SONG, where you pick a song and a
 difficulty. "Solo Dive (No-Fail)" does the same, but you can't sink, and can
-add training torpedoes. "Versus Bots" sets up a match against bot subs.
+add training torpedoes. "Versus Bots" sets up a match against bot subs. "Play Online" hosts or
+joins a match with friends (see ONLINE_SETUP.md).
 Settings lets you rebind keys, change scroll speed and volume, turn on
 No-Fail and add Clone Hero song folders (see SONGS below).
 
@@ -87,6 +91,35 @@ SELECT SONG controls:
   Open Songs Folder  F6
   Back ............. Esc
 Highlight a song for half a second to hear a preview.
+
+
+WHAT'S NEW IN v0.7.0
+--------------------
+- Read ONLINE_SETUP.md (next to this file) first. It explains how to connect
+  through home routers. Tailscale (free) is the recommended way; same Wi-Fi
+  / LAN, ZeroTier and router port forwarding also work.
+- Everyone needs v0.7.0. Play Online shows your VERSION at the bottom; a
+  friend on another build gets DIFFERENT VERSIONS.
+- Main menu > Play Online: set your name (friends see it), then Host Match,
+  or type the host's address and Join Match. The host screen lists this
+  PC's addresses; give friends the one marked TAILSCALE. Default port 47474.
+- Up to 4 subs on separate PCs play the same song in sync (a shared DIVE IN
+  3 / 2 / 1 countdown). Torpedoes fly between friends mid-song, with the
+  same rewards and warnings as Versus Bots. Online, a torpedo flies 2 beats
+  so the warning still comes in time over the internet (the host can pick
+  1 BEAT LAN for same-room play).
+- Lobby: everyone shows NAME, PING, SONG and READY. The host picks the
+  song, difficulty and torpedo flight; friends press Ready Up; the host
+  presses Start Match. A friend without the song shows MISSING (copy the
+  song folder to them, or pick another song).
+- Leaving mid-match (Esc > Leave Match) turns your sub into a wreck and
+  the others play on. If the host leaves, the match ends for everyone
+  (HOST LEFT).
+- After the song every PC shows the same results. The host picks Back to
+  Lobby for another round.
+- The first time you host, Windows Firewall asks: click Allow (Private
+  networks).
+- Settings > ONLINE: Player name and Online port.
 
 
 WHAT'S NEW IN v0.6.0
