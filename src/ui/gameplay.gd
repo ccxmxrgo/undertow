@@ -10,6 +10,11 @@ enum State { RUNNING, FAILED, DONE, ERROR }
 const MENU_SCENE := "res://scenes/main_menu.tscn"
 const SONG_SELECT_SCENE := "res://scenes/song_select.tscn"
 const FALLBACK_SCENE := "res://scenes/skeleton.tscn"
+## Online (04-14): the lobby (04-15) and the Play Online screen (04-11), referenced by path only.
+const LOBBY_SCENE := "res://scenes/lobby.tscn"
+const ONLINE_MENU_SCENE := "res://scenes/online_menu.tscn"
+## Clients show NO HOST SIGNAL after this long without a host packet (UI-SPEC 11.5).
+const LINK_WEAK_S := 1.0
 const LEAD_IN_BEATS := 3
 const QUICK_LEAD_IN_BEATS := 1
 const END_PAD_SEC := 0.5
@@ -75,6 +80,25 @@ var _arena_miss_frame: int = -1
 ## The autoplay flag this run was launched with (Song Select restores it on the way back).
 var _launch_autoplay: bool = false
 
+# --- Online (04-14) ---------------------------------------------------------------------------
+## The network session (NetSession autoload). Injectable: tests set it before add_child.
+var session: Node = null
+## NetSession.pending_match() for an online match; {} offline (every offline path is unchanged).
+var online_spec: Dictionary = {}
+var start_sync_overlay: StartSyncOverlay
+var leave_overlay: LeaveOverlay
+var host_left_dialog: HostLeftDialog
+## Fire presses forwarded to the controller (tests read it).
+var fire_count: int = 0
+## Scene change seam (tests): called with the target path instead of ScreenTransition.
+var navigate: Callable = Callable()
+var _done_reported: bool = false
+var _online_over: bool = false
+var _link_weak: bool = false
+var _waiting_n: int = -1
+## seat -> {hull, depth, alive, left} from the last STATUS / IMPLODED / PLAYER_LEFT events.
+var _last_status: Dictionary = {}
+
 
 func _ready() -> void:
 	UiLayout.fill_rect(self)
@@ -94,6 +118,19 @@ func _ready() -> void:
 	match_setup = null
 	if ms != null and ms.mode == MatchSetup.MODE_VERSUS and not practice and not a:
 		match_setup = ms
+	if session == null:
+		session = get_node_or_null("/root/NetSession")
+	var spec: Dictionary = {}
+	if session != null and session.has_method("pending_match"):
+		spec = session.call("pending_match")
+	if not spec.is_empty():
+		# Online (D-07): no goggles intro, no practice / autoplay dive, no MatchSetup.
+		online_spec = spec
+		match_setup = null
+		practice = false
+		_connect_session()
+		start(c, false, IntroTimeline.Mode.NONE)
+		return
 	start(c, a, pending_intro)
 
 
@@ -118,9 +155,32 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	add_child(_run_root)
 	if chart.audio_stream == null:
 		_show_audio_error()
+		if is_online() and session != null:
+			session.call("report_load_failed")
 		return
 	var cfg := JudgeConfig.new()
-	if match_setup != null or practice:
+	if is_online():
+		# Online (04-13 / 04-10): host or client backend; the session pumps the link per frame.
+		versus = VersusController.new()
+		_run_root.add_child(versus)
+		var spec := online_spec.duplicate()
+		var song_len := ProgressTrack.song_length_of(chart)
+		spec["song_len"] = song_len
+		var host := _is_host()
+		if not host and session != null:
+			versus.net_send = Callable(session, "send_to_host")
+		versus.setup_online(self, chart, cfg, spec)
+		if session != null:
+			if host:
+				session.call("bind_host_match", versus.queue, versus.host_channel,
+					chart.notes.size(), song_len)
+			else:
+				session.call("bind_client_match", versus.remote, versus.client_channel,
+					chart.notes.size(), song_len)
+		versus.channel.received.connect(_on_net_event)
+		judge = versus.human_judge
+		score = versus.human_hull
+	elif match_setup != null or practice:
 		# Versus / Solo Dive (03-14): the human plays through a SubRig. VersusJudge and VersusHull
 		# are InputJudge / HullScore subtypes, so the wiring below is shared. The rig already
 		# connects hull and judge (no connect_judge here) and forces no_fail (false in versus,
@@ -138,7 +198,7 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 		score.connect_judge(judge)
 	offset_recorder.reset()
 	offset_recorder.attach(judge)
-	if match_setup != null:
+	if match_setup != null or is_online():
 		score.failed.connect(_on_versus_wreck)
 	else:
 		score.failed.connect(_on_failed)
@@ -219,7 +279,10 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	for n in chart.notes:
 		_end_time = maxf(_end_time, float(n["time"]) + float(n["duration"]))
 	_on_run_built()
-	if intro_mode == IntroTimeline.Mode.NONE:
+	if is_online():
+		# Online: the conductor stays idle until START (_begin_online(lead)); never the count-in.
+		_build_online_overlays()
+	elif intro_mode == IntroTimeline.Mode.NONE and online_spec.is_empty():
 		_begin_count_in()
 	else:
 		intro = GogglesIntro.new()
@@ -254,6 +317,18 @@ func _begin_count_in(skipped: bool = false) -> void:
 	arena.beat_live = true
 	if intro != null and is_instance_valid(intro):
 		intro.on_count_started(skipped)
+
+
+## Online: the scheduled start (NET-03). song_time 0 lands on the host-scheduled instant. The
+## only other place Conductor.begin is called (same flags as _begin_count_in).
+func _begin_online(lead_s: float) -> void:
+	if _began or conductor == null or not (lead_s >= 0.0):
+		return
+	conductor.begin(chart.audio_stream, lead_s)
+	lane_input.enabled = not autoplay and not _done_reported
+	_began = true
+	highway.notes_enabled = true
+	arena.beat_live = true
 
 
 func _on_run_built() -> void:
@@ -317,6 +392,9 @@ func is_done() -> bool:
 
 
 func _process(_delta: float) -> void:
+	if is_online():
+		_process_online()
+		return
 	if state != State.RUNNING or conductor == null or not _began:
 		return
 	if conductor.is_paused():
@@ -338,6 +416,9 @@ func _process(_delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_echo():
 		return
+	if is_online():
+		_online_input(event)
+		return
 	if event.is_action_pressed(&"pause") and state == State.RUNNING and _began and pause_menu != null 			and not pause_menu.is_open() and not pause_menu.is_counting_down():
 		get_viewport().set_input_as_handled()
 		pause_menu.set_run_info(chart.title, chart.difficulty, progress_pct())
@@ -348,6 +429,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.is_action_pressed(&"fire"):
 			var ft := conductor.song_time_at(Time.get_ticks_usec())
 			get_viewport().set_input_as_handled()
+			fire_count += 1
 			versus.fire(ft)
 			return
 		if event.is_action_pressed(&"target_cycle"):
@@ -527,3 +609,356 @@ func go_to_song_select() -> void:
 func go_to_menu() -> void:
 	var target := MENU_SCENE if ResourceLoader.exists(MENU_SCENE) else FALLBACK_SCENE
 	ScreenTransition.change_scene(target)
+
+
+# --- Online (04-14) ---------------------------------------------------------------------------
+
+func is_online() -> bool:
+	return not online_spec.is_empty()
+
+
+func _is_host() -> bool:
+	return str(online_spec.get("role", "")) == "host"
+
+
+func _local_seat() -> int:
+	return int(online_spec.get("local_seat", 0))
+
+
+func _names() -> PackedStringArray:
+	var v: Variant = online_spec.get("names", PackedStringArray())
+	if v is PackedStringArray or v is Array:
+		return PackedStringArray(v)
+	return PackedStringArray()
+
+
+## Roster seats (spec.seats, else every named seat), in seat order.
+func _seats() -> Array:
+	var out: Array = []
+	var v: Variant = online_spec.get("seats", [])
+	if v is Array and not (v as Array).is_empty():
+		for s: Variant in v:
+			out.append(int(s))
+		out.sort()
+		return out
+	var names := _names()
+	for s in names.size():
+		if names[s] != "":
+			out.append(s)
+	return out
+
+
+func _connect_session() -> void:
+	if session == null:
+		return
+	var wiring := {
+		"start_scheduled": _on_start_scheduled,
+		"match_aborted_to_lobby": _on_match_aborted,
+		"host_left": _on_host_left,
+		"results_due": _host_results,
+		"results_received": _show_online_results,
+		"returned_to_lobby": _on_returned_to_lobby,
+		"left_lobby": _on_left_lobby,
+	}
+	for sig: String in wiring:
+		var cb: Callable = wiring[sig]
+		if session.has_signal(sig) and not session.is_connected(sig, cb):
+			session.connect(sig, cb)
+
+
+## StartSyncOverlay and LeaveOverlay above the board, HUD and StreakCounter and below the pause
+## menu and dialogs (UI-SPEC: VersusHud < StartSyncOverlay < LeaveOverlay < overlays).
+func _build_online_overlays() -> void:
+	start_sync_overlay = StartSyncOverlay.new()
+	_run_root.add_child(start_sync_overlay)
+	_run_root.move_child(start_sync_overlay, pause_menu.get_index())
+	var names := _names()
+	var rows: Array = []
+	for s: int in _seats():
+		rows.append({"seat": s, "name": names[s] if s < names.size() else "",
+			"is_you": s == _local_seat()})
+	start_sync_overlay.setup(rows)
+	start_sync_overlay.set_stage("loading")
+	leave_overlay = LeaveOverlay.new()
+	_run_root.add_child(leave_overlay)
+	_run_root.move_child(leave_overlay, pause_menu.get_index())
+	leave_overlay.leave_confirmed.connect(_on_leave_confirmed)
+	# The run is built: LINKING SUBS and LOADED go out on the next idle step (the overlay shows
+	# LOADING SONG for the build frame).
+	call_deferred("_report_loaded_online")
+
+
+func _report_loaded_online() -> void:
+	if _online_over or not is_online() or state == State.ERROR:
+		return
+	if start_sync_overlay != null and is_instance_valid(start_sync_overlay):
+		start_sync_overlay.set_stage("linking")
+		start_sync_overlay.set_loaded(_local_seat(), true)
+	if session != null:
+		session.call("report_loaded")
+
+
+## START received. The first lead_in_for_start call decides: -1 (late or unsynced) never begins;
+## the host then aborts everyone to the lobby (match_aborted_to_lobby).
+func _on_start_scheduled() -> void:
+	if _began or _online_over or conductor == null or session == null:
+		return
+	var lead := float(session.call("lead_in_for_start"))
+	if not (lead >= 0.0):
+		return
+	_begin_online(lead)
+	if versus != null and versus.event_banner != null:
+		versus.event_banner.start_countdown(-lead, int(online_spec.get("flight", 1)))
+	if start_sync_overlay != null and is_instance_valid(start_sync_overlay):
+		for s: int in _seats():
+			start_sync_overlay.set_loaded(s, true)
+		start_sync_overlay.dismiss()  # gone DUR_BASE after begin (keep-out exception)
+
+
+## The local song end: min(chart end + END_PAD_SEC, max_song_s when > 0; autotest only).
+func online_end_time() -> float:
+	var end_t := _end_time + END_PAD_SEC
+	var cap := float(online_spec.get("max_song_s", 0.0))
+	if is_finite(cap) and cap > 0.0:
+		end_t = minf(end_t, cap)
+	return end_t
+
+
+func _process_online() -> void:
+	if session == null or _online_over:
+		return
+	if conductor == null or not _began or state == State.ERROR:
+		# Waiting for START: control packets flow and the watchdog stays live.
+		session.call("pump_match", NAN)
+		return
+	var t := conductor.song_time()
+	if state == State.RUNNING and versus != null:
+		versus.pre_tick(t)
+		versus.update(t)
+		versus.net_tick(t)
+	session.call("pump_match", t)
+	if _online_over:
+		return  # a session signal ended the match during the pump
+	if not _is_host() and state == State.RUNNING and versus != null and versus.status_chips != null:
+		var weak := float(session.call("seconds_since_host_packet")) >= LINK_WEAK_S
+		if weak != _link_weak:
+			_link_weak = weak
+			versus.status_chips.set_link_weak(weak)
+	if leave_overlay != null and leave_overlay.is_open() and not _is_host():
+		leave_overlay.set_ping(int(session.call("ping_ms")))
+	if state == State.RUNNING and not _done_reported and t >= online_end_time():
+		_online_song_done(t)
+	elif state == State.RUNNING and _done_reported and _is_host():
+		_update_waiting()
+
+
+## DONE (D-19): lanes off, WAITING FOR RESULTS, report once. Never the offline _finish path.
+func _online_song_done(t: float) -> void:
+	_done_reported = true
+	lane_input.enabled = false
+	_update_waiting()
+	session.call("report_done", t)  # the host may emit results_due right here
+
+
+func _update_waiting() -> void:
+	if versus == null or versus.event_banner == null or state != State.RUNNING:
+		return
+	var n := int(session.call("still_diving")) if session != null else 0
+	if n != _waiting_n:
+		_waiting_n = n
+		versus.event_banner.show_waiting(n)
+
+
+## Host (results_due): build the results once, send them, show them.
+func _host_results(end_t: float) -> void:
+	if versus == null or versus_results != null or _online_over:
+		return
+	var data := versus.finish(end_t)
+	data["is_host"] = true
+	session.call("host_send_results", data)
+	_show_online_results(data)
+
+
+## Host after results_due, client on results_received: the online results variant (04-12).
+func _show_online_results(data: Dictionary) -> void:
+	if versus_results != null or _online_over or _run_root == null:
+		return
+	state = State.DONE
+	if lane_input != null:
+		lane_input.enabled = false
+	if leave_overlay != null and leave_overlay.is_open():
+		leave_overlay.close()
+	if versus != null and versus.event_banner != null:
+		versus.event_banner.hide_waiting()
+	versus_results = VersusResultsScreen.new()
+	_run_root.add_child(versus_results)
+	versus_results.setup(data)
+	if _is_host():
+		versus_results.back_to_lobby_pressed.connect(_on_results_back_to_lobby)
+		versus_results.close_lobby_pressed.connect(_on_results_close_lobby)
+	else:
+		versus_results.leave_lobby_pressed.connect(_on_results_leave_lobby)
+	versus_results.menu_pressed.connect(_go_main_menu)
+
+
+func _on_results_back_to_lobby() -> void:
+	if session != null:
+		session.call("host_back_to_lobby")
+	_go_lobby()
+
+
+## Host "Back to Menu" with CLOSE LOBBY confirmed: the lobby closes, the host goes to the menu.
+func _on_results_close_lobby() -> void:
+	if session != null:
+		session.call("leave")
+	_go_main_menu()
+
+
+## Client "Leave Lobby" (confirmed): Play Online keeps the saved address (UI-SPEC decision 15).
+func _on_results_leave_lobby() -> void:
+	if session != null:
+		session.call("leave")
+	_goto(ONLINE_MENU_SCENE if ResourceLoader.exists(ONLINE_MENU_SCENE) else _menu_target())
+
+
+func _on_returned_to_lobby() -> void:
+	_go_lobby()
+
+
+## load_timeout / load_fail / start_late: back to the lobby (it shows the log line).
+func _on_match_aborted(_code: String, _who: String) -> void:
+	if conductor != null and is_instance_valid(conductor):
+		conductor.stop()
+	if lane_input != null:
+		lane_input.enabled = false
+	_go_lobby()
+
+
+## LOBBY_CLOSED while the results show (the host left from RESULTS).
+func _on_left_lobby(_code: String) -> void:
+	if versus_results != null and is_instance_valid(versus_results):
+		versus_results.set_lobby_closed()
+
+
+## MATCH_ABORT, server loss or the 4 s watchdog (NET-06, UI-SPEC 11.6): the conductor stops,
+## lanes disable, then the dialog shows the last known standings with one exit.
+func _on_host_left(kind: String) -> void:
+	if versus_results != null and is_instance_valid(versus_results):
+		versus_results.set_lobby_closed()
+		return
+	if host_left_dialog != null or _run_root == null:
+		return
+	_online_over = true
+	state = State.DONE
+	if conductor != null and is_instance_valid(conductor):
+		conductor.stop()
+	if lane_input != null:
+		lane_input.enabled = false
+	if leave_overlay != null and leave_overlay.is_open():
+		leave_overlay.close()
+	if start_sync_overlay != null and is_instance_valid(start_sync_overlay):
+		start_sync_overlay.queue_free()
+	start_sync_overlay = null
+	var names := _names()
+	var statuses := {}
+	for s: int in _seats():
+		statuses[s] = _last_status.get(s, _default_status())
+	host_left_dialog = HostLeftDialog.new()
+	_run_root.add_child(host_left_dialog)
+	host_left_dialog.setup(kind, names[0] if names.size() > 0 else "",
+		HostLeftDialog.rows_from_status(statuses, names, _local_seat(), 0))
+	host_left_dialog.back_to_menu.connect(_go_main_menu)
+
+
+static func _default_status() -> Dictionary:
+	return {"hull": 100.0, "depth": 0.0, "alive": true, "left": false}
+
+
+## Last known per-seat standings for the HOST LEFT dialog (STATUS, IMPLODED, PLAYER_LEFT).
+func _on_net_event(e: Dictionary) -> void:
+	var type := str(e.get("type", ""))
+	if type != GameEvent.STATUS and type != GameEvent.IMPLODED and type != GameEvent.PLAYER_LEFT:
+		return
+	var seat := int(e.get("seat", -1))
+	if seat < 0:
+		return
+	var cur: Dictionary = _last_status.get(seat, _default_status())
+	if type == GameEvent.STATUS:
+		cur["hull"] = float(e.get("hull", cur["hull"]))
+		cur["depth"] = float(e.get("depth", cur["depth"]))
+		cur["alive"] = bool(e.get("alive", cur["alive"]))
+	elif type == GameEvent.IMPLODED:
+		cur["alive"] = false
+	else:
+		cur["alive"] = false
+		cur["left"] = true
+	_last_status[seat] = cur
+
+
+func last_status() -> Dictionary:
+	return _last_status
+
+
+## Online input (D-18): Esc / Start opens the non-pausing Leave overlay, never the PauseMenu
+## (also during the sync overlay and the countdown). Fire never goes through while the overlay
+## is open (it consumes ui_accept itself). No restart (F4) online.
+func _online_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"pause"):
+		get_viewport().set_input_as_handled()
+		if state == State.RUNNING and not _online_over and leave_overlay != null \
+				and not leave_overlay.is_open():
+			var ping := -1
+			if session != null and not _is_host():
+				ping = int(session.call("ping_ms"))
+			leave_overlay.open(_is_host(), ping)
+		return
+	if event.is_action_pressed(&"debug_autoplay"):
+		get_viewport().set_input_as_handled()
+		return
+	if versus == null or state != State.RUNNING or not _began or _online_over:
+		return
+	if event.is_action_pressed(&"fire"):
+		get_viewport().set_input_as_handled()
+		if leave_overlay != null and leave_overlay.is_open():
+			return
+		fire_count += 1
+		versus.fire(conductor.song_time_at(Time.get_ticks_usec()))
+		return
+	if event.is_action_pressed(&"target_cycle"):
+		get_viewport().set_input_as_handled()
+		versus.cycle_target(conductor.song_time_at(Time.get_ticks_usec()))
+
+
+## Leave Match confirmed (11.4): client disconnects (the host wrecks the seat), the host sends
+## MATCH_ABORT; both go to the main menu.
+func _on_leave_confirmed() -> void:
+	_online_over = true
+	if conductor != null and is_instance_valid(conductor):
+		conductor.stop()
+	if lane_input != null:
+		lane_input.enabled = false
+	if session != null:
+		session.call("leave")
+	_go_main_menu()
+
+
+func _menu_target() -> String:
+	return MENU_SCENE if ResourceLoader.exists(MENU_SCENE) else FALLBACK_SCENE
+
+
+func _go_main_menu() -> void:
+	_goto(_menu_target())
+
+
+func _go_lobby() -> void:
+	var target := LOBBY_SCENE
+	if not ResourceLoader.exists(target):
+		target = ONLINE_MENU_SCENE if ResourceLoader.exists(ONLINE_MENU_SCENE) else _menu_target()
+	_goto(target)
+
+
+func _goto(path: String) -> void:
+	if navigate.is_valid():
+		navigate.call(path)
+		return
+	ScreenTransition.change_scene(path)
