@@ -78,7 +78,7 @@
 ### Payloads
 
 - [ ] **PAY-01**: Pressure Crack: the target's scroll speed spikes for a few bars
-- [ ] **PAY-02**: Lane Flip: the target's lanes are mirrored for a few bars
+- [ ] **PAY-02**: Crossed Wires: two of the target's lanes swap places for a few bars (replaces Lane Flip per 03-SPEC req 7)
 - [ ] **PAY-03**: Ghost Notes: fake notes (visually distinguishable by shape, not only color) that damage the hull if hit
 - [ ] **PAY-04**: Ink Cloud: the lower part of the target's highway is obscured for a few bars
 - [ ] **PAY-05**: Depth Charge: a burst of extra notes derived from the song's rhythm, capped by local chart density

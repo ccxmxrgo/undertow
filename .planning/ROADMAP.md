@@ -13,7 +13,7 @@ UNDERTOW is built as a series of vertical slices, each playable on its own. Firs
 
 - [x] **Phase 1: Timing Core & Calibration** - A solo song on a 4-lane sonar highway that feels tight, with hull, calibration and rebindable input (completed 2026-10-07)
 - [ ] **Phase 2: Chart Import & Songs** - Import Clone Hero charts, browse a song library, and ship bundled starter songs
-- [ ] **Phase 3: Offline Versus** - Torpedoes, five payloads, Return to Sender, elimination, wreck ghosts and results against bot rivals
+- [x] **Phase 3: Offline Versus** - Torpedoes, five payloads, Return to Sender, elimination, wreck ghosts and results against bot rivals
 - [ ] **Phase 4: Online Play** - Host a lobby, start in sync, and have torpedoes land mid-song across 2-4 PCs
 - [ ] **Phase 5: Polish & Packaging** - Sonar CRT look, underwater audio, juice, low-effects toggle and a Windows build
 
@@ -235,13 +235,13 @@ Plans:
 **Success Criteria** (what must be TRUE):
 
   1. Player's Perfect streak fills a visible torpedo tube, and they can fire at a target (leader by default, cycling, or an Attackers toggle) with launch and arrival snapped to beats
-  2. A bot-fired torpedo shows a telegraph at least 1 beat before it lands, and each of the five payloads (Pressure Crack, Lane Flip, Ghost Notes, Ink Cloud, Depth Charge) is readable and survivable without mashing
+  2. A bot-fired torpedo shows a telegraph at least 1 beat before it lands, and each of the five payloads (Pressure Crack, Crossed Wires, Ghost Notes, Ink Cloud, Depth Charge) is readable and survivable without mashing
   3. Only one payload is active on a player at a time, followed by an immunity window, and hitting all warhead notes perfectly reflects a torpedo back at its sender
   4. Player sees periscope panels with each rival's hull, tube and incoming payloads, and the last intact hull wins, or the deepest score if several survive the song
   5. Eliminated players keep playing as wreck ghosts with capped debris attacks, and a results screen shows winner, depth, accuracy, and torpedoes landed and reflected
   6. In Solo Dive, player practices any song with chosen training payloads
 
-**Plans:** 13/15 plans executed
+**Plans:** 15/15 plans executed (human UAT pending, D-UAT-01 open)
 
 Plans:
 - [x] 03-01-PLAN.md — Wave 1: D-29 pin move (perfect_regen 0.25, 3 commits + gate re-baseline), VersusConfig, Reward table, RewardMeter, RewardBag, MatchSetup + Settings
@@ -257,8 +257,8 @@ Plans:
 - [x] 03-11-PLAN.md — Wave 3: incoming alert, edge flash, event banner (duel / last hull / implosion), versus SFX
 - [x] 03-12-PLAN.md — Wave 3: MedalRules, versus results screen, versus pause copy
 - [x] 03-13-PLAN.md — Wave 3: match setup screen + scene
-- [ ] 03-14-PLAN.md — Wave 4: VersusController integration in Gameplay (bots, training, fire/target input, wreck path, results), keep-out + effect contracts
-- [ ] 03-15-PLAN.md — Wave 5: final gates, frequency report, versus screenshots + p95, friend zip v0.6.0, HUMAN-UAT (non-blocking checkpoint)
+- [x] 03-14-PLAN.md — Wave 4: VersusController integration in Gameplay (bots, training, fire/target input, wreck path, results), keep-out + effect contracts
+- [x] 03-15-PLAN.md — Wave 5: final gates, frequency report, versus screenshots + p95, friend zip v0.6.0, HUMAN-UAT (non-blocking checkpoint)
 
 **UI hint**: yes
 
@@ -305,6 +305,6 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 |-------|----------------|--------|-----------|
 | 1. Timing Core & Calibration | 10/10 | Complete   | 2026-10-07 |
 | 2. Chart Import & Songs | 5/6 | In Progress|  |
-| 3. Offline Versus | 13/15 | In Progress|  |
+| 3. Offline Versus | 15/15 | Complete (UAT pending) | 2026-10-20 |
 | 4. Online Play | 0/TBD | Not started | - |
 | 5. Polish & Packaging | 0/TBD | Not started | - |
