@@ -49,9 +49,11 @@ Phase 4 is verified on the final tree. The full suite is red only on the known D
 
 ## Friend zip
 
-- `build/dist/UNDERTOW-playtest-v0.7.0.zip`: 66,120,297 bytes (63.06 MB)
-- sha256 `edd41e3a5114902d9bc59138ad669aed1d6d7f203cdff6e9a7ba5cb3b99db7cd`
-- Entries: ONLINE_SETUP.md (0.01 MB), README.txt (0.02 MB), TESTER-CHECKLIST.txt (0.01 MB), UNDERTOW.exe (129.77 MB, pck embedded, debug export so F3 works)
+- `build/dist/UNDERTOW-playtest-v0.7.0.zip`: 467,661,357 bytes (446.00 MB). Rebuilt 2026-10-20 after the 04-REVIEW fixes (04-REVIEW-FIX.md) and with the Autocharter pack (02.2.2).
+- sha256 `dde997fc5e2ef203fb44329511add8c6775b04fc5cef287b767eef9570ba1ca4`
+- Entries: ONLINE_SETUP.md (0.01 MB), README.txt (0.02 MB), TESTER-CHECKLIST.txt (0.01 MB), UNDERTOW.exe (129.78 MB, pck embedded, debug export so F3 works; exe sha256 `8255783720904515582721edaa562bfb36a5c05372c249f4858aa1627db4d1e7`), and "Autocharter Pack/" (SHA256SUMS.txt plus 4 pack zips: app 0.06 MB, rt-core 136.57 MB, rt-torch 98.92 MB, models 146.03 MB)
+- The unzipped selftest printed AC_PACK_FOUND and BUNDLED_OK 20.
+- Previous build, before the review fixes: 66,120,297 bytes, sha256 `edd41e3a5114902d9bc59138ad669aed1d6d7f203cdff6e9a7ba5cb3b99db7cd`, with no Autocharter pack.
 - Built locally only. Nothing was uploaded or published.
 
 ## Tasks
