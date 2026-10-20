@@ -15,7 +15,17 @@ const NAMES: Array[String] = [
 	"arrow_right", "reflect", "shield", "cross", "skull", "bounty", "target", "debris", "versus",
 	"medal_untouchable", "medal_uno_reverse", "medal_bounty_hunter", "medal_shredder",
 	"medal_head_on", "medal_grudge", "medal_dogpiled",
+	# Phase 4 (04-UI-SPEC section 5): online play.
+	"online", "host", "signal", "link_broken", "copy", "warning",
 ]
+
+## signal glyph (04-UI-SPEC section 5): 4 bars, 3 px wide, bottoms at y 20.
+const SIGNAL_BARS := 4
+const SIGNAL_X: Array[float] = [4.0, 9.0, 14.0, 19.0]
+const SIGNAL_H: Array[float] = [4.0, 8.0, 12.0, 16.0]
+const SIGNAL_W := 3.0
+const SIGNAL_BOTTOM := 20.0
+const SIGNAL_UNLIT_ALPHA := 0.7
 
 
 static func names() -> Array[String]:
@@ -190,7 +200,75 @@ static func draw(ci: CanvasItem, icon_name: String, rect: Rect2, color: Color) -
 			ci.draw_circle(o + Vector2(12, 12) * k, 3.0 * k, color)
 			for src: Vector2 in [Vector2(3, 4), Vector2(21, 4), Vector2(12, 22)]:
 				_arrow(ci, o, k, src, src.lerp(Vector2(12, 12), 0.62), color, w)
+		# ---- Phase 4 glyphs (04-UI-SPEC section 5) ----
+		"online":
+			# Two subs with signal arcs between them.
+			ci.draw_circle(o + Vector2(4, 17) * k, 3.0 * k, color)
+			ci.draw_circle(o + Vector2(20, 17) * k, 3.0 * k, color)
+			_line(ci, o, k, _arc_pts(Vector2(12, 17), 6.0, deg_to_rad(200.0), deg_to_rad(340.0), 12), color, w)
+			_line(ci, o, k, _arc_pts(Vector2(12, 17), 11.0, deg_to_rad(205.0), deg_to_rad(335.0), 16), color, w)
+		"host":
+			# Broadcast mast.
+			_line(ci, o, k, [Vector2(12, 9), Vector2(12, 21)], color, w)
+			_line(ci, o, k, [Vector2(7, 21), Vector2(17, 21)], color, w)
+			ci.draw_circle(o + Vector2(12, 8) * k, 2.0 * k, color)
+			for r: float in [5.0, 9.0]:
+				_line(ci, o, k, _arc_pts(Vector2(12, 8), r, deg_to_rad(220.0), deg_to_rad(320.0), 10), color, w)
+		"signal":
+			# All four bars lit in `color`; use draw_signal() for a lit count.
+			_signal_bars(ci, o, k, signal_bar_colors(SIGNAL_BARS, color))
+		"link_broken":
+			_line(ci, o, k, _chamfer_loop(Vector2(2, 9), Vector2(11, 15), 2.0), color, w)
+			_line(ci, o, k, _chamfer_loop(Vector2(13, 9), Vector2(22, 15), 2.0), color, w)
+			_line(ci, o, k, [Vector2(10, 20), Vector2(14, 4)], color, w)
+		"copy":
+			# Back square outline, then the front one filled ABYSS_800 so the back reads behind it.
+			_line(ci, o, k, _chamfer_loop(Vector2(8, 4), Vector2(20, 16), 2.0), color, w)
+			var front := _chamfer_loop(Vector2(4, 8), Vector2(16, 20), 2.0)
+			front.pop_back()
+			_poly(ci, o, k, front, Palette.ABYSS_800)
+			_line(ci, o, k, _chamfer_loop(Vector2(4, 8), Vector2(16, 20), 2.0), color, w)
+		"warning":
+			_line(ci, o, k, [Vector2(12, 3), Vector2(22, 20), Vector2(2, 20), Vector2(12, 3)], color, w)
+			_poly(ci, o, k, [Vector2(11, 9), Vector2(13, 9), Vector2(13, 15), Vector2(11, 15)], color)
+			ci.draw_circle(o + Vector2(12, 17.5) * k, 1.5 * k, color)
 	return true
+
+
+## Colours of the 4 signal bars for `lit` (clamped 0..4): lit bars `color_lit`, unlit
+## ABYSS_500 at 70% (04-UI-SPEC section 5).
+static func signal_bar_colors(lit: int, color_lit: Color) -> Array[Color]:
+	var n := clampi(lit, 0, SIGNAL_BARS)
+	var out: Array[Color] = []
+	for i in SIGNAL_BARS:
+		out.append(color_lit if i < n else Color(Palette.ABYSS_500, SIGNAL_UNLIT_ALPHA))
+	return out
+
+
+## The signal glyph with `lit` bars (0..4, clamped) in `color_lit` (SONAR, or WARNING_RED
+## for high latency). Returns false for a null canvas item.
+static func draw_signal(ci: CanvasItem, rect: Rect2, lit: int, color_lit: Color) -> bool:
+	if ci == null:
+		return false
+	var k := minf(rect.size.x, rect.size.y) / GRID
+	var o := rect.position + (rect.size - Vector2(GRID, GRID) * k) * 0.5
+	_signal_bars(ci, o, k, signal_bar_colors(lit, color_lit))
+	return true
+
+
+static func _signal_bars(ci: CanvasItem, o: Vector2, k: float, cols: Array[Color]) -> void:
+	for i in SIGNAL_BARS:
+		var x: float = SIGNAL_X[i]
+		var top: float = SIGNAL_BOTTOM - SIGNAL_H[i]
+		_poly(ci, o, k, [Vector2(x, top), Vector2(x + SIGNAL_W, top),
+				Vector2(x + SIGNAL_W, SIGNAL_BOTTOM), Vector2(x, SIGNAL_BOTTOM)], cols[i])
+
+
+## Closed outline (grid units) of the rect a..b with its TL and BR corners cut by `cut`.
+static func _chamfer_loop(a: Vector2, b: Vector2, cut: float) -> Array:
+	return [Vector2(a.x + cut, a.y), Vector2(b.x, a.y), Vector2(b.x, b.y - cut),
+			Vector2(b.x - cut, b.y), Vector2(a.x, b.y), Vector2(a.x, a.y + cut),
+			Vector2(a.x + cut, a.y)]
 
 
 static func _pts(o: Vector2, k: float, pts: Array) -> PackedVector2Array:

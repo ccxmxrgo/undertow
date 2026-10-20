@@ -386,6 +386,9 @@ static func chip_style(variant: String, lane: int = -1) -> Dictionary:
 			return {"edge": Palette.REWARD_GOLD, "fill": Color(Palette.REWARD_GOLD, 0.14), "text": Palette.REWARD_GOLD}
 		"muted":
 			return {"edge": Color(Palette.TEXT_LO, 0.4), "fill": Color(Palette.TEXT_LO, 0.0), "text": Palette.TEXT_LO}
+		"danger":
+			# 04-UI-SPEC 4.2: MISSING / CHANGED / NO HOST SIGNAL.
+			return {"edge": Palette.WARNING_RED, "fill": Color(Palette.ABYSS_700, 0.8), "text": Palette.WARNING_RED}
 		"difficulty":
 			var lc := Palette.lane_color(maxi(lane, 0))
 			return {"edge": lc, "fill": Color(lc, 0.12), "text": Palette.TEXT_HI}
@@ -409,7 +412,8 @@ static func chip_width(text: String, variant: String = "mode") -> float:
 
 
 ## Chip (UI-SPEC 4.4): CUT_SM chamfer, 2 px edge, Label 20 UPPERCASE text. Variants:
-## mode | info | reward | muted | difficulty (lane colour, 16 px lane glyph at left).
+## mode | info | reward | muted | danger (WARNING_RED, 04-UI-SPEC 4.2) | difficulty (lane
+## colour, 16 px lane glyph at left).
 static func draw_chip(ci: CanvasItem, rect: Rect2, text: String, variant: String = "mode", lane: int = -1) -> void:
 	var st := chip_style(variant, lane)
 	var outline := chamfer_points(rect, Palette.CUT_SM)

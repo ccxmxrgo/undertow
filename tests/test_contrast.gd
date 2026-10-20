@@ -185,5 +185,37 @@ func test_c25_ink_receptor_outline_on_abyss() -> void:
 		_check("C25 ink receptor outline lane %d" % (lane + 1), outline, Palette.ABYSS_900, 3.0)
 
 
+# ---- C26..C30 (Phase 4, 04-UI-SPEC section 16) ----
+
+## A row raised to ABYSS_600 at HUD glass alpha (92%) over the menu glass.
+func _row() -> Color:
+	return Wcag.over(Palette.ABYSS_600, Palette.HUD_GLASS_ALPHA, _panel())
+
+
+func test_c26_text_on_field_well() -> void:
+	_check("C26 TEXT_HI on ABYSS_800 well", Palette.TEXT_HI, Palette.ABYSS_800, 4.5)
+	_check("C26 TEXT_LO on ABYSS_800 well", Palette.TEXT_LO, Palette.ABYSS_800, 4.5)
+
+
+func test_c27_field_idle_edge_on_glass() -> void:
+	var edge := Wcag.over(Palette.SONAR, 0.45, _panel())
+	_check("C27 SONAR 45% field edge on glass", edge, _panel(), 3.0)
+
+
+func test_c28_warning_red_on_danger_chip() -> void:
+	var st := UiKit.chip_style("danger")
+	var fill: Color = st.fill
+	var chip := Wcag.over(Color(fill, 1.0), fill.a, _panel())
+	_check("C28 WARNING_RED on danger chip", st.text, chip, 4.5)
+
+
+func test_c29_warning_red_on_abyss_600_row() -> void:
+	_check("C29 WARNING_RED on ABYSS_600 92% row", Palette.WARNING_RED, _row(), 4.5)
+
+
+func test_c30_sonar_pale_on_abyss_600_row() -> void:
+	_check("C30 SONAR_PALE on ABYSS_600 row", Palette.SONAR_PALE, _row(), 4.5)
+
+
 func test_jam_grey_is_text_mid_alias() -> void:
 	assert_bool(Palette.JAM_GREY == Palette.TEXT_MID).is_true()

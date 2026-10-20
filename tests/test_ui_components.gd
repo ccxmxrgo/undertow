@@ -396,6 +396,11 @@ func test_chip_styles_match_ui_spec() -> void:
 	assert_that(diff.edge).is_equal(Palette.lane_color(2))
 	assert_that(diff.fill).is_equal(Color(Palette.lane_color(2), 0.12))
 	assert_that(diff.text).is_equal(Palette.TEXT_HI)
+	# Phase 4 (04-UI-SPEC 4.2): danger chip.
+	var danger := UiKit.chip_style("danger")
+	assert_that(danger.edge).is_equal(Palette.WARNING_RED)
+	assert_that(danger.fill).is_equal(Color(Palette.ABYSS_700, 0.8))
+	assert_that(danger.text).is_equal(Palette.WARNING_RED)
 	assert_int(UiKit.CHIP_H).is_equal(32)
 	# Width: padding 12 each side; difficulty adds the 16 px glyph and a 4 px gap.
 	var w := UiKit.chip_width("NO-FAIL", "mode")
@@ -503,9 +508,10 @@ func test_ui_icons_names_and_unknown_name_is_noop() -> void:
 		"depth_charge", "decoy_flare", "ballast_patch", "overclock",
 		"arrow_right", "reflect", "shield", "cross", "skull", "bounty", "target", "debris", "versus",
 		"medal_untouchable", "medal_uno_reverse", "medal_bounty_hunter", "medal_shredder",
-		"medal_head_on", "medal_grudge", "medal_dogpiled"])
+		"medal_head_on", "medal_grudge", "medal_dogpiled",
+		"online", "host", "signal", "link_broken", "copy", "warning"])
 	var n_icons := UiIcons.names().size()
-	assert_int(n_icons).is_equal(36)
+	assert_int(n_icons).is_equal(42)
 	var c: Control = auto_free(Control.new())
 	add_child(c)
 	c.size = Vector2(1200, 40)
@@ -549,6 +555,58 @@ func test_ui_icons_phase3_glyphs_draw_at_all_sizes() -> void:
 	assert_int(drawn.size()).is_equal(100)
 	for ok: bool in drawn:
 		assert_bool(ok).is_true()
+
+
+## 04-UI-SPEC section 5: the six Phase 4 glyphs draw at 16, 20, 24 and 32 px.
+func test_ui_icons_phase4_glyphs_draw_at_all_sizes() -> void:
+	var phase4 := ["online", "host", "signal", "link_broken", "copy", "warning"]
+	for n: String in phase4:
+		assert_bool(UiIcons.names().has(n)).is_true()
+	var c: Control = auto_free(Control.new())
+	add_child(c)
+	c.size = Vector2(800, 200)
+	var drawn := []
+	c.draw.connect(func() -> void:
+		var y := 0.0
+		for px: float in [16.0, 20.0, 24.0, 32.0]:
+			var x := 0.0
+			for n: String in phase4:
+				drawn.append(UiIcons.draw(c, n, Rect2(x, y, px, px), Palette.SONAR))
+				x += px + 4.0
+			y += px + 4.0)
+	c.queue_redraw()
+	await await_idle_frame()
+	assert_int(drawn.size()).is_equal(24)
+	for ok: bool in drawn:
+		assert_bool(ok).is_true()
+
+
+## 04-UI-SPEC section 5: signal bars, lit count clamped 0..4, unlit ABYSS_500 at 70%.
+func test_ui_icons_signal_lit_count() -> void:
+	var cols := UiIcons.signal_bar_colors(2, Palette.SONAR)
+	assert_int(cols.size()).is_equal(4)
+	assert_that(cols[0]).is_equal(Palette.SONAR)
+	assert_that(cols[1]).is_equal(Palette.SONAR)
+	assert_that(cols[2]).is_equal(Color(Palette.ABYSS_500, 0.7))
+	assert_that(cols[3]).is_equal(Color(Palette.ABYSS_500, 0.7))
+	for col: Color in UiIcons.signal_bar_colors(9, Palette.WARNING_RED):
+		assert_that(col).is_equal(Palette.WARNING_RED)
+	for col: Color in UiIcons.signal_bar_colors(-3, Palette.SONAR):
+		assert_that(col).is_equal(Color(Palette.ABYSS_500, 0.7))
+	var c: Control = auto_free(Control.new())
+	add_child(c)
+	c.size = Vector2(240, 40)
+	var drawn := []
+	c.draw.connect(func() -> void:
+		for lit: int in [-1, 0, 1, 2, 3, 4, 7]:
+			drawn.append(UiIcons.draw_signal(c, Rect2(lit * 24 + 48, 8, 24, 24), lit, Palette.SONAR))
+		drawn.append(UiIcons.draw_signal(null, Rect2(0, 0, 24, 24), 2, Palette.SONAR)))
+	c.queue_redraw()
+	await await_idle_frame()
+	assert_int(drawn.size()).is_equal(8)
+	for i in 7:
+		assert_bool(drawn[i]).is_true()
+	assert_bool(drawn[7]).is_false()
 
 
 # ---- Plan 05 task 2: FocusMarker.
