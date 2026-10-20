@@ -60,12 +60,18 @@ const IMPLODED := "imploded"
 const LAST_STANDING := "last_standing"
 ## {standings: Array[Dictionary]} - the song ended; rows as MatchSim.standings().
 const MATCH_END := "match_end"
+## {seat, reason: "disconnected"|"left"} - an online player's link dropped; emitted by the host
+## right after that seat's IMPLODED (D-16). Host-only, never offline.
+const PLAYER_LEFT := "player_left"
+## {solo: int, pct: Dictionary seat->float} - live Solo Duel Perfect % per participant, at most
+## once per beat while a duel runs; host-only, read by clients' RemoteReferee.duel_live (D-13).
+const DUEL_LIVE := "duel_live"
 
 const ALL_TYPES: Array[String] = [
 	REWARD_EARNED, REWARD_QUEUED, METER, FIRE_QUEUED, FIRE_REFUSED, TORPEDO_LAUNCH, COLLISION,
 	ABSORBED, LANDED, PAYLOAD_END, WARHEAD, REFLECTED, FIZZLED, BUFF_APPLIED, BUFF_ENDED, TARGET,
 	BOUNTY_MOVED, BOUNTY_CLAIMED, STATUS, DUEL_ANNOUNCE, DUEL_START, DUEL_RESULT, IMPLODED,
-	LAST_STANDING, MATCH_END,
+	LAST_STANDING, MATCH_END, PLAYER_LEFT, DUEL_LIVE,
 ]
 
 

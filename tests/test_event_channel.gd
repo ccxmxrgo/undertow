@@ -28,7 +28,12 @@ func test_every_type_is_unique() -> void:
 		seen[ty] = true
 	assert_bool(seen.has(GameEvent.TORPEDO_LAUNCH)).is_true()
 	assert_bool(seen.has(GameEvent.MATCH_END)).is_true()
-	assert_int(GameEvent.ALL_TYPES.size()).is_equal(25)
+	assert_int(GameEvent.ALL_TYPES.size()).is_equal(27)
+	# 04-02: the two online-only events are additive (D-13, D-16).
+	assert_bool(seen.has(GameEvent.PLAYER_LEFT)).is_true()
+	assert_bool(seen.has(GameEvent.DUEL_LIVE)).is_true()
+	assert_str(GameEvent.PLAYER_LEFT).is_equal("player_left")
+	assert_str(GameEvent.DUEL_LIVE).is_equal("duel_live")
 
 
 func test_base_channel_emits_synchronously() -> void:
