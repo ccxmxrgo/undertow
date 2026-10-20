@@ -19,14 +19,25 @@ extends Node
 ## Modes: versus (a MatchSetup with rivals 1..3); training (practice, drone_mode != -1: one drone
 ## seat); training OFF (practice, no rivals: the meter, bag and buffs run, no periscope column
 ## and no killfeed, UI-SPEC 8.3).
+##
+## Online (Phase 4, D-03, D-13, D-19): setup_online() builds one of two network backends next
+## to the unchanged offline one. Host: MatchSim behind a HostInputQueue, events through a
+## NetHostChannel. Client: a RemoteReferee proxy, events from a NetClientChannel. The views
+## bind to `channel` and `local_seat` exactly as offline. There are no bots and no drone online.
+## NetSession.pump_match owns the network pump (queue.pump / take_batches / remote.flush); the
+## controller never pumps, except the final drain in finish() on the host.
 
 ## Test seam: drive the human with VersusAutoplay in a versus match (a versus launch with
 ## pending_autoplay is discarded by design). Reset by the tests.
 static var test_autoplay_human: bool = false
 
+## Offline seat of the human (kept for compatibility); online the seat is local_seat.
 const HUMAN_SEAT := 0
 ## Judge tick grid, shared with MatchHarness so live and headless matches tick identically.
 const TICK_S := MatchHarness.TICK_S
+## FIRE_REFUSED reasons (MatchSim._refuse) that play the error blip online: the same cases as
+## FIRE_SHIELDED / FIRE_NO_TARGET offline. "nothing" and "race" stay silent.
+const REFUSAL_BLIP_REASONS := ["shielded", "no_target"]
 
 var match_setup: MatchSetup
 var versus: bool = false
@@ -37,8 +48,28 @@ var chart: ChartData
 var jcfg: JudgeConfig
 var cfg: VersusConfig
 var match_seed: int = 0
-var channel: LoopbackChannel
-var sim: MatchSim
+## The seat this PC drives (HUMAN_SEAT offline, the session's seat online).
+var local_seat: int = HUMAN_SEAT
+## Offline: a LoopbackChannel. Online: host_channel or client_channel.
+var channel: EventChannel
+## The rig-facing referee: the MatchSim offline, the HostInputQueue on the host, the
+## RemoteReferee on a client.
+var sim: Referee
+## The real rules (offline and host). Null on clients (D-19: clients never call MatchSim).
+var match_sim: MatchSim
+
+## Online state (all null / false offline).
+var online: bool = false
+var is_host: bool = false
+## Input delay D in seconds (online).
+var d_s: float = 0.0
+var queue: HostInputQueue
+var host_channel: NetHostChannel
+var remote: RemoteReferee
+var client_channel: NetClientChannel
+## Client only: receives each INPUTS message RemoteReferee.flush() produces. Set it before
+## setup_online; the default (an invalid Callable) drops the message.
+var net_send: Callable = Callable()
 var players: Array[PlayerState] = []
 ## Callsigns indexed by seat ("YOU" first).
 var names := PackedStringArray()
@@ -111,24 +142,17 @@ func setup(gp: Gameplay, p_chart: ChartData, p_jcfg: JudgeConfig, p_setup: Match
 		players.append(PlayerState.new(drone_seat, "DRONE", false, true))
 		names.append("DRONE")
 	channel = LoopbackChannel.new()
-	sim = MatchSim.new(chart, cfg, jcfg, players, channel, match_seed)
-	human_rig = SubRig.new(HUMAN_SEAT, chart, jcfg, cfg, sim, channel, training)
-	human_rig.approach_s = Trench.approach_for(Settings.scroll_speed)
-	# IN-03: the pause-menu settings can change the scroll speed mid-match; the Ghost Notes /
-	# Depth Charge window (Pitfall 1) must follow it.
-	if not Settings.settings_changed.is_connected(_on_settings_changed):
-		Settings.settings_changed.connect(_on_settings_changed)
-	human_judge = human_rig.judge
-	human_hull = human_rig.hull
-	human_stack = human_rig.stack
+	match_sim = MatchSim.new(chart, cfg, jcfg, players, channel, match_seed)
+	sim = match_sim
+	_make_human_rig(training)
 	var profile := BotProfile.from_skill(p_setup.skill if versus else "regular")
 	for i in range(rivals):
 		var s := i + 1
-		var rig := SubRig.new(s, chart, jcfg, cfg, sim, channel, false)
+		var rig := SubRig.new(s, chart, jcfg, cfg, match_sim, channel, false)
 		bot_rigs[s] = rig
-		bots.append(BotPlayer.new(rig, profile, sim, cfg, chart, hash([match_seed, "bot", s])))
+		bots.append(BotPlayer.new(rig, profile, match_sim, cfg, chart, hash([match_seed, "bot", s])))
 	if drone_seat != -1:
-		drone = TrainingDrone.new(sim, chart, cfg, drone_seat, HUMAN_SEAT, drone_mode)
+		drone = TrainingDrone.new(match_sim, chart, cfg, drone_seat, HUMAN_SEAT, drone_mode)
 	_actors.append(_TickActor.new(self))
 	if autoplay or (versus and test_autoplay_human):
 		autoplay_human = MatchHarness._AutoActor.new(chart, human_rig)
@@ -139,6 +163,86 @@ func setup(gp: Gameplay, p_chart: ChartData, p_jcfg: JudgeConfig, p_setup: Match
 		_actors.append(b)
 	if drone != null:
 		_actors.append(drone)
+	_finish_wiring(gp)
+
+
+## Online setup (D-03). spec = NetSession.pending_match() plus `margins`:
+##   role "host" | "client", local_seat, names (PackedStringArray by seat), seed, flight
+##   (torpedo_travel_beats), d_s, autoplay, margins {seat: rtt_p90_s} (host; 0 for the host),
+##   optional song_len (client event-validation context; default the chart length).
+## Host: MatchSim behind a HostInputQueue, a NetHostChannel; the human at local_seat (0).
+## Client: a RemoteReferee (its INPUTS go to net_send) and a NetClientChannel.
+## No bots and no drone. Set net_send (client) before calling.
+func setup_online(gp: Gameplay, p_chart: ChartData, p_jcfg: JudgeConfig, spec: Dictionary) -> void:
+	name = "VersusController"
+	chart = p_chart
+	jcfg = p_jcfg
+	match_setup = null
+	online = true
+	versus = true
+	training = false
+	drone_mode = -1
+	is_host = str(spec.get("role", "")) == "host"
+	local_seat = int(spec.get("local_seat", HUMAN_SEAT))
+	d_s = maxf(float(spec.get("d_s", 0.0)), 0.0)
+	match_seed = int(spec.get("seed", 0))
+	cfg = VersusConfig.new()
+	cfg.torpedo_travel_beats = int(spec.get("flight", cfg.torpedo_travel_beats))
+	cfg = cfg.validated()
+	players.clear()
+	names = PackedStringArray()
+	var spec_names := PackedStringArray(spec.get("names", PackedStringArray()))
+	for s in range(mini(spec_names.size(), NetProtocol.MAX_SEATS)):
+		var nm := spec_names[s]
+		players.append(PlayerState.new(s, nm, s == local_seat))
+		names.append("YOU" if s == local_seat else nm)
+	if is_host:
+		host_channel = NetHostChannel.new()
+		channel = host_channel
+		match_sim = MatchSim.new(chart, cfg, jcfg, players, channel, match_seed)
+		queue = HostInputQueue.new(match_sim, channel, d_s)
+		sim = queue
+	else:
+		var ctx := {"from_host": true, "note_count": chart.notes.size(),
+			"song_len": float(spec.get("song_len", ProgressTrack.song_length_of(chart))),
+			"max_seat": NetProtocol.MAX_SEATS - 1}
+		client_channel = NetClientChannel.new(local_seat, Callable(self, "_song_now"), ctx)
+		channel = client_channel
+		match_sim = null
+		remote = RemoteReferee.new(local_seat, players, Callable(self, "_send_net"))
+		remote.bind(channel)
+		sim = remote
+	_make_human_rig(false)
+	if is_host:
+		var margins: Variant = spec.get("margins", {})
+		if margins is Dictionary:
+			for s in margins:
+				var rtt: Variant = margins[s]
+				if (s is int) and (rtt is float or rtt is int):
+					queue.set_net_margin(s, HostInputQueue.margin_for(d_s, float(rtt)))
+	_actors.append(_TickActor.new(self))
+	if bool(spec.get("autoplay", false)) or test_autoplay_human:
+		autoplay_human = MatchHarness._AutoActor.new(chart, human_rig)
+		_actors.append(autoplay_human)
+	_bot_seats = []
+	_finish_wiring(gp)
+
+
+## The human rig at local_seat on `sim` / `channel` (shared by setup and setup_online).
+func _make_human_rig(no_fail: bool) -> void:
+	human_rig = SubRig.new(local_seat, chart, jcfg, cfg, sim, channel, no_fail)
+	human_rig.approach_s = Trench.approach_for(Settings.scroll_speed)
+	# IN-03: the pause-menu settings can change the scroll speed mid-match; the Ghost Notes /
+	# Depth Charge window (Pitfall 1) must follow it.
+	if not Settings.settings_changed.is_connected(_on_settings_changed):
+		Settings.settings_changed.connect(_on_settings_changed)
+	human_judge = human_rig.judge
+	human_hull = human_rig.hull
+	human_stack = human_rig.stack
+
+
+## The controller's own event handler and the error blip player (after every rig connected).
+func _finish_wiring(gp: Gameplay) -> void:
 	channel.received.connect(_on_event)
 	_error_player = AudioStreamPlayer.new()
 	_error_player.name = "ErrorBlip"
@@ -146,6 +250,40 @@ func setup(gp: Gameplay, p_chart: ChartData, p_jcfg: JudgeConfig, p_setup: Match
 	var ui := get_node_or_null("/root/UiSounds") if gp != null and gp.is_inside_tree() else null
 	_error_player.bus = ui.call("bus_name") if ui != null else &"Master"
 	add_child(_error_player)
+
+
+## Client: the song time the controller has advanced to (NetClientChannel landed probe).
+func _song_now() -> float:
+	return now
+
+
+## Client: RemoteReferee's send_fn; forwards each INPUTS message to net_send.
+func _send_net(msg: Dictionary) -> void:
+	if net_send.is_valid():
+		net_send.call(msg)
+
+
+## Per frame online, after pre_tick and update and before NetSession.pump_match(t): a client
+## stamps non-finite input times with t (RemoteReferee.set_now). No-op on the host / offline.
+func net_tick(t: float) -> void:
+	if remote != null:
+		remote.set_now(t)
+
+
+## F3 overlay rows: HostInputQueue.debug_stats (host) or NetClientChannel.debug_stats (client)
+## plus {online, is_host, local_seat, d_s}. {} offline.
+func debug_net() -> Dictionary:
+	if not online:
+		return {}
+	var out := {"online": true, "is_host": is_host, "local_seat": local_seat, "d_s": d_s}
+	if queue != null:
+		out.merge(queue.debug_stats())
+	if client_channel != null:
+		out.merge(client_channel.debug_stats())
+	if remote != null:
+		out["pending_inputs"] = remote.pending_count()
+		out["ignored_foreign"] = remote.ignored_foreign
+	return out
 
 
 ## True when the run shows rival views (versus, or training with a drone).
@@ -157,7 +295,7 @@ func has_rivals() -> bool:
 func rival_seats() -> Array[int]:
 	var out: Array[int] = []
 	for p in players:
-		if p.seat != HUMAN_SEAT:
+		if p.seat != local_seat:
 			out.append(p.seat)
 	return out
 
@@ -188,21 +326,21 @@ func bind_views(gp: Gameplay) -> void:
 	reward_socket = RewardSocket.new()
 	reward_socket.name = "RewardSocket"
 	_hud.add_child(reward_socket)
-	reward_socket.bind(channel, HUMAN_SEAT, cfg)
+	reward_socket.bind(channel, local_seat, cfg)
 	target_readout = TargetReadout.new()
 	target_readout.name = "TargetReadout"
 	_hud.add_child(target_readout)
-	target_readout.bind(channel, HUMAN_SEAT, names, drone_seat != -1)
+	target_readout.bind(channel, local_seat, names, drone_seat != -1)
 	status_chips = StatusChips.new()
 	status_chips.name = "StatusChips"
 	add_child(status_chips)
-	status_chips.bind(channel, HUMAN_SEAT, _hud, cfg, chart, players.size() if versus else 1, training)
+	status_chips.bind(channel, local_seat, _hud, cfg, chart, players.size() if versus else 1, training)
 	if training:
 		_hud.set_solo_dive(true)
 	versus_sfx = VersusSfx.new()
 	versus_sfx.name = "VersusSfx"
 	add_child(versus_sfx)
-	versus_sfx.bind(channel, HUMAN_SEAT)
+	versus_sfx.bind(channel, local_seat)
 	# VersusHud: after Hud, before StreakCounter.
 	versus_hud = VersusHud.new()
 	gp.hud.get_parent().add_child(versus_hud)
@@ -211,29 +349,29 @@ func bind_views(gp: Gameplay) -> void:
 		periscope_column = PeriscopeColumn.new()
 		periscope_column.name = "PeriscopeColumn"
 		versus_hud.add_child(periscope_column)
-		periscope_column.bind(channel, HUMAN_SEAT, rival_seats(), names, chart, cfg,
+		periscope_column.bind(channel, local_seat, rival_seats(), names, chart, cfg,
 			Callable(sim, "duel_live"), training)
 		killfeed = Killfeed.new()
 		killfeed.name = "Killfeed"
 		versus_hud.add_child(killfeed)
-		killfeed.bind(channel, HUMAN_SEAT, names, cfg)
+		killfeed.bind(channel, local_seat, names, cfg)
 	incoming_alert = IncomingAlert.new()
 	incoming_alert.name = "IncomingAlert"
 	versus_hud.add_child(incoming_alert)
-	incoming_alert.bind(channel, HUMAN_SEAT, Array(names), chart, cfg, versus_sfx)
+	incoming_alert.bind(channel, local_seat, Array(names), chart, cfg, versus_sfx)
 	event_banner = EventBanner.new()
 	event_banner.name = "EventBanner"
 	versus_hud.add_child(event_banner)
-	event_banner.bind(channel, HUMAN_SEAT, Array(names), cfg, Callable(sim, "duel_live"),
+	event_banner.bind(channel, local_seat, Array(names), cfg, Callable(sim, "duel_live"),
 		_hud.section_banner)
 	edge_flash = EdgeFlash.new()
 	edge_flash.name = "EdgeFlash"
 	versus_hud.add_child(edge_flash)
-	edge_flash.bind(channel, HUMAN_SEAT)
+	edge_flash.bind(channel, local_seat)
 	reward_popup = RewardPopup.new()
 	reward_popup.name = "RewardPopup"
 	versus_hud.add_child(reward_popup)
-	reward_popup.bind(channel, HUMAN_SEAT, func() -> bool:
+	reward_popup.bind(channel, local_seat, func() -> bool:
 		return gp.streak_counter != null and is_instance_valid(gp.streak_counter) \
 			and gp.streak_counter.popup_text() != "")
 
@@ -327,40 +465,56 @@ static func drone_status_text(bars: int) -> String:
 
 
 ## Fire (TORP-02). A refused shot (shielded / no target) plays the error blip; nothing held
-## plays nothing (UI-SPEC 10).
+## plays nothing (UI-SPEC 10). Online the result is unknown (FIRE_REMOTE): the blip comes from
+## FIRE_REFUSED for local_seat one round trip later (_on_event, D-13), never from the return.
 func fire(t: float) -> int:
 	advance_to(t)
-	var r := sim.request_fire(HUMAN_SEAT, t)
-	if r == MatchSim.FIRE_SHIELDED or r == MatchSim.FIRE_NO_TARGET:
-		error_blips += 1
-		if _error_player != null and _error_player.is_inside_tree():
-			_error_player.play()
+	var r := sim.request_fire(local_seat, t)
+	if not online and (r == MatchSim.FIRE_SHIELDED or r == MatchSim.FIRE_NO_TARGET):
+		_error_blip()
 	channel.update(t)
 	return r
+
+
+func _error_blip() -> void:
+	error_blips += 1
+	if _error_player != null and _error_player.is_inside_tree():
+		_error_player.play()
 
 
 ## Target cycle (TORP-03, D-01); works without a reward so players can pre-aim.
 func cycle_target(t: float = NAN) -> int:
 	advance_to(t)
-	var r := sim.cycle_target(HUMAN_SEAT, t)
+	var r := sim.cycle_target(local_seat, t)
 	if is_finite(t):
 		channel.update(t)
 	return r
 
 
-## Ends the match (MATCH_END once) and returns the VersusResultsScreen data.
+## Ends the match (MATCH_END once) and returns the VersusResultsScreen data. Offline and on
+## the online host (D-19); clients never call it (their results come from NetSession) and get {}.
+## Host: the input queue is drained first (pump(t + d_s) moves the horizon to t), so every input
+## stamped up to t reaches MatchSim before the standings are taken.
 func finish(t: float) -> Dictionary:
+	if match_sim == null:
+		return _finish_data
 	advance_to(t)
-	sim.update(t)
-	sim.finish(t)
+	if queue != null:
+		queue.pump(t + d_s)
+	match_sim.update(t)
+	match_sim.finish(t)
 	channel.update(t)
 	var rows: Array[Dictionary] = []
-	for r in sim.standings():
+	var left := _left_times()
+	for r in match_sim.standings():
 		var row := r.duplicate()
 		var p := _player(int(r["seat"]))
 		row["name"] = p.callsign if p != null else "?"
 		row["landed"] = p.landed if p != null else 0
 		row["reflected"] = p.reflected if p != null else 0
+		if left.has(row["seat"]):
+			row["left"] = true
+			row["left_t"] = left[row["seat"]]
 		rows.append(row)
 	var seats: Array[int] = []
 	var drones: Array[int] = []
@@ -370,14 +524,33 @@ func finish(t: float) -> Dictionary:
 		else:
 			seats.append(p.seat)
 	var last := -1
-	for e in sim.event_log:
+	for e in match_sim.event_log:
 		if e.get("type", "") == GameEvent.LAST_STANDING:
 			last = int(e.get("seat", -1))
-	_finish_data = {"rows": rows, "local_seat": HUMAN_SEAT,
-		"medals": MedalRules.medals(sim.event_log, seats, drones),
+	_finish_data = {"rows": rows, "local_seat": local_seat,
+		"medals": MedalRules.medals(match_sim.event_log, seats, drones),
 		"title": chart.title, "artist": chart.artist, "difficulty": chart.difficulty,
 		"seed": match_seed, "last_standing_seat": last}
+	if online:
+		var host := _player(0)
+		_finish_data["online"] = true
+		_finish_data["is_host"] = is_host
+		_finish_data["host_seat"] = 0
+		_finish_data["host_name"] = host.callsign if host != null else ""
 	return _finish_data
+
+
+## Host: seat -> song time of its first PLAYER_LEFT in the broadcast log ({} offline).
+func _left_times() -> Dictionary:
+	var out := {}
+	if host_channel == null:
+		return out
+	for e in host_channel.broadcast_log:
+		if e.get("type", "") == GameEvent.PLAYER_LEFT:
+			var s := int(e.get("seat", -1))
+			if not out.has(s):
+				out[s] = float(e.get("t", 0.0))
+	return out
 
 
 func _player(seat: int) -> PlayerState:
@@ -390,14 +563,19 @@ func _player(seat: int) -> PlayerState:
 func _on_event(e: Dictionary) -> void:
 	match e.get("type", ""):
 		GameEvent.IMPLODED:
-			if int(e.get("seat", -1)) == HUMAN_SEAT and _hud != null and is_instance_valid(_hud):
+			if int(e.get("seat", -1)) == local_seat and _hud != null and is_instance_valid(_hud):
 				_hud.set_wreck(true)
 		GameEvent.BUFF_APPLIED:
-			if int(e.get("seat", -1)) == HUMAN_SEAT and int(e.get("reward", -1)) == Reward.Id.OVERCLOCK:
+			if int(e.get("seat", -1)) == local_seat and int(e.get("reward", -1)) == Reward.Id.OVERCLOCK:
 				_set_overclock(true)
 		GameEvent.BUFF_ENDED:
-			if int(e.get("seat", -1)) == HUMAN_SEAT and int(e.get("reward", -1)) == Reward.Id.OVERCLOCK:
+			if int(e.get("seat", -1)) == local_seat and int(e.get("reward", -1)) == Reward.Id.OVERCLOCK:
 				_set_overclock(false)
+		GameEvent.FIRE_REFUSED:
+			# D-13: online only (offline blips from fire()'s return code, never twice).
+			if online and int(e.get("seat", -1)) == local_seat \
+					and REFUSAL_BLIP_REASONS.has(str(e.get("reason", ""))):
+				_error_blip()
 
 
 func _on_settings_changed() -> void:
