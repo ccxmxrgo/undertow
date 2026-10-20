@@ -24,10 +24,24 @@ extends Control
 ##         name (callsign, "YOU" for the human), landed, reflected
 ##   local_seat: int; medals: Dictionary seat -> Array of MedalRules keys
 ##   title, artist, difficulty: String; seed: int; last_standing_seat: int (-1 none)
+## Online variant (04-UI-SPEC 12 / 11.3, D-19, NET-05), only when `online` is true:
+##   online: bool; is_host: bool; host_seat: int (0); host_name: String
+##   per row: left: bool, left_t: float (song seconds) -> "LEFT AT {m:ss}" TEXT_LO + link_broken
+##   The local seat's row reads "YOU"; the host row gets a 20 px host glyph after its name; an
+##   info "ONLINE" chip sits 8 px left of NOT RECORDED. Rematch / Change Match are not built.
+##   Host: Back to Lobby (primary, focus; Esc) + Back to Menu (CLOSE LOBBY confirm).
+##   Client: Leave Lobby (LEAVE LOBBY confirm; Esc) + the waiting line; set_lobby_closed()
+##   turns it into "The host closed the lobby." + Back to Menu (emits menu_pressed directly).
 
 signal rematch_pressed
 signal change_match_pressed
 signal menu_pressed
+## Online host: Back to Lobby (button or Esc).
+signal back_to_lobby_pressed
+## Online client: Leave Lobby, after the LEAVE LOBBY confirm.
+signal leave_lobby_pressed
+## Online host: Back to Menu, after the CLOSE LOBBY confirm.
+signal close_lobby_pressed
 
 const PAD_X := 96.0
 const RIGHT_X := 1824.0
@@ -75,10 +89,35 @@ const ROWS_AT := Palette.STAGGER_RESULTS
 const MEDALS_AT := ROWS_AT + 3.0 * Palette.STAGGER_RESULTS + Palette.DUR_BASE  # 0.42 s
 const MEDAL_FROM := 1.4
 const ENTRANCE_SEC := MEDALS_AT + 3.0 * Palette.STAGGER_RESULTS + Palette.DUR_BASE  # 0.78 s
+## Online variant (04-UI-SPEC 12, 15).
+const HINT_HOST_KEYS := "ENTER SELECT  ·  ESC BACK TO LOBBY"
+const HINT_HOST_PAD := "A SELECT  ·  B BACK TO LOBBY"
+const HINT_CLIENT_KEYS := "ESC LEAVE LOBBY"
+const HINT_CLIENT_PAD := "B LEAVE LOBBY"
+const HINT_CLOSED_KEYS := "ENTER BACK TO MENU"
+const HINT_CLOSED_PAD := "A BACK TO MENU"
+const WAITING_TEXT := "Waiting for %s to return to the lobby."
+const WAITING_FALLBACK_HOST := "the host"
+const LOBBY_CLOSED_TEXT := "The host closed the lobby."
+const CLOSE_LOBBY_TITLE := "CLOSE LOBBY"
+const CLOSE_LOBBY_BODY := "Close the lobby? Everyone is sent back to Play Online."
+const CLOSE_LOBBY_CONFIRM := "Close Lobby"
+const LEAVE_LOBBY_TITLE := "LEAVE LOBBY"
+const LEAVE_LOBBY_BODY := "Leave this lobby? You can join again with the same address."
+const LEAVE_LOBBY_CONFIRM := "Leave Lobby"
+const STAY_TEXT := "Stay"
+const WAITING_AT := Vector2(520.0, 792.0)  # baseline
+const HOST_GLYPH := 20.0
+const LEFT_GLYPH := 16.0
 
 var rematch_button: Button
 var change_match_button: Button
+## Offline: Back to Menu. Online host: Back to Menu (CLOSE LOBBY confirm). Online client: null.
 var menu_button: Button
+## Online host only.
+var back_to_lobby_button: Button
+## Online client only ("Leave Lobby", "Back to Menu" once the lobby closed).
+var leave_button: Button
 var focus_marker: FocusMarker
 var hint_label: Label
 ## Index of the YOU row in placement order (-1 when the local seat has no row).
@@ -103,6 +142,16 @@ var _entrance_running: bool = false
 var _reduce: bool = false
 var _low: bool = false
 var _last_pad: bool = false
+var _online: bool = false
+var _is_host: bool = false
+var _host_seat: int = 0
+var _lobby_closed: bool = false
+var _hint_keys: String = HINT_KEYS
+var _hint_pad: String = HINT_PAD
+var _waiting_label: Label
+var _waiting_text: String = ""
+var _chip_texts: Array[String] = []
+var _dialog: ConfirmDialog
 
 
 ## A non-interactive canvas that draws with a callable.
@@ -131,6 +180,24 @@ func setup(data: Dictionary) -> void:
 	_medal_nodes.clear()
 	_legend.clear()
 	_winner_glow = null
+	_dialog = null
+	_waiting_label = null
+	_waiting_text = ""
+	_chip_texts.clear()
+	_lobby_closed = false
+	rematch_button = null
+	change_match_button = null
+	menu_button = null
+	back_to_lobby_button = null
+	leave_button = null
+	_online = _flag(data.get("online", false))
+	_is_host = _online and _flag(data.get("is_host", false))
+	_host_seat = _int_of(data.get("host_seat", 0), 0)
+	_hint_keys = HINT_KEYS
+	_hint_pad = HINT_PAD
+	if _online:
+		_hint_keys = HINT_HOST_KEYS if _is_host else HINT_CLIENT_KEYS
+		_hint_pad = HINT_HOST_PAD if _is_host else HINT_CLIENT_PAD
 	_reduce = UiKit.reduce_motion()
 	_low = UiKit.low_effects()
 	_build_backdrop()
@@ -144,6 +211,12 @@ func setup(data: Dictionary) -> void:
 	var local_seat: int = int(data.get("local_seat", 0))
 	var medals: Dictionary = data.get("medals", {}) if data.get("medals", {}) is Dictionary else {}
 	var last_seat: int = int(data.get("last_standing_seat", -1))
+	if _online:
+		# Host-sent rows carry player names; this PC's own row reads "YOU" (04-UI-SPEC 11.1).
+		for i in rows.size():
+			if int(rows[i].get("seat", -1)) == local_seat:
+				rows[i] = rows[i].duplicate()
+				rows[i]["name"] = "YOU"
 	_compute_headline(rows, local_seat)
 
 	_header_group = _begin_group("HeaderGroup")
@@ -164,22 +237,37 @@ func setup(data: Dictionary) -> void:
 		_row_groups.append(_begin_group("Row%d" % i))
 		_build_row(i, r, seat == local_seat, seat == last_seat, keys, i < mini(rows.size(), ROW_TOPS.size()) - 1)
 	_into = _layout
-	_build_buttons()
+	if _online:
+		_build_online_buttons(rows, data)
+	else:
+		_build_buttons()
 	focus_marker = FocusMarker.new()
 	focus_marker.name = "FocusMarker"
 	add_child(focus_marker)
 	_into = _header_group
-	hint_label = _label("Hint", HINT_KEYS, _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO, Vector2(PAD_X, 872.0))
+	hint_label = _label("Hint", _hint_keys, _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO, Vector2(PAD_X, 872.0))
 	var mine: Array[String] = _row_medals[you_row] if you_row >= 0 else ([] as Array[String])
 	_build_legend(mine)
 	_into = _layout
 	UiKit.register_fx(self)
 	if is_inside_tree():
 		_start_animation()
-		rematch_button.grab_focus()
+		_initial_button().grab_focus()
 
 
 # ---- data -------------------------------------------------------------------------------
+
+## True only for a real bool true (malformed network values read as false).
+static func _flag(v: Variant) -> bool:
+	return v is bool and v
+
+
+static func _int_of(v: Variant, fallback: int) -> int:
+	return int(v) if (v is int or v is float) else fallback
+
+
+static func _float_of(v: Variant, fallback: float) -> float:
+	return float(v) if (v is int or v is float) else fallback
 
 static func _sorted_rows(raw: Variant) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = []
@@ -217,7 +305,10 @@ static func _name_of(r: Dictionary) -> String:
 
 
 ## "LAST HULL STANDING" / "SURVIVED · HULL {h}%" / "IMPLODED AT {m:ss}" and its colour.
+## Online rows with `left` true read "LEFT AT {m:ss}" TEXT_LO (04-UI-SPEC 11.3), before any other.
 static func status_of(r: Dictionary, last_standing: bool) -> Array:
+	if _flag(r.get("left", false)):
+		return ["LEFT AT %s" % clock_text(_float_of(r.get("left_t", 0.0), 0.0)), Palette.TEXT_LO]
 	if last_standing:
 		return ["LAST HULL STANDING", Palette.SONAR_PALE]
 	if r.get("alive", true):
@@ -265,6 +356,9 @@ func _build_header(data: Dictionary) -> void:
 	# Right: NOT RECORDED chip, sentence, seed.
 	var cw := UiKit.chip_width("NOT RECORDED", "muted")
 	_chip("NOT RECORDED", "muted", Rect2(RIGHT_X - cw, 72.0, cw, UiKit.CHIP_H))
+	if _online:
+		var ow := UiKit.chip_width("ONLINE", "info")
+		_chip("ONLINE", "info", Rect2(RIGHT_X - cw - CHIP_GAP - ow, 72.0, ow, UiKit.CHIP_H))
 	var note := _label("NotRecorded", NOT_RECORDED_TEXT, Palette.font(), Palette.SIZE_LABEL, Palette.TEXT_LO,
 		Vector2(RIGHT_X, 136.0), HORIZONTAL_ALIGNMENT_RIGHT)
 	_label("Seed", "SEED %d" % int(data.get("seed", 0)), _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO,
@@ -330,10 +424,29 @@ func _build_row(i: int, r: Dictionary, is_you: bool, last_standing: bool, keys: 
 		_winner_glow.material = UiKit.additive_material()
 		_winner_glow.visible = not _low
 	_label("Place", place_text, hf, hs, Palette.REWARD_GOLD if place == 1 else Palette.TEXT_HI, Vector2(PLACE_X, yr + 60.0))
-	var name_text := ProgressTrack.truncate_px(_name_of(r), hf, hs, SUB_MAX_W)
-	_label("Callsign", name_text, hf, hs, Palette.TEXT_HI, Vector2(SUB_X, yr + 48.0))
+	var is_host_row := _online and int(r.get("seat", -1)) == _host_seat
+	var name_max := SUB_MAX_W - (HOST_GLYPH + Palette.SP_SM) if is_host_row else SUB_MAX_W
+	var name_text := ProgressTrack.truncate_px(_name_of(r), hf, hs, name_max)
+	var callsign := _label("Callsign", name_text, hf, hs, Palette.TEXT_HI, Vector2(SUB_X, yr + 48.0))
+	if is_host_row:
+		# 04-UI-SPEC 12: host glyph 20 px after the host's name, centred on the cap height.
+		var cap := hf.get_ascent(hs) * 0.7
+		var gy := yr + 48.0 - cap * 0.5 - HOST_GLYPH * 0.5
+		var hg := _painter("HostGlyph", Rect2(callsign.position.x + callsign.size.x + Palette.SP_SM, gy,
+			HOST_GLYPH, HOST_GLYPH), func(ci: CanvasItem) -> void:
+				UiIcons.draw(ci, "host", Rect2(Vector2.ZERO, Vector2(HOST_GLYPH, HOST_GLYPH)), Palette.TEXT_MID))
+		hg.set_meta(&"glyph", "host")
 	var st := status_of(r, last_standing)
-	_label("Status", st[0], Palette.font(), Palette.SIZE_LABEL, st[1], Vector2(SUB_X, yr + 80.0))
+	var is_left := _flag(r.get("left", false))
+	var status_x := SUB_X
+	if is_left:
+		# 04-UI-SPEC 11.3: link_broken glyph 16 px TEXT_LO before "LEFT AT {m:ss}".
+		var lg := _painter("LeftGlyph", Rect2(SUB_X, yr + 80.0 - LEFT_GLYPH + 2.0, LEFT_GLYPH, LEFT_GLYPH),
+			func(ci: CanvasItem) -> void:
+				UiIcons.draw(ci, "link_broken", Rect2(Vector2.ZERO, Vector2(LEFT_GLYPH, LEFT_GLYPH)), Palette.TEXT_LO))
+		lg.set_meta(&"glyph", "link_broken")
+		status_x = SUB_X + LEFT_GLYPH + Palette.SP_SM
+	_label("Status", st[0], Palette.font(), Palette.SIZE_LABEL, st[1], Vector2(status_x, yr + 80.0))
 	var depth_text := Palette.fmt_depth(int(float(r.get("depth", 0.0))))
 	_label("Depth", depth_text, hf, hs, Palette.SONAR, Vector2(DEPTH_RIGHT, yr + 60.0), HORIZONTAL_ALIGNMENT_RIGHT)
 	_label("DepthUnit", " M", Palette.font(), Palette.SIZE_LABEL, Palette.TEXT_LO, Vector2(DEPTH_UNIT_X, yr + 60.0))
@@ -354,7 +467,7 @@ func _build_row(i: int, r: Dictionary, is_you: bool, last_standing: bool, keys: 
 	_row_texts.append({
 		"place": place_text, "name": name_text, "status": st[0], "status_color": st[1],
 		"depth": depth_text, "accuracy": acc, "landed": landed, "reflected": reflected,
-		"medals": names, "you": is_you,
+		"medals": names, "you": is_you, "host": is_host_row, "left": is_left,
 	})
 
 
@@ -408,7 +521,40 @@ func _build_buttons() -> void:
 	rematch_button.pressed.connect(func() -> void: rematch_pressed.emit())
 	change_match_button.pressed.connect(func() -> void: change_match_pressed.emit())
 	menu_button.pressed.connect(func() -> void: menu_pressed.emit())
-	var order := focus_buttons()
+	_place_buttons(focus_buttons())
+
+
+## Online buttons (04-UI-SPEC 12). Host: Back to Lobby (primary) + Back to Menu (CLOSE LOBBY
+## confirm). Client: Leave Lobby (LEAVE LOBBY confirm) + the waiting line at (520, 792).
+func _build_online_buttons(rows: Array[Dictionary], data: Dictionary) -> void:
+	if _is_host:
+		back_to_lobby_button = UiKit.make_button("Back to Lobby", "", "primary", int(BUTTON_H))
+		back_to_lobby_button.name = "BackToLobby"
+		back_to_lobby_button.pressed.connect(func() -> void: back_to_lobby_pressed.emit())
+		menu_button = UiKit.make_button("Back to Menu", "", "default", int(BUTTON_H))
+		menu_button.name = "BackToMenu"
+		menu_button.pressed.connect(_on_host_menu)
+	else:
+		leave_button = UiKit.make_button("Leave Lobby", "", "default", int(BUTTON_H))
+		leave_button.name = "LeaveLobby"
+		leave_button.pressed.connect(_on_client_button)
+		_waiting_text = WAITING_TEXT % _host_display_name(rows, data)
+		_waiting_label = _label("WaitingLine", _waiting_text, Palette.font(), Palette.SIZE_LABEL, Palette.TEXT_MID,
+			WAITING_AT)
+	_place_buttons(focus_buttons())
+
+
+func _host_display_name(rows: Array[Dictionary], data: Dictionary) -> String:
+	var hn: Variant = data.get("host_name", "")
+	if hn is String and str(hn).strip_edges() != "":
+		return str(hn).strip_edges().to_upper()
+	for r in rows:
+		if int(r.get("seat", -1)) == _host_seat and str(r.get("name", "")) != "YOU" and str(r.get("name", "")) != "":
+			return _name_of(r)
+	return WAITING_FALLBACK_HOST
+
+
+func _place_buttons(order: Array[Button]) -> void:
 	for i in order.size():
 		var b := order[i]
 		b.position = Vector2(BUTTON_X[i], BUTTON_Y)
@@ -484,7 +630,104 @@ func legend_lines() -> Array[String]:
 
 
 func focus_buttons() -> Array[Button]:
+	if _online:
+		if _is_host:
+			return [back_to_lobby_button, menu_button]
+		return [leave_button]
 	return [rematch_button, change_match_button, menu_button]
+
+
+## Online-variant state for tests and 04-14: {online, is_host, lobby_closed, buttons (texts),
+## waiting_line ("" for the host / offline), chips (header chip texts), hint}.
+func online_state() -> Dictionary:
+	var texts: Array[String] = []
+	for b in focus_buttons():
+		if b != null:
+			texts.append(b.text)
+	return {"online": _online, "is_host": _is_host, "lobby_closed": _lobby_closed, "buttons": texts,
+		"waiting_line": _waiting_text, "chips": _chip_texts.duplicate(),
+		"hint": hint_label.text if hint_label != null else ""}
+
+
+## The open CLOSE LOBBY / LEAVE LOBBY confirm, or null.
+func dialog() -> ConfirmDialog:
+	return _dialog
+
+
+## Online client: the host closed the lobby. The waiting line becomes "The host closed the lobby."
+## and the button "Back to Menu" (Accept / Esc emit menu_pressed). No-op for the host / offline.
+func set_lobby_closed() -> void:
+	if not _online or _is_host or _lobby_closed:
+		return
+	_lobby_closed = true
+	_close_dialog()
+	_waiting_text = LOBBY_CLOSED_TEXT
+	if _waiting_label != null:
+		_waiting_label.text = LOBBY_CLOSED_TEXT
+		_waiting_label.size.x = ceilf(_waiting_label.get_theme_font("font").get_string_size(LOBBY_CLOSED_TEXT,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, Palette.SIZE_LABEL).x)
+	_hint_keys = HINT_CLOSED_KEYS
+	_hint_pad = HINT_CLOSED_PAD
+	if hint_label != null:
+		hint_label.text = _hint_pad if _last_pad else _hint_keys
+	if leave_button != null:
+		leave_button.text = "Back to Menu"
+		if is_inside_tree():
+			leave_button.grab_focus()
+
+
+# ---- online actions ---------------------------------------------------------------------
+
+func _initial_button() -> Button:
+	if _online:
+		return back_to_lobby_button if _is_host else leave_button
+	return rematch_button
+
+
+func _on_host_menu() -> void:
+	_open_dialog(CLOSE_LOBBY_TITLE, CLOSE_LOBBY_BODY, CLOSE_LOBBY_CONFIRM, menu_button,
+		func() -> void: close_lobby_pressed.emit())
+
+
+func _on_client_button() -> void:
+	if _lobby_closed:
+		menu_pressed.emit()
+		return
+	_open_dialog(LEAVE_LOBBY_TITLE, LEAVE_LOBBY_BODY, LEAVE_LOBBY_CONFIRM, leave_button,
+		func() -> void: leave_lobby_pressed.emit())
+
+
+## Destructive confirm (04-UI-SPEC 15) with Stay as the initial focus (T-04-38).
+func _open_dialog(title: String, body: String, confirm_text: String, return_focus: Button,
+		on_confirm: Callable) -> void:
+	if _dialog != null:
+		return
+	_dialog = ConfirmDialog.new()
+	_dialog.name = "ConfirmDialog"
+	if focus_marker != null:
+		focus_marker.set_process(false)  # the dialog has its own marker
+		focus_marker.visible = false
+	add_child(_dialog)
+	_dialog.setup(title, body, confirm_text, STAY_TEXT)
+	_dialog.safe_button.grab_focus()
+	_dialog.cancelled.connect(func() -> void:
+		_close_dialog()
+		if return_focus != null and is_instance_valid(return_focus) and return_focus.is_inside_tree():
+			return_focus.grab_focus())
+	_dialog.confirmed.connect(func() -> void:
+		_close_dialog()
+		on_confirm.call())
+
+
+func _close_dialog() -> void:
+	if _dialog != null:
+		# Stays in the tree until freed (no orphan), but inert and hidden from this frame on.
+		_dialog.visible = false
+		_dialog.process_mode = Node.PROCESS_MODE_DISABLED
+		_dialog.queue_free()
+		_dialog = null
+	if focus_marker != null:
+		focus_marker.set_process(true)  # visibility follows the next focus change
 
 
 # ---- helpers ----------------------------------------------------------------------------
@@ -539,6 +782,7 @@ func _chip(text: String, variant: String, rect: Rect2, lane: int = -1) -> void:
 	var holder := _painter("Chip" + text.capitalize().replace(" ", ""), rect, func(ci: CanvasItem) -> void:
 		UiKit.draw_chip(ci, Rect2(Vector2.ZERO, rect.size), text, variant, lane))
 	holder.set_meta(&"text", text)
+	_chip_texts.append(text)
 
 
 ## A full-screen, input-transparent group at (0, 0) that the entrance fades and raises.
@@ -632,21 +876,28 @@ func _input(event: InputEvent) -> void:
 	if (pad or event is InputEventKey) and pad != _last_pad:
 		_last_pad = pad
 		if hint_label != null:
-			hint_label.text = HINT_PAD if pad else HINT_KEYS
+			hint_label.text = _hint_pad if pad else _hint_keys
 	if _entrance_running and _is_skip_press(event):
 		skip_entrance()
 		get_viewport().set_input_as_handled()
 
 
 func _ready() -> void:
-	if rematch_button != null:
+	if _initial_button() != null:
 		_start_animation()
-		rematch_button.grab_focus()
+		_initial_button().grab_focus()
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if rematch_button == null or event.is_echo():
+	if _initial_button() == null or event.is_echo():
 		return
 	if event.is_action_pressed(&"ui_cancel"):
 		get_viewport().set_input_as_handled()
-		menu_pressed.emit()
+		if not _online:
+			menu_pressed.emit()
+		elif _dialog != null:
+			return  # the confirm handles its own Esc (= Stay)
+		elif _is_host:
+			back_to_lobby_pressed.emit()
+		else:
+			_on_client_button()
