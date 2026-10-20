@@ -5,7 +5,8 @@ extends Control
 ## others down; past killfeed_max_lines the oldest (bottom) drops. Each line lives
 ## killfeed_life_s (full opacity, then a 0.4 s fade) and its slot closes upward.
 ## Exactly one line per landed / reflected / absorbed / collision / bounty claimed / solo won /
-## imploded / debris event. Glyphs are UiIcons (no emoji; the fonts lack arrows).
+## imploded / debris / player left event (a PLAYER_LEFT within 1.0 s of the same seat's IMPLODED
+## line replaces it in place, 04-UI-SPEC 11.3, so the feed never shows both). Glyphs are UiIcons (no emoji; the fonts lack arrows).
 ## Reads only EventChannel events (spec req 12), never MatchSim.
 ## Effect contract: UiKit.register_fx, apply_effect_settings(), effect_counts().
 
@@ -27,6 +28,8 @@ const NAME_SPACING := 0  # killfeed drops the +2 callsign tracking to fit 324 px
 const MIN_SQUEEZE := 0.85  # last-resort horizontal condense before a verb is truncated
 const MAX_NAME_CHARS := 24
 const ELLIPSIS := "..."
+## PLAYER_LEFT replaces the same seat's IMPLODED line pushed within this much song time (11.3).
+const REPLACE_SEC := 1.0
 
 static var _name_font: FontVariation
 
@@ -150,6 +153,15 @@ func line_for(e: Dictionary) -> Dictionary:
 			var s := int(e.get("seat", -1))
 			segs.append_array([_glyph("skull"), _name(s), _text("imploded")])
 			victim = s
+		GameEvent.PLAYER_LEFT:
+			# 04-UI-SPEC 11.3: TEXT_MID, no bar; seats this feed does not know are ignored (T-04-25).
+			var s := int(e.get("seat", -1))
+			if s < 0 or s >= _names.size():
+				return {}
+			var n := _text("YOU", "name") if s == local_seat else _name(s)
+			segs.append_array([_glyph("link_broken"), n, _text("left the match")])
+			_color_segments(segs, false)
+			return {"segments": segs, "own": false, "victim": false, "squeeze": _fit(segs, false)}
 		_:
 			return {}
 	var own := actor == local_seat or neutral.has(local_seat)
@@ -235,7 +247,44 @@ func on_event(e: Dictionary) -> void:
 	var line := line_for(e)
 	if line.is_empty():
 		return
+	var type := String(e.get("type", ""))
+	var seat := int(e.get("seat", -1))
+	var has_t := e.has("t")
+	var t := float(e.get("t", 0.0))
+	line["src"] = {"type": type, "seat": seat, "t": t if has_t and is_finite(t) else NAN}
+	if type == GameEvent.PLAYER_LEFT:
+		var i := _implosion_line_for(seat, t if has_t else NAN)
+		if i >= 0:
+			_replace_line(i, line)
+			return
 	push_line(line)
+
+
+## Index of a live IMPLODED line of `seat` pushed within REPLACE_SEC of song time t (by line age
+## when either time is unknown), or -1 (04-UI-SPEC 11.3).
+func _implosion_line_for(seat: int, t: float) -> int:
+	for i in _lines.size():
+		var src: Dictionary = _lines[i].get("src", {})
+		if String(src.get("type", "")) != GameEvent.IMPLODED or int(src.get("seat", -2)) != seat:
+			continue
+		var lt := float(src.get("t", NAN))
+		var dt := t - lt if is_finite(t) and is_finite(lt) else float(_lines[i]["age"])
+		if dt >= -1e-6 and dt <= REPLACE_SEC + 1e-6:
+			return i
+	return -1
+
+
+## Swaps a line's content in place: same slot, no new slide-in; its life restarts.
+func _replace_line(i: int, line: Dictionary) -> void:
+	var l := _lines[i]
+	l["segments"] = line["segments"]
+	l["own"] = line["own"]
+	l["victim"] = line["victim"]
+	l["squeeze"] = line["squeeze"]
+	l["src"] = line["src"]
+	l["age"] = 0.0
+	l.erase("xs")
+	queue_redraw()
 
 
 func push_line(line: Dictionary) -> void:

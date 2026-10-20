@@ -255,3 +255,127 @@ func test_link_chip_stack_keeps_out_of_the_note_path() -> void:
 		assert_bool(Geometry2D.intersect_polygons(s, keep).is_empty()).is_true()
 	assert_int(shapes.size()).is_greater_equal(7 + 6)  # 7 fixed readouts + 6 chips
 	await get_tree().process_frame
+
+
+# ---- Killfeed PLAYER_LEFT (11.3) ---------------------------------------------------------
+
+func _feed(names := PackedStringArray(["YOU", "MAKO"])) -> Array:
+	var k: Killfeed = auto_free(Killfeed.new())
+	add_child(k)
+	var ch := LoopbackChannel.new()
+	k.bind(ch, 0, names, VersusConfig.new())
+	return [k, ch]
+
+
+func test_killfeed_player_left_replaces_recent_implosion_in_place() -> void:
+	var r := _feed(PackedStringArray(NAMES))
+	var k: Killfeed = r[0]
+	var ch: EventChannel = r[1]
+	ch.send(GameEvent.make(GameEvent.LANDED, 4.8, {"from": 2, "to": 3, "reward": Reward.Id.INK_CLOUD}))
+	ch.send(GameEvent.make(GameEvent.IMPLODED, 5.0, {"seat": 1}))
+	k.step(Palette.DUR_BASE)  # the implosion line has finished sliding in
+	var y_before: float = k.lines()[0]["y"]
+	assert_int(k.lines().size()).is_equal(2)
+	ch.send(GameEvent.make(GameEvent.PLAYER_LEFT, 5.2, {"seat": 1, "reason": "disconnect"}))
+	var ls := k.lines()
+	assert_int(ls.size()).is_equal(2)  # replaced, not pushed
+	assert_str(String(ls[0]["text"])).is_equal("[link_broken] MAKO left the match")
+	assert_float(float(ls[0]["y"])).is_equal(y_before)  # same slot
+	assert_float(float(ls[0]["x_offset"])).is_equal(0.0)  # no new slide-in
+	assert_bool(bool(ls[0]["own"]) or bool(ls[0]["victim"])).is_false()  # no bar
+	for s: Dictionary in ls[0]["segments"]:
+		assert_object(s["color"]).is_equal(Palette.TEXT_MID)
+	assert_str(String(ls[1]["text"])).contains("Ink Cloud")
+	for l in ls:
+		assert_str(String(l["text"])).not_contains("imploded")
+
+
+func test_killfeed_player_left_after_1_s_is_a_new_line() -> void:
+	var r := _feed()
+	var k: Killfeed = r[0]
+	var ch: EventChannel = r[1]
+	ch.send(GameEvent.make(GameEvent.IMPLODED, 5.0, {"seat": 1}))
+	ch.send(GameEvent.make(GameEvent.PLAYER_LEFT, 6.5, {"seat": 1, "reason": "disconnect"}))
+	var ls := k.lines()
+	assert_int(ls.size()).is_equal(2)
+	assert_str(String(ls[0]["text"])).is_equal("[link_broken] MAKO left the match")
+	assert_str(String(ls[1]["text"])).is_equal("[skull] MAKO imploded")
+
+
+func test_killfeed_player_left_alone_and_unknown_seat() -> void:
+	var r := _feed()
+	var k: Killfeed = r[0]
+	var ch: EventChannel = r[1]
+	ch.send(GameEvent.make(GameEvent.PLAYER_LEFT, 3.0, {"seat": 3, "reason": "disconnect"}))  # 2-player match
+	assert_int(k.lines().size()).is_equal(0)
+	ch.send(GameEvent.make(GameEvent.PLAYER_LEFT, 3.0, {"seat": 1, "reason": "disconnect"}))
+	assert_int(k.lines().size()).is_equal(1)
+	ch.send(GameEvent.make(GameEvent.IMPLODED, 3.5, {"seat": 1}))  # implosion after the leave: own line
+	assert_int(k.lines().size()).is_equal(2)
+	var r2 := _feed(PackedStringArray(["MAKO", "ORCA"]))
+	(r2[1] as EventChannel).send(GameEvent.make(GameEvent.PLAYER_LEFT, 1.0, {"seat": 0}))
+	assert_str(String((r2[0] as Killfeed).lines()[0]["text"])).is_equal("[link_broken] YOU left the match")
+
+
+# ---- PeriscopePanel LEFT (11.3) ----------------------------------------------------------
+
+func test_periscope_left_state() -> void:
+	var p: PeriscopePanel = auto_free(PeriscopePanel.new())
+	add_child(p)
+	p.setup(1, "MAKO")
+	p.on_event(GameEvent.make(GameEvent.STATUS, 1.0, {"seat": 1, "hull": 80.0, "depth": 120, "place": 2,
+		"alive": true}))
+	p.on_event(GameEvent.make(GameEvent.REWARD_EARNED, 1.5, {"seat": 1, "reward": Reward.Id.INK_CLOUD}))
+	assert_str(p.held_glyph()).is_not_equal("")
+	p.on_event(GameEvent.make(GameEvent.PLAYER_LEFT, 2.0, {"seat": 3, "reason": "disconnect"}))  # not ours
+	assert_bool(p.is_left()).is_false()
+	p.on_event(GameEvent.make(GameEvent.PLAYER_LEFT, 2.0, {"seat": 1, "reason": "disconnect"}))
+	assert_bool(p.is_left()).is_true()
+	assert_bool(p.is_wreck()).is_true()
+	assert_str(p.hull_word()).is_equal("LEFT")
+	assert_str(p.status_text()).is_equal("DISCONNECTED")
+	assert_object(p.status_color()).is_equal(Palette.TEXT_LO)
+	assert_str(p.held_glyph()).is_equal("")  # held reward hidden
+	assert_bool(p.meter_visible()).is_false()
+	assert_object(p.edge_color()).is_equal(Palette.alpha(Palette.TEXT_LO, 0.35))
+	assert_object(p.bracket_color()).is_equal(Palette.alpha(Palette.TEXT_LO, 0.5))
+	assert_str(p.place_text()).is_equal("2ND")
+	p.on_event(GameEvent.make(GameEvent.STATUS, 3.0, {"seat": 1, "hull": 0.0, "depth": 120, "place": 4,
+		"alive": false}))
+	p.on_event(GameEvent.make(GameEvent.REWARD_EARNED, 3.5, {"seat": 1, "reward": Reward.Id.INK_CLOUD}))
+	assert_str(p.place_text()).is_equal("2ND")  # place freezes
+	assert_str(p.held_glyph()).is_equal("")
+	assert_bool(UiIcons.NAMES.has("link_broken")).is_true()
+	p.queue_redraw()
+	await get_tree().process_frame
+
+
+func test_periscope_wreck_unchanged_without_player_left() -> void:
+	var p: PeriscopePanel = auto_free(PeriscopePanel.new())
+	add_child(p)
+	p.setup(2, "ORCA")
+	p.on_event(GameEvent.make(GameEvent.IMPLODED, 2.0, {"seat": 2}))
+	assert_bool(p.is_wreck()).is_true()
+	assert_bool(p.is_left()).is_false()
+	assert_str(p.hull_word()).is_equal("WRECK")
+	assert_bool(p.meter_visible()).is_true()
+	assert_str(p.status_text()).is_not_equal("DISCONNECTED")
+
+
+func test_new_strings_render_in_the_fonts() -> void:
+	var f := Palette.font()
+	var hf := Palette.display_font()
+	var label := ["ALL SUBS LINKED", "FLIGHT 2 BEATS", "FLIGHT 1 BEAT", "MATCH COMPLETE", "2 SUBS STILL DIVING",
+		"1 SUB STILL DIVING", "NO HOST SIGNAL", "left the match", "LEFT", "DISCONNECTED"]
+	var heading := ["DIVE IN 3", "DIVE IN 2", "DIVE IN 1", "DIVE", "WAITING FOR RESULTS"]
+	for t: String in label:
+		for i in t.length():
+			assert_bool(f.has_char(t.unicode_at(i))).override_failure_message(
+				"'%s' in '%s' missing from the Label font" % [t[i], t]).is_true()
+	for t: String in heading:
+		for i in t.length():
+			assert_bool(hf.has_char(t.unicode_at(i))).override_failure_message(
+				"'%s' in '%s' missing from the Heading font" % [t[i], t]).is_true()
+	var cf := UiKit.chip_font()
+	for i in StatusChips.LINK_TEXT.length():
+		assert_bool(cf.has_char(StatusChips.LINK_TEXT.unicode_at(i))).is_true()

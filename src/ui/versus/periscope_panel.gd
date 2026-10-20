@@ -8,6 +8,9 @@ extends Control
 ## Fed only by EventChannel events (on_event) plus a read-only live-percent callable for the
 ## Solo Duel. Song-time visuals (countdown rings, sweep) follow update(song_time); one-shot
 ## flashes and blips follow step(dt). PeriscopeColumn owns the rect, target flag and entrance.
+## PLAYER_LEFT for this seat (online, 04-UI-SPEC 11.3) enters the LEFT state: the wreck chrome
+## (edge TEXT_LO 35%, brackets TEXT_LO 50%) with link_broken + "LEFT" in the hull slot, status
+## "DISCONNECTED", tube meter and held reward hidden and the place frozen. Offline never sends it.
 ## Rival Decoy and Overclock effects are never shown (UI-SPEC 16.6, hidden information).
 ## Effect contract: UiKit.register_fx, apply_effect_settings(), effect_counts().
 
@@ -96,6 +99,7 @@ var _hull: float = 100.0
 var _depth: int = 0
 var _place: int = 0
 var _wreck: bool = false
+var _left: bool = false  # PLAYER_LEFT (04-UI-SPEC 11.3): a wreck that reads "LEFT"
 var _duel: bool = false
 var _drone_status: String = ""
 var _progress: int = 0
@@ -203,6 +207,15 @@ func on_event(e: Dictionary) -> void:
 			if int(e.get("seat", -1)) == seat:
 				_wreck = true
 				_held = -1
+		GameEvent.PLAYER_LEFT:
+			if int(e.get("seat", -1)) != seat or seat < 0:
+				return
+			_wreck = true
+			_left = true
+			_held = -1
+			_progress = 0
+			_threat = "none"
+			_threat_reward = -1
 		GameEvent.TORPEDO_LAUNCH:
 			if int(e.get("to", -1)) == seat:
 				_threat = "incoming"
@@ -250,10 +263,10 @@ func on_event(e: Dictionary) -> void:
 		GameEvent.DUEL_RESULT:
 			_duel = false
 		GameEvent.REWARD_EARNED:
-			if int(e.get("seat", -1)) == seat:
+			if int(e.get("seat", -1)) == seat and not _left:
 				_held = int(e.get("reward", -1))
 		GameEvent.METER:
-			if int(e.get("seat", -1)) == seat:
+			if int(e.get("seat", -1)) == seat and not _left:
 				_on_meter(e)
 		_:
 			return
@@ -268,7 +281,8 @@ func _on_status(e: Dictionary) -> void:
 		_dmg_left = DMG_SEC
 	_hull = h
 	_depth = int(e.get("depth", _depth))
-	_place = int(e.get("place", _place))
+	if not _left:
+		_place = int(e.get("place", _place))  # the place freezes once the player left (11.3)
 	if e.has("alive") and not bool(e["alive"]):
 		_wreck = true
 
@@ -443,7 +457,31 @@ func is_wreck() -> bool:
 	return _wreck
 
 
+## True after PLAYER_LEFT for this seat (the LEFT state, 04-UI-SPEC 11.3). is_wreck() is also
+## true then: LEFT is the wreck state with a different word.
+func is_left() -> bool:
+	return _left
+
+
+## The hull slot word: "LEFT", "WRECK", "TRAINING" or "" while the hull bar shows.
+func hull_word() -> String:
+	if drone:
+		return "TRAINING"
+	if _left:
+		return "LEFT"
+	if _wreck:
+		return "WRECK"
+	return ""
+
+
+## False in the LEFT state: the tube meter arc and held reward are hidden.
+func meter_visible() -> bool:
+	return not _left
+
+
 func status_text() -> String:
+	if _left:
+		return "DISCONNECTED"
 	if drone:
 		return _drone_status if _drone_status != "" else depth_text()
 	if _duel:
@@ -455,6 +493,8 @@ func status_text() -> String:
 
 
 func status_color() -> Color:
+	if _left:
+		return Palette.TEXT_LO
 	if drone:
 		return Palette.TEXT_MID
 	if _duel:
@@ -662,6 +702,8 @@ static func dash_points() -> PackedVector2Array:
 
 func _draw_scope() -> void:
 	draw_circle(SCOPE_C, DISC_R, Palette.alpha(Palette.ABYSS_900, DISC_ALPHA))
+	if _left:
+		return  # LEFT: tube meter and held reward hidden (11.3)
 	draw_arc(SCOPE_C, ARC_R, ARC_FROM, ARC_FROM + ARC_SPAN, ARC_POINTS,
 		Palette.alpha(Palette.ABYSS_500, TRACK_ALPHA), ARC_W, true)
 	var frac := meter_fraction()
@@ -711,6 +753,11 @@ func _draw_hull() -> void:
 	if drone:
 		draw_string(Palette.font(), Vector2(HULL_X, WRECK_BASE), "TRAINING", HORIZONTAL_ALIGNMENT_LEFT, HULL_W, fs,
 			Palette.TEXT_LO)
+		return
+	if _left:
+		UiIcons.draw(self, "link_broken", WRECK_GLYPH, Palette.TEXT_LO)
+		draw_string(Palette.font(), Vector2(WRECK_TEXT_X, WRECK_BASE), "LEFT", HORIZONTAL_ALIGNMENT_LEFT,
+			HULL_W - (WRECK_TEXT_X - HULL_X), fs, Palette.TEXT_LO)
 		return
 	if _wreck:
 		UiIcons.draw(self, "skull", WRECK_GLYPH, Palette.WARNING_RED)
