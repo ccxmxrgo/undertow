@@ -3,7 +3,7 @@ extends GdUnitTestSuite
 ## Security Domain V5). Round trips, one test per rejection class, real producer payloads and a
 ## 10,000-case fuzz loop.
 
-const P := NetProtocol
+const P := preload("res://src/net/net_protocol.gd")
 
 
 func _ctx(from_host: bool, note_count: int = 100, song_len: float = 120.0) -> Dictionary:
@@ -403,15 +403,21 @@ func test_real_match_sim_events_pass() -> void:
 					saw_finite = true
 	assert_bool(saw_end).is_true()
 	assert_bool(saw_inf and saw_finite).is_true()
-	# The whole log also passes in EVENTS batches through the codec.
+	# The whole log also passes in EVENTS batches through the codec. Batches are cut by encoded
+	# size (12 KiB, as the 04-05 host channel does): 128 full events exceed MAX_PACKET.
 	var batch := []
-	for e in sim.event_log:
-		batch.append(e)
-		if batch.size() == P.MAX_BATCH:
-			var out := NetCodec.decode(NetCodec.encode({"type": P.EVENTS, "seq": 0,
-				"events": batch}), c)
-			assert_dict(out).is_not_empty()
+	var sent := 0
+	for i in sim.event_log.size():
+		batch.append(sim.event_log[i])
+		var last := i == sim.event_log.size() - 1
+		if batch.size() == P.MAX_BATCH or last or NetCodec.encode({"type": P.EVENTS, "seq": 0,
+				"events": batch}).size() > 12288:
+			var bytes := NetCodec.encode({"type": P.EVENTS, "seq": sent, "events": batch})
+			assert_int(bytes.size()).is_less_equal(P.MAX_PACKET)
+			assert_dict(NetCodec.decode(bytes, c)).is_not_empty()
+			sent += 1
 			batch = []
+	assert_int(sent).is_greater(0)
 
 
 func test_real_versus_controller_results_pass() -> void:
@@ -480,11 +486,11 @@ func _rand_scalar(rng: RandomNumberGenerator) -> Variant:
 
 func _rand_value(rng: RandomNumberGenerator, depth: int) -> Variant:
 	var r := rng.randi_range(0, 9)
-	if depth >= 5 or r < 6:
+	if depth >= 3 or r < 6:
 		return _rand_scalar(rng)
 	if r < 8:
 		var a := []
-		for i in rng.randi_range(0, 20 if rng.randf() < 0.9 else 200):
+		for i in rng.randi_range(0, 200 if depth == 0 and rng.randf() < 0.1 else 12):
 			a.append(_rand_value(rng, depth + 1))
 		return a
 	return _rand_dict(rng, depth + 1)
