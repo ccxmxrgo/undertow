@@ -73,7 +73,7 @@ const DUR_FAST := 0.12
 const DUR_BASE := 0.18
 const DUR_SLOW := 0.30
 const DUR_MAX := 0.40
-const STAGGER_MENU := 0.035
+const STAGGER_MENU := 0.030
 const STAGGER_RESULTS := 0.06
 const BREATH_SEC := 1.6
 
