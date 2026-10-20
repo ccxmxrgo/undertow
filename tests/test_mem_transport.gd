@@ -204,19 +204,17 @@ func test_reliable_fifo_under_jitter_and_unreliable_reorders() -> void:
 	hs.log.clear()
 	var t1 := hub.now
 	var sent_at := {}
-	for i in 500:
-		var ts := t1 + i * 0.001
-		hub.advance(ts)
-		sent_at[i] = ts
-		cl.send(1, _b(i), false)
 	var arrivals := []
-	var t := t1
-	while t < t1 + 1.0:
-		t += 0.0005
+	for step in 2000:
+		var t := t1 + step * 0.0005
 		var before := hs.packets().size()
 		hub.advance(t)
-		for k in range(before, hs.packets().size()):
-			arrivals.append([bytes_to_var(hs.packets()[k][2]), t])
+		var pk := hs.packets()
+		for k in range(before, pk.size()):
+			arrivals.append([bytes_to_var(pk[k][2]), t])
+		if step % 2 == 0 and step / 2 < 500:
+			sent_at[step / 2] = t
+			cl.send(1, _b(step / 2), false)
 	assert_int(arrivals.size()).is_equal(500)
 	var reordered := false
 	for k in arrivals.size():
@@ -320,11 +318,13 @@ func test_host_close_loses_every_client() -> void:
 	var hub := MemTransport.Hub.new(1)
 	var host := hub.make_host()
 	var spies := []
+	var keep := []
 	for i in 3:
 		var c := hub.make_client()
 		c.connect_to_host()
 		c.send_auth(1, _b(0))
 		var s := Spy.new()
+		keep.append(c)
 		s.watch(c)
 		spies.append(s)
 	hub.advance(0.1)
@@ -342,11 +342,13 @@ func test_broadcast_peer_zero() -> void:
 	var hub := MemTransport.Hub.new(1)
 	var host := hub.make_host()
 	var spies := []
+	var keep := []
 	for i in 2:
 		var c := hub.make_client()
 		c.connect_to_host()
 		c.send_auth(1, _b(0))
 		var s := Spy.new()
+		keep.append(c)
 		s.watch(c)
 		spies.append(s)
 	hub.advance(0.1)
