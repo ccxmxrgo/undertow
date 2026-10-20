@@ -727,3 +727,27 @@ func test_client_leaving_in_loading_after_bind_is_dropped_at_start() -> void:
 		if p.seat == seat:
 			alive = p.alive
 	assert_bool(alive).is_false()
+
+
+# --- Review fix CR-03: long / C1 titles never make clients drop RESULTS ---------------------------
+
+func test_results_with_a_long_title_reach_clients_clipped() -> void:
+	var m := _match([1_000_000])
+	var all: Array = m.all
+	var h: Node = all[0]
+	for s in all:
+		s.report_done(5.0)
+	assert_bool(_run_until(func() -> bool: return not _fired(h, "results_due").is_empty(), 1.0,
+		true)).is_true()
+	var data := _results_data()
+	data["rows"] = [{"seat": 0, "place": 1, "name": "CAPTAIN"}, {"seat": 1, "place": 2,
+		"name": "ONE"}]
+	data["title"] = "T".repeat(100)
+	data["artist"] = "Art" + String.chr(0x85) + "ist"
+	h.host_send_results(data)
+	assert_bool(_run_until(func() -> bool:
+		return not _fired(all[1], "results_received").is_empty(), 1.0, true)).is_true()
+	var got: Dictionary = _fired(all[1], "results_received")[0][0]
+	assert_int(str(got.title).length()).is_equal(NetProtocol.MAX_TEXT)
+	assert_str(got.artist).is_equal("Artist")
+	assert_int(all[1].state).is_equal(all[1].State.RESULTS)

@@ -784,6 +784,17 @@ func host_send_results(data: Dictionary) -> void:
 	for k in RESULT_KEYS:
 		if data.has(k):
 			base[k] = data[k]
+	# CR-03: chart title / artist come straight from song.ini (up to 120 chars, C1 kept); the
+	# codec caps display text at MAX_TEXT, so clip and clean them like the LOBBY song fields.
+	for k in ["title", "artist"]:
+		if base.has(k):
+			base[k] = _text(base[k])
+	if base.has("host_name"):
+		var hn := NetCodec.clean_name(base["host_name"])
+		if hn.is_empty():
+			base.erase("host_name")
+		else:
+			base["host_name"] = hn
 	_last_results = base.duplicate(true)
 	_last_results["local_seat"] = 0
 	for peer in _peers:
