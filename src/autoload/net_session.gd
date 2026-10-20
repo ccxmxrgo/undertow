@@ -98,6 +98,14 @@ const HEARTBEAT_PERIOD_S := 0.5
 const DONE_GRACE_S := 3.0
 ## START_LATE is honoured this long after the scheduled start (later ones are ignored).
 const START_LATE_WINDOW_S := 5.0
+## WR-05: INPUTS bucket capacity (a 4 s burst at MAX_INPUTS_PER_S), so the backlog a lossy link
+## releases after a stall fits. Refill stays MAX_INPUTS_PER_S.
+const INPUT_BURST := NetProtocol.MAX_INPUTS_PER_S * 4
+## WR-05: items past an empty bucket are still queued up to this much debt; only a batch beyond
+## it (a sustained flood, 2x the burst with no refill) is cut and struck.
+const INPUT_DEBT := INPUT_BURST
+## WR-05: overflow strikes are at most one per this many seconds (sustained floods only).
+const INPUT_STRIKE_GAP_S := 0.5
 ## Undelivered EVENTS messages a client keeps before its channel is bound.
 const MAX_EVENT_INBOX := 4096
 ## RESULTS keys that cross the wire (NetCodec._v_results).
@@ -216,9 +224,11 @@ class PeerLink:
 	var burst_left := 0
 	var next_ping := 0.0
 	var high := false
-	# Match: INPUTS token bucket (NetProtocol.MAX_INPUTS_PER_S), LOADED/DONE, skew.
-	var in_tokens := float(NetProtocol.MAX_INPUTS_PER_S)
+	# Match: INPUTS bucket (INPUT_BURST, refill MAX_INPUTS_PER_S), LOADED/DONE, skew.
+	var in_tokens := float(INPUT_BURST)
 	var in_refill_t := 0.0
+	## WR-05: last INPUTS overflow strike (at most one per INPUT_STRIKE_GAP_S).
+	var in_struck_t := -INF
 	var loaded := false
 	var done := false
 	var skew_ms := 0.0
@@ -618,8 +628,9 @@ func start_match(opts := {}) -> String:
 		p.loaded = false
 		p.done = false
 		p.skew_ms = 0.0
-		p.in_tokens = float(NetProtocol.MAX_INPUTS_PER_S)
+		p.in_tokens = float(INPUT_BURST)
 		p.in_refill_t = _now
+		p.in_struck_t = -INF
 	transport.send(0, NetCodec.encode(load_msg))
 	match_loading.emit()
 	return ""
@@ -1170,16 +1181,21 @@ func _to_lobby() -> void:
 
 
 ## Validated INPUTS from `peer` (seat from the sender id only, T-04-30). A token bucket of
-## MAX_INPUTS_PER_S items per second; a batch that overflows is cut and counts as a strike.
+## INPUT_BURST items refilled at MAX_INPUTS_PER_S. WR-05: past an empty bucket items are still
+## queued (the bucket goes into debt, down to -INPUT_DEBT); only the part of a batch beyond
+## that is cut and counts as a strike, so a post-stall backlog is never dropped.
 func _take_inputs(peer: int, p: PeerLink, seat: int, items: Array) -> void:
-	p.in_tokens = minf(float(NetProtocol.MAX_INPUTS_PER_S),
+	p.in_tokens = minf(float(INPUT_BURST),
 		p.in_tokens + maxf(_now - p.in_refill_t, 0.0) * NetProtocol.MAX_INPUTS_PER_S)
 	p.in_refill_t = _now
-	var n := mini(items.size(), int(floor(p.in_tokens)))
+	var n := clampi(items.size(), 0, maxi(int(floor(p.in_tokens + INPUT_DEBT)), 0))
 	p.in_tokens -= n
 	if n > 0:
 		_inbox.append([seat, items.slice(0, n)])
-	if n < items.size():
+	if n < items.size() and _now - p.in_struck_t >= INPUT_STRIKE_GAP_S:
+		# One strike per overflow second: the chunks of one burst count once, a flood that
+		# keeps going reaches STRIKES_TO_KICK.
+		p.in_struck_t = _now
 		_strike(peer, p)
 
 
@@ -1727,6 +1743,14 @@ func _clear_match() -> void:
 		p.loaded = false
 		p.done = false
 		p.skew_ms = 0.0
+		# WR-05: strikes and token buckets are per match (three stalls over a whole session
+		# never add up to a kick).
+		p.strikes = 0
+		p.tokens = float(NetProtocol.PING_BUCKET)
+		p.refill_t = _now
+		p.in_tokens = float(INPUT_BURST)
+		p.in_refill_t = _now
+		p.in_struck_t = -INF
 
 
 func _send(peer: int, msg: Dictionary, reliable: bool = true) -> void:

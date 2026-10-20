@@ -442,6 +442,9 @@ func test_inputs_reach_host_queue_under_sender_seat() -> void:
 	assert_int(q.rejected_future).is_equal(0)
 
 
+## WR-05: a post-stall backlog (here 300 items in one go, over the old 1 s bucket) is queued in
+## full and never struck; only a sustained flood past the burst plus the debt allowance is cut
+## and struck, and 3 strikes disconnect the peer.
 func test_input_flood_is_rate_limited_and_struck() -> void:
 	var m := _match([1_000_000])
 	var all: Array = m.all
@@ -450,26 +453,55 @@ func test_input_flood_is_rate_limited_and_struck() -> void:
 	var rr: RemoteReferee = m.client_b[0].remote
 	var peer: int = h.lobby_state().peer_of(1)
 	assert_bool(_run_until(func() -> bool: return _song_t(h) >= 1.0, 5.0, true)).is_true()
-	var t0 := _song_t(h) + 1.0
+	var t0 := _song_t(h) + 0.5
 	for n in range(300):
-		rr.on_stray(rr.seat, t0 + n * 0.001)
+		rr.on_stray(rr.seat, t0 + n * 0.0005)
 	_run(0.2, true)
-	assert_int(q._q.size()).is_between(NetProtocol.MAX_INPUTS_PER_S,
-		NetProtocol.MAX_INPUTS_PER_S + 20)
-	assert_int(h.peer_strikes(peer)).is_between(1, 2)
+	assert_int(q._q.size()).is_equal(300)
+	assert_int(h.peer_strikes(peer)).is_equal(0)
+	# A flood: the burst (960) plus the debt (960) minus the 300 above is taken, the rest cut.
+	var room: int = h.INPUT_BURST + h.INPUT_DEBT - 300
+	t0 = _song_t(h) + 0.5
+	for n in range(2200):
+		rr.on_stray(rr.seat, t0 + n * 0.0005)
+	_run(0.2, true)
+	assert_int(q._q.size() - 300).is_between(room, room + 100)  # + refill since
+	assert_int(h.peer_strikes(peer)).is_equal(1)  # one burst, many chunks: one strike
 	assert_int(h.lobby_rows().size()).is_equal(2)
-	# A second flood reaches 3 strikes: the peer is disconnected and its seat dropped.
-	_run(1.0, true)
-	t0 = _song_t(h) + 1.0
-	for n in range(600):
-		rr.on_stray(rr.seat, t0 + n * 0.001)
-	assert_bool(_run_until(func() -> bool: return h.lobby_rows().size() == 1, 2.0, true))\
-		.is_true()
+	# The flood goes on: 3 strikes disconnect the peer and its seat is dropped.
+	var gone := false
+	for k in range(16):
+		t0 = _song_t(h) + 0.5
+		for n in range(400):
+			rr.on_stray(rr.seat, t0 + n * 0.001)
+		_run(0.25, true)
+		if h.lobby_rows().size() == 1:
+			gone = true
+			break
+	assert_bool(gone).is_true()
 	var left := false
 	for e in m.host_b.channel.broadcast_log:
 		if e.type == GameEvent.PLAYER_LEFT and e.seat == 1:
 			left = true
 	assert_bool(left).is_true()
+
+
+## WR-05: strikes are per match; back in the lobby the count starts over.
+func test_strikes_reset_with_the_match() -> void:
+	var m := _match([1_000_000])
+	var all: Array = m.all
+	var h: Node = all[0]
+	var peer: int = h.lobby_state().peer_of(1)
+	_run(0.5, true)
+	h.transport.packet.emit(peer, PackedByteArray([1, 2, 3, 4, 5]))
+	assert_int(h.peer_strikes(peer)).is_equal(1)
+	for s in all:
+		s.report_done(5.0)
+	assert_bool(_run_until(func() -> bool: return not _fired(h, "results_due").is_empty(), 1.0,
+		true)).is_true()
+	h.host_send_results(_results_data())
+	h.host_back_to_lobby()
+	assert_int(h.peer_strikes(peer)).is_equal(0)
 
 
 func test_events_reach_clients_in_order() -> void:
