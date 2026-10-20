@@ -50,6 +50,12 @@ const HINT_LOW_EFFECTS := "Fewer particles, no glow or CRT effect, simpler backg
 const HINT_MENU_MUSIC := "Plays a quiet song preview on the main menu."
 const HINT_FULLSCREEN := "F11 toggles fullscreen at any time."
 const HINT_BACKGROUND := "Calm: still trench walls, soft glow on the beat. Living: walls move and pulse with the music."
+## ONLINE section (04-UI-SPEC 13, D-20 / D-15).
+const HINT_PLAYER_NAME := "Shown to friends in online matches. Up to 12 letters, digits, spaces, _ or -."
+const HINT_ONLINE_PORT := "UDP port used to host and join. Default 47474."
+const ERR_PORT_RANGE := "Port must be between 1024 and 65535."
+const NAME_FIELD_W := 512.0  # well x 440..952
+const PORT_FIELD_W := 160.0  # well x 440..600
 
 
 ## Pill toggle (UI-SPEC 9.3): 160 x 40, CUT_SM chamfer. ON = SONAR 22% fill, SONAR edge, "ON"
@@ -183,6 +189,11 @@ var open_songs_button: Button
 var library_rows: VBoxContainer
 var songs_folder_label: Label
 var library_message: Label
+## ONLINE section (04-16).
+var name_field: SonarTextField
+var port_field: SonarTextField
+var online_message: Label
+var _online_timer: SceneTreeTimer
 
 ## Restyle nodes (02.2-21).
 var backdrop: AbyssBackdrop
@@ -280,6 +291,7 @@ func _build() -> void:
 	_build_gameplay(_section(root, "GAMEPLAY"))
 	_build_display(_section(root, "DISPLAY"))
 	_build_audio(_section(root, "AUDIO"))
+	_build_online(_section(root, "ONLINE"))
 	_build_library(_section(root, "LIBRARY"))
 	_build_calibration(_section(root, "CALIBRATION"))
 
@@ -640,6 +652,107 @@ func _build_audio(box: VBoxContainer) -> void:
 	sfx_slider = _volume_row(box, "SFX", "SFX", Settings.volume_sfx, true)
 
 
+## ONLINE (UI-SPEC 13): Player name and Online port SonarTextFields. Commits save through
+## Settings (assign, save_to(save_path), settings_changed); Esc while editing reverts in the field
+## and never closes Settings.
+func _build_online(box: VBoxContainer) -> void:
+	name_field = _online_field_row(box, "Player name", "name", Settings.player_name,
+		NAME_FIELD_W, HINT_PLAYER_NAME)
+	name_field.name = "PlayerNameField"
+	name_field.committed.connect(commit_player_name)
+	port_field = _online_field_row(box, "Online port", "port", str(Settings.net_last_port),
+		PORT_FIELD_W, HINT_ONLINE_PORT)
+	port_field.name = "OnlinePortField"
+	port_field.committed.connect(commit_port)
+	port_field.invalid.connect(func(code: String) -> void:
+		if code == "port_range":
+			show_online_message(ERR_PORT_RANGE))
+	for f: SonarTextField in [name_field, port_field]:
+		f.editing_changed.connect(func(on: bool) -> void:
+			if on:
+				clear_online_message())
+	var mm := _indent()
+	online_message = Label.new()
+	online_message.name = "OnlineMessage"
+	online_message.theme_type_variation = &"CaptionLabel"
+	online_message.add_theme_color_override("font_color", Palette.WARNING_RED)
+	online_message.visible = false
+	mm.add_child(online_message)
+	box.add_child(mm)
+
+
+func _online_field_row(box: VBoxContainer, title: String, cfg: String, value: String, w: float,
+		hint: String) -> SonarTextField:
+	var row := _row(box, title)
+	var f := SonarTextField.new()
+	f.setup(cfg, value)
+	f.custom_minimum_size = Vector2(w, SonarTextField.HEIGHT)
+	f.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(f)
+	var h := _hint(hint)
+	h.custom_minimum_size = Vector2(VALUE_RIGHT - CONTROL_X - w - ROW_GAP, 0.0)
+	row.add_child(h)
+	_hints[title] = hint
+	return f
+
+
+## True while either ONLINE field is editing (the field owns Esc / Enter then).
+func online_editing() -> bool:
+	return (name_field != null and name_field.is_editing()) \
+		or (port_field != null and port_field.is_editing())
+
+
+## Saves a committed player name (upper-cased, cleaned) and marks it as chosen.
+func commit_player_name(v: String) -> void:
+	var clean := Settings.clean_player_name(v)
+	if clean.is_empty():
+		name_field.set_value(Settings.player_name)
+		return
+	Settings.player_name = clean
+	Settings.player_name_set = true
+	name_field.set_value(clean)
+	_save_and_notify()
+
+
+## Saves a committed port (the field already range-checked it; checked again here).
+func commit_port(v: String) -> void:
+	var n := v.to_int() if v.is_valid_int() else -1
+	if n < Settings.NET_PORT_MIN or n > Settings.NET_PORT_MAX:
+		port_field.set_value(str(Settings.net_last_port))
+		show_online_message(ERR_PORT_RANGE)
+		return
+	Settings.net_last_port = n
+	clear_online_message()
+	_save_and_notify()
+
+
+func _save_and_notify() -> void:
+	Settings.save_to(Settings.save_path)
+	Settings.settings_changed.emit()
+
+
+func show_online_message(text: String) -> void:
+	online_message.text = "! " + text
+	online_message.visible = true
+	if is_inside_tree():
+		var t := get_tree().create_timer(MESSAGE_SEC)
+		_online_timer = t
+		t.timeout.connect(func() -> void:
+			if _online_timer == t:
+				clear_online_message())
+
+
+func clear_online_message() -> void:
+	if online_message != null:
+		online_message.visible = false
+		online_message.text = ""
+	_online_timer = null
+
+
+func online_message_text() -> String:
+	return online_message.text if online_message != null and online_message.visible else ""
+
+
 func _build_library(box: VBoxContainer) -> void:
 	var row := _row(box, "Songs folder")
 	songs_folder_label = Label.new()
@@ -921,6 +1034,10 @@ func _refresh_all(animate: bool = true) -> void:
 		roundi(Settings.audio_offset * 1000.0), roundi(Settings.visual_offset * 1000.0)]
 	for c in cells.values():
 		(c as RebindCell).refresh()
+	if name_field != null and not name_field.is_editing():
+		name_field.set_value(Settings.player_name)
+	if port_field != null and not port_field.is_editing():
+		port_field.set_value(str(Settings.net_last_port))
 
 
 func play_sample() -> void:
@@ -1006,6 +1123,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		for a in ACTION_ROWS:
 			clear_message(a)  # "or next input"
 		clear_library_message()
+	if online_editing():
+		return  # the field owns Esc / B while editing (reverts, stays in Settings)
 	if dialog == null and event.is_action_pressed(&"ui_cancel"):
 		get_viewport().set_input_as_handled()
 		back_pressed()
@@ -1013,6 +1132,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Esc / B / Back button. Saves; overlay mode emits `closed`, full mode returns to the menu.
 func back_pressed() -> void:
+	for f: SonarTextField in [name_field, port_field]:
+		if f != null and f.is_editing():
+			f.cancel()
 	for c in cells.values():
 		if (c as RebindCell).listening:
 			(c as RebindCell).cancel_listen()
