@@ -704,3 +704,47 @@ func test_host_choosing_notice_reaches_clients_only() -> void:
 	c.host_choosing()  # clients cannot send it
 	_run_until(func() -> bool: return false, 0.2)
 	assert_int(h.peer_strikes(h.lobby_state().peer_of(1))).is_equal(0)
+
+
+# --- Review fix WR-08: control floods and high-latency flapping -----------------------------------
+
+func test_ready_flood_is_throttled_and_struck() -> void:
+	var h := _host()
+	var c := _join_wait("ONE")
+	var peer: int = h.lobby_state().peer_of(1)
+	var notices := func() -> int:
+		var n := 0
+		for e in logs[c]:
+			if e[0] == "ready":
+				n += 1
+		return n
+	var before: int = notices.call()
+	for i in range(60):
+		c.set_ready(i % 2 == 0)
+	_run_until(func() -> bool: return false, 0.5)
+	# 20 tokens: at most ~10 rising edges fan out, the 40 dropped count 2 strikes, no kick.
+	assert_int(notices.call() - before).is_between(1, 12)
+	assert_int(h.peer_strikes(peer)).is_equal(2)
+	assert_int(h.lobby_rows().size()).is_equal(2)
+	# Normal use after the flood still works.
+	_run_until(func() -> bool: return false, 2.5)
+	c.set_ready(true)
+	assert_bool(_run_until(func() -> bool: return h.lobby_state().row(1).ready, 1.0)).is_true()
+
+
+func test_high_latency_hysteresis() -> void:
+	var nxt := func(was: bool, since: float, l_s: float) -> bool:
+		var rtt := 2.0 * l_s
+		return h_next(was, since, l_s + 0.053, rtt * 1000.0)
+	# Rises above 250 ms.
+	assert_bool(nxt.call(false, 0.0, 0.10)).is_true()
+	# Just under the threshold (budget ~236 ms): stays up, no re-arm, so no second notice...
+	assert_bool(nxt.call(true, 1.0, 0.083)).is_true()
+	# ...until it drops below 220 ms, or 10 s passed since the notice.
+	assert_bool(nxt.call(true, 1.0, 0.07)).is_false()
+	assert_bool(nxt.call(true, 10.0, 0.083)).is_false()
+	assert_bool(nxt.call(false, 0.0, 0.083)).is_false()
+
+
+func h_next(was: bool, since: float, d_s: float, rtt_ms: float) -> bool:
+	return load(SESSION).high_latency_next(was, since, d_s, rtt_ms)

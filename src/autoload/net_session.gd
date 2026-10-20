@@ -106,6 +106,16 @@ const INPUT_BURST := NetProtocol.MAX_INPUTS_PER_S * 4
 const INPUT_DEBT := INPUT_BURST
 ## WR-05: overflow strikes are at most one per this many seconds (sustained floods only).
 const INPUT_STRIKE_GAP_S := 0.5
+## WR-08: READY / SONG_STATUS (the messages that fan out as NOTICEs) per peer: a token bucket
+## of CTL_BUCKET refilled at CTL_PER_S. Overflow is dropped silently; every CTL_DROPS_PER_STRIKE
+## drops (a sustained flood) count as one strike.
+const CTL_PER_S := 10.0
+const CTL_BUCKET := 20
+const CTL_DROPS_PER_STRIKE := 20
+## WR-08: high_latency hysteresis. Notify above LobbyState.HIGH_LATENCY_S; re-arm below
+## HIGH_REARM_S, or once the budget is back under the threshold HIGH_RENOTIFY_S after a notice.
+const HIGH_REARM_S := 0.220
+const HIGH_RENOTIFY_S := 10.0
 ## Undelivered EVENTS messages a client keeps before its channel is bound.
 const MAX_EVENT_INBOX := 4096
 ## RESULTS keys that cross the wire (NetCodec._v_results).
@@ -224,6 +234,11 @@ class PeerLink:
 	var burst_left := 0
 	var next_ping := 0.0
 	var high := false
+	var high_t := -INF
+	# WR-08: control-message bucket (READY / SONG_STATUS).
+	var ctl_tokens := float(CTL_BUCKET)
+	var ctl_refill_t := 0.0
+	var ctl_drops := 0
 	# Match: INPUTS bucket (INPUT_BURST, refill MAX_INPUTS_PER_S), LOADED/DONE, skew.
 	var in_tokens := float(INPUT_BURST)
 	var in_refill_t := 0.0
@@ -1002,6 +1017,7 @@ func _on_peer_joined(peer: int) -> void:
 		return
 	var p := PeerLink.new()
 	p.refill_t = _now
+	p.ctl_refill_t = _now
 	p.burst_left = HOST_BURST_PINGS
 	p.next_ping = _now
 	_peers[peer] = p
@@ -1074,12 +1090,16 @@ func _host_packet(peer: int, bytes: PackedByteArray) -> void:
 		NetProtocol.PONG:
 			_host_pong(peer, p, seat, msg)
 		NetProtocol.READY:
+			if not _take_ctl(peer, p):
+				return
 			var was: bool = _lobby.row(seat).ready
 			_lobby.set_ready(seat, msg.ready)
 			_lobby.set_synced(seat, msg.synced)
 			if msg.ready and not was:
 				_notice("ready", _lobby.row(seat).name, seat)
 		NetProtocol.SONG_STATUS:
+			if not _take_ctl(peer, p):
+				return
 			_lobby.set_synced(seat, msg.synced)
 			if _lobby.song.is_empty():
 				return
@@ -1127,10 +1147,38 @@ func _host_pong(peer: int, p: PeerLink, seat: int, msg: Dictionary) -> void:
 		return
 	var d_est := clampf(p.clock.rtt_p90_us() / 2_000_000.0 + 0.053, NetProtocol.D_MIN_S,
 		NetProtocol.D_MAX_S)
-	var hi := LobbyState.is_high_latency(d_est, float(ms))
+	# WR-08: hysteresis, so a p90 jittering around 250 ms does not re-fire the notice.
+	var hi := high_latency_next(p.high, _now - p.high_t, d_est, float(ms))
 	if hi and not p.high:
+		p.high_t = _now
 		_notice("high_latency", _lobby.row(seat).name, ms)
 	p.high = hi
+
+
+## WR-08: the next high-latency flag. Rises above LobbyState.HIGH_LATENCY_S (the caller then
+## notifies); once up it falls only below HIGH_REARM_S, or when back under the threshold at
+## least HIGH_RENOTIFY_S after the notice (since_s).
+static func high_latency_next(was_high: bool, since_s: float, d_s: float, rtt_ms: float) -> bool:
+	if LobbyState.is_high_latency(d_s, rtt_ms):
+		return true
+	if not was_high:
+		return false
+	var budget := d_s + rtt_ms / 2000.0 + LobbyState.FRAME_S
+	return not (budget < HIGH_REARM_S or since_s >= HIGH_RENOTIFY_S)
+
+
+## WR-08: one READY / SONG_STATUS from `peer` against its control bucket. False = drop it.
+func _take_ctl(peer: int, p: PeerLink) -> bool:
+	p.ctl_tokens = minf(float(CTL_BUCKET),
+		p.ctl_tokens + maxf(_now - p.ctl_refill_t, 0.0) * CTL_PER_S)
+	p.ctl_refill_t = _now
+	if p.ctl_tokens >= 1.0:
+		p.ctl_tokens -= 1.0
+		return true
+	p.ctl_drops += 1
+	if p.ctl_drops % CTL_DROPS_PER_STRIKE == 0:
+		_strike(peer, p)
+	return false
 
 
 # --- Host match ----------------------------------------------------------------------------------
