@@ -314,7 +314,18 @@ Plans:
   4. Player turns on a low-effects toggle and the game stays smooth on a weaker PC
   5. A friend downloads the Windows build and runs it without installing Godot
 
-**Plans**: TBD
+**Plans:** 8 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — Wave 1: procedural SFX bank in AudioSynth (downbeat ping with lead silence, 4 seeded creaks, impact, launch, near/distant implosion; cached once)
+- [ ] 05-02-PLAN.md — Wave 1 (TDD): DownbeatScheduler (lead-offset ping timing), HullAudioCurve (muffle cutoff, creak curves), CreakDirector
+- [ ] 05-03-PLAN.md — Wave 1: exe polish (generated icon, version info, dark boot splash, check_exe.ps1 hooked into dist.ps1, README START HERE)
+- [ ] 05-04-PLAN.md — Wave 2: DiveAudio node (bar pings, creaks, runtime Music low-pass), Sonar pings / Hull sounds settings, Gameplay wiring, harness opt-out
+- [ ] 05-05-PLAN.md — Wave 2: TorpedoJuice (impact shake/flash/boom, launch thump/ring/kick, implosions, panel flash), FlashLimiter, FailScreen implosion; no protocol change
+- [ ] 05-06-PLAN.md — Wave 3: FrameWatch + results "Turn on Low effects" hint (solo, versus, online)
+- [ ] 05-07-PLAN.md — Wave 4 (runs alone): perf re-baseline on RX 9070 XT, weak-GPU proxy (perf_weak.ps1), D-08 versus HUD redraw-on-change if needed, 05-PERF.md
+- [ ] 05-08-PLAN.md — Wave 5: final gates, v0.8.0, dist zip + friends bundle with Extra Songs on the Desktop (self-tested), 05-HUMAN-UAT.md, non-blocking checkpoint
+
 **UI hint**: yes
 
 ## Progress
