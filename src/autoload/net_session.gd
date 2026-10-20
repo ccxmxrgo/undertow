@@ -133,7 +133,7 @@ var _step_i := 0
 var _times_pending := false
 var _return_message := ""
 var _retired: Array = []  # [NetTransport, close_at_s]
-var _stats := {"pings_sent": 0, "ping_dropped": 0, "rejected_packets": 0}
+var _stats := {"pings_sent": 0, "ping_dropped": 0, "rejected_packets": 0, "strike_kicks": 0}
 
 # Host.
 var _lobby: LobbyState
@@ -199,6 +199,9 @@ var _remote: RemoteReferee
 var _cchan: NetClientChannel
 var _ev_inbox: Array = []
 var _done_sent := false
+# Both: wall-clock instant of song_time 0 (04-17 smoke) and this match's RESULTS data.
+var _start_unix_ms := 0.0
+var _last_results := {}
 
 
 ## Host-side state of one admitted client.
@@ -224,6 +227,15 @@ class PeerLink:
 func _init() -> void:
 	transport_factory = _default_factory
 	ticks_fn = Time.get_ticks_usec
+
+
+## 04-17: the command-line autotest driver exists only when `--net-autotest=` is passed
+## (T-04-51); a normal game never adds it.
+func _ready() -> void:
+	if NetAutotest.has_arg(OS.get_cmdline_user_args()):
+		var a := NetAutotest.new()
+		a.name = "NetAutotest"
+		add_child(a)
 
 
 func _process(_delta: float) -> void:
@@ -522,7 +534,9 @@ func auth_refusal_for(msg: Dictionary) -> String:
 ## horizon_ms (D), late_inputs (host queue), skew_ms (debug only: host = the client skew with
 ## the largest magnitude from HEARTBEATs; client = own song_time against the scheduled start),
 ## landed_late_last_ms, landed_late_max_ms (client channel), event_seq (host: highest EVENTS
-## seq sent; client: last applied), link_weak.
+## seq sent; client: last applied), link_weak, start_unix_ms (04-17: wall-clock ms of song_time 0
+## from the first lead_in_for_start call; 0 before), strike_kicks (host: peers disconnected for
+## strikes this session).
 func debug_stats() -> Dictionary:
 	var d := _stats.duplicate()
 	d["role"] = "offline" if state == State.OFFLINE else ("host" if _is_host else "client")
@@ -558,6 +572,7 @@ func debug_stats() -> Dictionary:
 	d["landed_late_max_ms"] = _cchan.landed_late_max_ms if _cchan != null else 0.0
 	d["event_seq"] = _cchan.last_seq if _cchan != null else _event_seq
 	d["link_weak"] = _link_weak
+	d["start_unix_ms"] = _start_unix_ms
 	return d
 
 
@@ -661,7 +676,14 @@ func lead_in_for_start() -> float:
 		_lead_late = true
 		_report_late(lead)
 		return -1.0
+	_start_unix_ms = _unix_ms_at_lead(lead)
 	return lead
+
+
+## 04-17 smoke: the wall-clock instant (unix ms) that is `lead_s` from now. All smoke processes
+## share one OS clock on localhost, so comparing it across them measures the offset math.
+static func _unix_ms_at_lead(lead_s: float) -> float:
+	return Time.get_unix_time_from_system() * 1000.0 + lead_s * 1000.0
 
 
 ## Host: binds the match objects (04-13 VersusController.queue / host_channel). Every live
@@ -762,6 +784,8 @@ func host_send_results(data: Dictionary) -> void:
 	for k in RESULT_KEYS:
 		if data.has(k):
 			base[k] = data[k]
+	_last_results = base.duplicate(true)
+	_last_results["local_seat"] = 0
 	for peer in _peers:
 		var msg: Dictionary = base.duplicate(true)
 		msg["type"] = NetProtocol.RESULTS
@@ -780,6 +804,20 @@ func host_back_to_lobby() -> void:
 	transport.send(0, NetCodec.encode({"type": NetProtocol.BACK_TO_LOBBY}))
 	_to_lobby()
 	returned_to_lobby.emit()
+
+
+## The bound match event channel: NetHostChannel on the host (broadcast_log), NetClientChannel
+## on a client (received_log), null outside a bound match. Read-only use (04-17 autotest).
+func match_channel() -> EventChannel:
+	if _is_host:
+		return _hchan
+	return _cchan
+
+
+## This match's RESULTS data (host: what host_send_results sent, with local_seat 0; client: the
+## received RESULTS), {} before results. Cleared with the match.
+func last_results() -> Dictionary:
+	return _last_results.duplicate(true)
 
 
 ## Client: true while no host packet arrived for more than NetProtocol.LINK_WEAK_S.
@@ -1193,6 +1231,8 @@ func _strike(peer: int, p: PeerLink) -> void:
 	_stats.rejected_packets += 1
 	p.strikes += 1
 	if p.strikes >= NetProtocol.STRIKES_TO_KICK:
+		if p.strikes == NetProtocol.STRIKES_TO_KICK:
+			_stats.strike_kicks += 1  # 04-17: the smoke fails on any strike disconnect
 		transport.disconnect_peer(peer)
 
 
@@ -1434,6 +1474,7 @@ func _on_packet(peer: int, bytes: PackedByteArray) -> void:
 				_set_state(State.RESULTS)
 				var data: Dictionary = msg.duplicate(true)
 				data.erase("type")
+				_last_results = data.duplicate(true)
 				results_received.emit(data)
 		NetProtocol.BACK_TO_LOBBY:
 			if state >= State.LOADING:
@@ -1656,6 +1697,8 @@ func _clear_match() -> void:
 	_ev_inbox = []
 	_done_sent = false
 	_link_weak = false
+	_start_unix_ms = 0.0
+	_last_results = {}
 	for peer in _peers:
 		var p: PeerLink = _peers[peer]
 		p.loaded = false
@@ -1740,7 +1783,7 @@ func _reset() -> void:
 	_reported_synced = false
 	_clear_match()
 	clock = ClockSync.new()
-	_stats = {"pings_sent": 0, "ping_dropped": 0, "rejected_packets": 0}
+	_stats = {"pings_sent": 0, "ping_dropped": 0, "rejected_packets": 0, "strike_kicks": 0}
 
 
 func _lib() -> Object:
