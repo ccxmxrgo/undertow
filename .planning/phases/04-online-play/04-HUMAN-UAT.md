@@ -3,7 +3,7 @@ status: pending
 phase: 04-online-play
 source: [04-18-SUMMARY.md, 04-17-SUMMARY.md, 04-15-SUMMARY.md, 04-09-SUMMARY.md, 04-06-SUMMARY.md, 04-UI-SPEC.md "Notes for the checker"]
 started: 2026-10-20T00:00:00Z
-updated: 2026-10-20T00:00:00Z
+updated: 2026-10-20T22:00:11Z
 ---
 
 # Phase 4 Human UAT
@@ -31,6 +31,7 @@ Test 13 (the final checkpoint of plan 04-18) covers tests 1-8 in one sitting wit
 | 11 | Friend PC test of zip v0.7.0 and ONLINE_SETUP.md clarity | Send `build/dist/UNDERTOW-playtest-v0.7.0.zip` (sha256 edd41e3a5114902d9bc59138ad669aed1d6d7f203cdff6e9a7ba5cb3b99db7cd, 63.06 MB). The friend follows ONLINE_SETUP.md on their own and fills in TESTER-CHECKLIST.txt section 4e ONLINE | The friend gets connected using only the guide. Note every step that was unclear and every error title they saw | pending |
 | 12 | D-UAT-01 (tests/test_bot_frequency.gd), carried over from Phase 3 | See 03-HUMAN-UAT.md "D-UAT-01". Unchanged in Phase 4: the test still fails on the one bot that earns 5 rewards (HRT seat 3) and was not loosened | Decide as described in 03-HUMAN-UAT.md | pending |
 | 13 | Final checkpoint of plan 04-18: human verification of online play over the real internet (non-blocking) | 1. Install Tailscale on your PC and a friend's PC (each signs in with their own account). Invite the friend into your tailnet. 2. Both run UNDERTOW v0.7.0 (the zip). On your PC: Play Online > Host Match and note the TAILSCALE address. Friend: Play Online > type that address > Join Match. 3. In the lobby, check that both rows show PING, SONG OK and READY. Pick a song the friend lacks once and check that MISSING shows. 4. Start Match. Check the DIVE IN 3/2/1 countdown and that the music starts together (call it out on voice chat). 5. Fire torpedoes at each other. Check that the warning comes at least 1 beat before impact and the payload lands on the beat. Press F3 (debug build) and note SKEW and LANDED LATE MAX. 6. Friend: Esc > Leave Match mid-song. The host should see LEFT and the match continues. Rematch, then the host quits mid-song. The friend should see HOST LEFT. 7. Answer the questions in this file | Reply "approved" or list the issues. Then update this file and run /gsd:verify-work 4, or plan gap closure for the issues. This checkpoint was recorded as pending and did not block the phase (the user was away) | pending |
+| 14 | Rebuilt v0.7.0 zip (446 MB, with the Autocharter pack) on a friend PC (added by the verifier, 2026-10-20) | Send the rebuilt `build/dist/UNDERTOW-playtest-v0.7.0.zip` (467,661,357 bytes, sha256 dde997fc5e2ef203fb44329511add8c6775b04fc5cef287b767eef9570ba1ca4). The friend unzips it, runs UNDERTOW.exe, and opens the Autocharter once. Use this zip for tests 1-11 instead of the 63 MB one named in test 11 | The game starts without Godot installed, the Autocharter pack installs from the bundled "Autocharter Pack" folder without downloading (if it does download, it comes from github.com/ccxmxrgo/Undertow-autocharter releases, which the verifier confirmed is live with matching hashes), and online play works as in tests 1-7 | pending |
 
 ## Friend zip
 
@@ -53,3 +54,10 @@ Test 13 (the final checkpoint of plan 04-18) covers tests 1-8 in one sitting wit
 - Test 5 and F-1: is landing prediction (D-10) or a larger margin cap needed?
 - Test 9: the 4 UI-SPEC open questions.
 - Test 12: D-UAT-01 (from Phase 3).
+
+## Verifier addendum (2026-10-20, 04-VERIFICATION.md)
+
+- **Zip rebuilt.** The friend zip was rebuilt after the 04-REVIEW fixes and now carries the Autocharter pack: 467,661,357 bytes, sha256 `dde997fc5e2ef203fb44329511add8c6775b04fc5cef287b767eef9570ba1ca4` (UNDERTOW.exe sha256 `8255783720904515582721edaa562bfb36a5c05372c249f4858aa1627db4d1e7`). The 63 MB sha in test 11 and in "Friend zip" above is the pre-fix build; use the new one (test 14).
+- **Pack URL checked.** The shipped exe's PackSpec.BASE_URL is `https://github.com/ccxmxrgo/Undertow-autocharter/releases/download/autocharter-pack-v1/`; all 4 parts and SHA256SUMS.txt are live and match the pinned sizes and hashes.
+- **Follow-ups closed by the review fixes (04-REVIEW-FIX.md):** F-1 by WR-01 (MARGIN_CAP_S is now 0.5 s; the harness case at RTT p90 300 ms has +0.279 s slack), F-3 by WR-07 (`NetSession.host_choosing()`), F-5 by IN-03 (`net_smoke.ps1 -Lossy`). Tests 5 and 9(3) still say whether real links look right. F-2 and F-4 stay open and are covered by tests 3 and 7.
+- **Verifier gate runs:** TIMING GATE OK; full suite 2154 cases with 1 failure (test_bot_frequency, D-UAT-01, test 12); NET SMOKE OK (full + drop, start spread 1.5 ms, landed_late_max 0.0 ms, digests identical).
