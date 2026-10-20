@@ -1341,7 +1341,12 @@ func _client_tick() -> void:
 			_fail_connect("timeout", {})
 		return
 	var silent := _now - _last_host_packet
-	if silent > NetProtocol.WATCHDOG_S:
+	# WR-06: in LOADING the host builds its chart and swaps scenes on its main thread (no pings);
+	# allow the whole load window there and rely on server_lost for real drops.
+	var limit := NetProtocol.WATCHDOG_S
+	if state == State.LOADING:
+		limit = NetProtocol.LOAD_TIMEOUT_S + NetProtocol.START_DELAY_S
+	if silent > limit:
 		if state >= State.LOADING:
 			_host_lost("connection_lost")
 		elif state == State.LOBBY:

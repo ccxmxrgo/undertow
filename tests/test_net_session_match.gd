@@ -812,3 +812,21 @@ func test_final_inputs_sent_with_done_are_queued_before_results_due() -> void:
 	# Step only (no pump): INPUTS and DONE land in the same host poll.
 	assert_bool(_run_until(func() -> bool: return at_due.has("n"), 1.0, false)).is_true()
 	assert_int(int(at_due["n"])).is_equal(3)
+
+
+# --- Review fix WR-06: a host that is slow in LOADING does not trip the client watchdog -----------
+
+func test_host_stall_in_loading_does_not_trip_the_watchdog() -> void:
+	var all := _lobby([1_000_000])
+	var h: Node = all[0]
+	var c: Node = all[1]
+	assert_str(h.start_match()).is_equal("")
+	assert_bool(_run_until(func() -> bool: return c.state == c.State.LOADING)).is_true()
+	hub.stall(c.transport.unique_id())
+	_run(NetProtocol.WATCHDOG_S + 2.0)
+	assert_int(c.state).is_equal(c.State.LOADING)
+	assert_array(_fired(c, "host_left")).is_empty()
+	# The LOADING bound still ends a host that never comes back.
+	assert_bool(_run_until(func() -> bool: return c.is_offline(),
+		NetProtocol.LOAD_TIMEOUT_S + NetProtocol.START_DELAY_S)).is_true()
+	assert_array(_fired(c, "host_left")).is_equal([["connection_lost"]])
