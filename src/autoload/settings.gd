@@ -19,6 +19,18 @@ const DIFFICULTIES: Array[String] = ["easy", "medium", "hard", "expert"]
 const BACKGROUND_LIVING := "living"
 const BACKGROUND_CALM := "calm"
 const BACKGROUND_STYLES: Array[String] = [BACKGROUND_LIVING, BACKGROUND_CALM]
+## Phase 4 [net] keys (D-15, D-20, UI-SPEC section 13).
+const DEFAULT_PLAYER_NAME := "DIVER"
+const PLAYER_NAME_MAX := 12
+const PLAYER_NAME_CHARS := "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-"
+const DEFAULT_NET_PORT := 47474
+const NET_PORT_MIN := 1024
+const NET_PORT_MAX := 65535
+const ADDRESS_MAX := 64
+const ADDRESS_CHARS := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:[]"
+const FLIGHT_BEATS: Array[int] = [2, 1]
+## Pitfall 10: `-- --net-profile=<n>` (1-2 digits) gives each local process its own settings file.
+const NET_PROFILE_ARG := "--net-profile="
 
 ## Seconds. Positive audio_offset = player taps late, song_time is reduced by it.
 var audio_offset: float = 0.0
@@ -58,6 +70,16 @@ var versus_skill: String = "regular"
 var versus_song_id: String = ""
 var versus_difficulty: String = ""
 var training_payload: String = "off"
+## D-20: name shown to friends online. 1-12 chars of [A-Z0-9 _-], upper-cased. Persisted in [net].
+var player_name: String = DEFAULT_PLAYER_NAME
+## D-20: true once the player has confirmed a name (the Play Online screen asks once).
+var player_name_set: bool = false
+## D-15: last address typed into Join (host name, IPv4 or bracketed IPv6; max 64 chars).
+var net_last_address: String = ""
+## D-15: UDP port used to host and join (1024..65535, default 47474).
+var net_last_port: int = DEFAULT_NET_PORT
+## Last torpedo flight chosen by the host: 2 beats (internet) or 1 beat (same-room LAN).
+var net_flight_beats: int = 2
 var bindings := BindingStore.new()
 ## Where set_* mutators persist to (tests override this).
 var save_path: String = DEFAULT_PATH
@@ -66,6 +88,9 @@ const BUS_KEYS := {"Master": "master", "Music": "music", "SFX": "sfx"}
 
 
 func _ready() -> void:
+	var profile := profile_path_from_args(OS.get_cmdline_user_args())
+	if profile != "":
+		save_path = profile
 	load_from(save_path)
 
 
@@ -94,6 +119,11 @@ func reset_defaults() -> void:
 	versus_song_id = ""
 	versus_difficulty = ""
 	training_payload = "off"
+	player_name = DEFAULT_PLAYER_NAME
+	player_name_set = false
+	net_last_address = ""
+	net_last_port = DEFAULT_NET_PORT
+	net_flight_beats = 2
 	bindings.reset_defaults()
 
 
@@ -231,6 +261,11 @@ func save_to(path: String = DEFAULT_PATH) -> int:
 	cfg.set_value("versus", "song_id", versus_song_id)
 	cfg.set_value("versus", "difficulty", versus_difficulty)
 	cfg.set_value("versus", "training", training_payload)
+	cfg.set_value("net", "player_name", player_name)
+	cfg.set_value("net", "player_name_set", player_name_set)
+	cfg.set_value("net", "net_last_address", net_last_address)
+	cfg.set_value("net", "net_last_port", net_last_port)
+	cfg.set_value("net", "net_flight_beats", net_flight_beats)
 	bindings.to_config(cfg)
 	# Atomic save (WR-08): write a temp file, then rename over the target, so a crash mid-write
 	# cannot leave a truncated settings file.
@@ -283,6 +318,7 @@ func load_from(path: String = DEFAULT_PATH) -> void:
 	calibration_done = _bool(cfg, "calibration", "done", false)
 	_load_library(cfg)
 	_load_versus(cfg)
+	_load_net(cfg)
 	apply_window()
 	apply_audio()
 	settings_changed.emit()
@@ -326,6 +362,74 @@ func _load_versus(cfg: ConfigFile) -> void:
 	var tr: Variant = cfg.get_value("versus", "training", "off")
 	var tr_ok := typeof(tr) == TYPE_STRING and MatchSetup.TRAINING_VALUES.has(tr)
 	training_payload = tr if tr_ok else "off"
+
+
+## T-04-09: every [net] value is untrusted. Name filtered to the charset (else DIVER), port
+## range-checked (else 47474), flight whitelisted (else 2), address charset/length-checked (else "").
+func _load_net(cfg: ConfigFile) -> void:
+	var n: Variant = cfg.get_value("net", "player_name", DEFAULT_PLAYER_NAME)
+	var clean := clean_player_name(n) if typeof(n) == TYPE_STRING else ""
+	player_name = clean if clean != "" else DEFAULT_PLAYER_NAME
+	player_name_set = _bool(cfg, "net", "player_name_set", false)
+	var a: Variant = cfg.get_value("net", "net_last_address", "")
+	net_last_address = clean_address(a) if typeof(a) == TYPE_STRING else ""
+	var p := _whole(cfg.get_value("net", "net_last_port", DEFAULT_NET_PORT))
+	net_last_port = p if p >= NET_PORT_MIN and p <= NET_PORT_MAX else DEFAULT_NET_PORT
+	var fb := _whole(cfg.get_value("net", "net_flight_beats", 2))
+	net_flight_beats = fb if FLIGHT_BEATS.has(fb) else 2
+
+
+## An int, or a finite float with no fraction, as int; anything else -> -1.
+static func _whole(v: Variant) -> int:
+	if typeof(v) == TYPE_INT:
+		return v
+	if typeof(v) == TYPE_FLOAT:
+		var f: float = v
+		if is_finite(f) and f == floorf(f) and absf(f) < 1e9:
+			return int(f)
+	return -1
+
+
+## D-20: upper-case, keep [A-Z0-9 _-], collapse runs of spaces, trim, cap at 12 chars.
+## Returns "" when nothing valid is left (callers fall back to DIVER or reject the edit).
+static func clean_player_name(s: String) -> String:
+	var up := s.to_upper()
+	var out := ""
+	for i in up.length():
+		var c := up[i]
+		if not PLAYER_NAME_CHARS.contains(c):
+			continue
+		if c == " " and (out == "" or out.ends_with(" ")):
+			continue
+		out += c
+	return out.strip_edges().left(PLAYER_NAME_MAX).strip_edges()
+
+
+## D-15: trimmed address of [a-zA-Z0-9 . - : [ ]] up to 64 chars; any other input returns "".
+static func clean_address(s: String) -> String:
+	var t := s.strip_edges()
+	if t.length() > ADDRESS_MAX:
+		return ""
+	for i in t.length():
+		if not ADDRESS_CHARS.contains(t[i]):
+			return ""
+	return t
+
+
+## Pitfall 10 / T-04-08: "--net-profile=<1-2 digits>" -> "user://settings_net<n>.cfg", else "".
+## The file name is built here from digits only, so no path traversal is possible.
+static func profile_path_from_args(args: PackedStringArray) -> String:
+	for arg in args:
+		if not arg.begins_with(NET_PROFILE_ARG):
+			continue
+		var v := arg.substr(NET_PROFILE_ARG.length())
+		if v.length() < 1 or v.length() > 2:
+			return ""
+		for i in v.length():
+			if not "0123456789".contains(v[i]):
+				return ""
+		return "user://settings_net%s.cfg" % v
+	return ""
 
 
 ## Remembers the last played song/difficulty (called by SongLibrary); saves only on change.
