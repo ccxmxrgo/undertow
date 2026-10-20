@@ -25,6 +25,8 @@ extends NetTransport
 ##   poll(), so several transports can live in one process (Pitfall 13, assumption A5).
 ## - Hostname resolution is asynchronous (IP.resolve_hostname_queue_item), so join() never
 ##   blocks; a failed lookup is reported as connect_failed("resolve") from poll().
+## - WR-09: SceneMultiplayer talks to a RawGatePeer wrapping the ENet peer, so only RAW and
+##   SYS AUTH packets reach it; anything else is dropped and struck (3 strikes disconnect).
 ## Never blocks, never throws: methods return Error codes or do nothing.
 
 ## Client only (ENet extra, not on NetTransport): the UDP link to the host is up and the auth
@@ -40,6 +42,8 @@ const ROOT_PATH := NodePath("/root/__undertow_net_raw_only__")
 
 var api := SceneMultiplayer.new()
 var peer: ENetMultiplayerPeer
+## WR-09: the gate SceneMultiplayer actually talks to (RAW + SYS AUTH only; see RawGatePeer).
+var gate: RawGatePeer
 
 var _hosting := false
 var _client_connected := false
@@ -82,7 +86,8 @@ func host(port: int, max_clients: int = NetProtocol.MAX_CLIENTS) -> Error:
 	if err != OK:
 		return err
 	peer = p
-	api.multiplayer_peer = peer
+	gate = RawGatePeer.new(peer)
+	api.multiplayer_peer = gate
 	_hosting = true
 	return OK
 
@@ -111,7 +116,8 @@ func _create_client(ip: String, port: int) -> Error:
 	if err != OK:
 		return err
 	peer = p
-	api.multiplayer_peer = peer
+	gate = RawGatePeer.new(peer)
+	api.multiplayer_peer = gate
 	var pp := peer.get_peer(HOST_ID)
 	if pp != null:
 		pp.set_timeout(PEER_TIMEOUT_LIMIT, PEER_TIMEOUT_MIN_MS, PEER_TIMEOUT_MAX_MS)

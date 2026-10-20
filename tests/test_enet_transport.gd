@@ -294,3 +294,43 @@ func test_resolve_failure_reports_resolve() -> void:
 	var ok: bool = await _pump(func() -> bool: return spy.has("connect_failed"))
 	assert_bool(ok).is_true()
 	assert_str(spy.first("connect_failed")[1]).is_equal("resolve")
+
+
+# --- Review fix WR-09: only RAW and SYS AUTH packets reach SceneMultiplayer -----------------------
+
+func test_gate_allows_only_raw_and_auth() -> void:
+	assert_bool(RawGatePeer.allowed(PackedByteArray([3, 1, 2]))).is_true()  # RAW
+	assert_bool(RawGatePeer.allowed(PackedByteArray([7, 0, 9]))).is_true()  # SYS AUTH
+	assert_bool(RawGatePeer.allowed(PackedByteArray([7, 0]))).is_true()  # auth complete
+	assert_bool(RawGatePeer.allowed(PackedByteArray([7, 3, 0]))).is_false()  # SYS RELAY
+	for cmd in [0, 1, 2, 4, 5, 6]:  # RPC, path cache, spawn, despawn, sync
+		assert_bool(RawGatePeer.allowed(PackedByteArray([cmd, 0, 0, 0]))).is_false()
+	assert_bool(RawGatePeer.allowed(PackedByteArray())).is_false()
+
+
+func test_member_sending_non_raw_commands_is_disconnected() -> void:
+	var hs := _host()
+	var h: ENetTransport = hs[0]
+	var hspy: Spy = hs[1]
+	_host_accepts(h)
+	var cs := _client(hs[2])
+	var c: ENetTransport = cs[0]
+	_start_auth(c)
+	_client_completes(c)
+	var ok: bool = await _pump(func() -> bool:
+		return (cs[1] as Spy).has("connected") and hspy.has("peer_joined"))
+	assert_bool(ok).is_true()
+	# Raw bytes still flow.
+	c.send(1, "fine".to_utf8_buffer())
+	ok = await _pump(func() -> bool: return hspy.has("packet"))
+	assert_bool(ok).is_true()
+	# Crafted SceneMultiplayer RPC / path-cache packets, straight on the ENet peer.
+	for i in 3:
+		c.peer.set_target_peer(1)
+		c.peer.set_transfer_mode(MultiplayerPeer.TRANSFER_MODE_RELIABLE)
+		c.peer.put_packet(PackedByteArray([1 if i % 2 == 0 else 0, 0, 0, 0, 0, 0]))
+	ok = await _pump(func() -> bool: return hspy.has("peer_left"))
+	assert_bool(ok).is_true()
+	assert_int(h.gate.rejected).is_equal(3)
+	assert_int(h.gate.gate_kicks).is_equal(1)
+	assert_int(hspy.all("peer_left").size()).is_equal(1)
