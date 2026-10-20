@@ -670,7 +670,7 @@ func test_standalone_has_table_backdrop_title_and_glass_sections() -> void:
 	assert_bool(s.is_in_group(UiKit.FX_GROUP)).is_true()
 	await get_tree().process_frame
 	await get_tree().process_frame
-	assert_int(s.section_panels.size()).is_equal(6)
+	assert_int(s.section_panels.size()).is_equal(7)  # 04-16 added ONLINE (04-UI-SPEC 13)
 	for p: Control in s.section_panels:
 		var r := p.get_global_rect()
 		assert_float(r.position.x).is_equal_approx(64.0, 0.5)

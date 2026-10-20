@@ -5106,7 +5106,7 @@ func _vs_view(scroll: float, low: bool) -> void:
 ## TORPEDO_LAUNCH event or {}.
 func _vs_inject(g: Gameplay, reward: int, warheads: int, timeout: float = 30.0) -> Dictionary:
 	var v := g.versus
-	var cfg := v.sim.cfg
+	var cfg: VersusConfig = v.sim.cfg  # sim is typed Referee since 04-13; offline it is a MatchSim
 	var saved := cfg.warhead_count
 	var deadline := Time.get_ticks_msec() + int(timeout * 1000.0)
 	while Time.get_ticks_msec() < deadline:
@@ -5114,7 +5114,7 @@ func _vs_inject(g: Gameplay, reward: int, warheads: int, timeout: float = 30.0) 
 		if not _vs_running(g, v):
 			break
 		var t := _vs_t(g)
-		var mark := v.sim.event_log.size()
+		var mark: int = v.sim.event_log.size()
 		var from := -1
 		for s in v.rival_seats():
 			var r := v.sim.inject_fire(s, VS_HUMAN, reward, t)
@@ -5219,7 +5219,7 @@ func _vs_densest(chart: ChartData) -> Dictionary:
 ## longer shielded). Runs until state["stop"]; counts frames with the ink visible.
 func _vs_ink_keeper(g: Gameplay, state: Dictionary) -> void:
 	var v := g.versus
-	var cfg := v.sim.cfg
+	var cfg: VersusConfig = v.sim.cfg
 	var saved := cfg.warhead_count
 	cfg.warhead_count = 0  # no Return to Sender: the autoplay human would end the ink at once
 	while not bool(state.get("stop", false)) and _vs_running(g, v):
@@ -5413,7 +5413,7 @@ func _vs_match(e: SongEntry) -> void:
 			var p := v.players[s]
 			if not p.alive or p.is_shielded(t) or v.sim._has_pending(s):
 				continue
-			var mark := v.sim.event_log.size()
+			var mark: int = v.sim.event_log.size()
 			var r2 := v.sim.inject_fire(s, VS_HUMAN, Reward.Id.GHOST_NOTES, t)
 			var r1 := v.sim.inject_fire(VS_HUMAN, s, Reward.Id.SONAR_JAM, t) if r2 == MatchSim.FIRE_OK else -1
 			if r1 == MatchSim.FIRE_OK and r2 == MatchSim.FIRE_OK:
@@ -5437,7 +5437,7 @@ func _vs_match(e: SongEntry) -> void:
 	# --- Killfeed with 4 lines: Space fires the human's held reward, rivals trade torpedoes ---------
 	if v.players[VS_HUMAN].meter.held != -1:
 		await press_key(KEY_SPACE)
-	var saved_wh := v.sim.cfg.warhead_count
+	var saved_wh: int = v.sim.cfg.warhead_count
 	v.sim.cfg.warhead_count = 0
 	var seats := v.rival_seats()
 	var tk := _vs_t(g)
