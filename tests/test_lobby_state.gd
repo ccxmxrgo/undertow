@@ -277,7 +277,7 @@ func test_wire_roundtrip() -> void:
 	l.set_ready(2, true)
 	var c := LobbyState.new()
 	assert_bool(c.apply_wire(l.to_wire())).is_true()
-	assert_object(c.to_wire()).is_equal(l.to_wire())
+	assert_dict(c.to_wire()).is_equal(l.to_wire())
 	assert_int(c.seat_of(101)).is_equal(2)
 	assert_int(c.flight_beats).is_equal(1)
 	assert_str(c.song.fp).is_equal("aaa")
