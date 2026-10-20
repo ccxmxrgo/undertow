@@ -996,8 +996,10 @@ func _on_peer_left(peer: int) -> void:
 	if state >= State.LOADING:
 		if _hchan != null:
 			_hchan.remove_peer(peer)
+		# CR-02: a leave in LOADING after bind_host_match is dropped at once (sim time is still
+		# TIME_MIN_S, harmless); before the bind it waits in _left_seats for the bind.
 		if _queue != null:
-			if state == State.PLAYING:
+			if state == State.PLAYING or state == State.LOADING:
 				_queue.drop_seat(seat, "disconnected")
 		elif state == State.LOADING:
 			_left_seats[seat] = true

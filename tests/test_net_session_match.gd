@@ -688,3 +688,42 @@ func test_debug_stats_keys() -> void:
 	assert_str(hd.per_peer[0].name).is_equal("ONE")
 	assert_str(cd.role).is_equal("client")
 	assert_int(cd.horizon_ms).is_equal(hd.horizon_ms)
+
+
+# --- Review fix CR-02: a leave in LOADING after the bind is still eliminated ----------------------
+
+func test_client_leaving_in_loading_after_bind_is_dropped_at_start() -> void:
+	var all := _lobby([1_000_000, 2_000_000])
+	var h: Node = all[0]
+	var stay: Node = all[1]
+	var gone: Node = all[2]
+	var hb := {}
+	h.match_loading.connect(func() -> void: hb.merge(_bind_host(h)))
+	stay.match_loading.connect(func() -> void: stay.report_loaded())
+	for s in all:
+		s.start_scheduled.connect(func() -> void:
+			var lead: float = s.lead_in_for_start()
+			if lead >= 0.0:
+				start_v[s] = now + lead)
+	assert_str(h.start_match()).is_equal("")
+	assert_bool(hb.has("queue")).is_true()
+	assert_bool(_run_until(func() -> bool: return gone.state == gone.State.LOADING)).is_true()
+	var seat: int = gone.local_seat()
+	hub.drop_peer(gone.transport.unique_id())
+	assert_bool(_run_until(func() -> bool: return h.lobby_rows().size() == 2, 2.0, true)) \
+		.is_true()
+	assert_int(h.state).is_equal(h.State.LOADING)
+	h.report_loaded()
+	assert_bool(_run_until(func() -> bool: return h.state == h.State.PLAYING, 3.0, true)) \
+		.is_true()
+	_run(0.5, true)
+	var left := false
+	for e in (hb.channel as NetHostChannel).broadcast_log:
+		if e.type == GameEvent.PLAYER_LEFT and int(e.seat) == seat:
+			left = true
+	assert_bool(left).is_true()
+	var alive := true
+	for p in (hb.sim as MatchSim).players:
+		if p.seat == seat:
+			alive = p.alive
+	assert_bool(alive).is_false()
