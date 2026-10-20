@@ -813,3 +813,29 @@ func test_confirm_dialog_geometry_variants_and_focus() -> void:
 func test_pause_run_line_skips_an_empty_difficulty() -> void:
 	assert_str(PauseMenu.run_line("Hand chart", "", 16.2)).is_equal("Hand chart · 16%")
 	assert_str(PauseMenu.run_line("", "expert", 3.0)).is_equal("EXPERT · 3%")
+
+
+# --- 04-07: HOST LEFT / CONNECTION LOST dialog (04-UI-SPEC 11.6, 16) ---
+
+
+func test_host_left_dialog_fills_viewport_panel_and_button_rects() -> void:
+	var host := _host()
+	var dlg := HostLeftDialog.new()
+	host.add_child(dlg)
+	dlg.setup("connection_lost", "MAKO", [
+		{"place": 1, "name": "MAKO", "is_you": false, "is_host": true, "status": "hull", "hull_pct": 60.0},
+		{"place": 2, "name": "DIVER", "is_you": true, "is_host": false, "status": "wreck", "hull_pct": 0.0}])
+	dlg.step(1.0)  # past the rise
+	await _frames(2)
+	_assert_full(dlg)
+	_assert_dim(dlg, 0.85)
+	_assert_dim_colour(dlg, Palette.ABYSS_900)
+	assert_int(dlg.mouse_filter).is_equal(Control.MOUSE_FILTER_STOP)
+	assert_object(HostLeftDialog.PANEL_RECT).is_equal(Rect2(480, 240, 960, 600))
+	assert_object(dlg.panel.get_global_rect()).is_equal(Rect2(480, 240, 960, 600))
+	assert_object(_rect_of(dlg.button)).is_equal(Rect2(512, 744, 400, 64))
+	assert_object(HostLeftDialog.BUTTON_RECT).is_equal(Rect2(512, 744, 400, 64))
+	_assert_centered(dlg.panel)
+	assert_bool(dlg.button.has_focus()).is_true()
+	assert_str(String(dlg.button.get_meta(&"ui_variant", ""))).is_equal("primary")
+	assert_array(HostLeftDialog.ROW_TOPS).is_equal([456.0, 520.0, 584.0, 648.0])

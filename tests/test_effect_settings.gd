@@ -29,6 +29,9 @@ const EXPECTED := {
 	"versus_results": ["VersusResultsScreen", "ScreenTransition"],
 	# 04-04 (04-UI-SPEC 14): the shared online text field, editing.
 	"sonar_text_field": ["SonarTextField", "ScreenTransition"],
+	# 04-07 (04-UI-SPEC 14): the three in-match online overlays, standalone (gameplay wires them
+	# in 04-14). Each drops its panel glow under Low effects.
+	"online_overlays": ["StartSyncOverlay", "LeaveOverlay", "HostLeftDialog", "ScreenTransition"],
 }
 
 ## Owners that must be registered in a context but only change under Reduce motion (so they
@@ -68,6 +71,10 @@ const REDUCE := {
 	"MatchSetupScreen": {"roster_fade": false},
 	# 04-04 (04-UI-SPEC 14): steady caret; the editing glow stays (static) under Reduce motion.
 	"SonarTextField": {"caret_blink": false},
+	# 04-07: the leave overlay slides only without Reduce motion; the HOST LEFT panel rises only
+	# without it. The sync overlay fade-out is identical in every mode.
+	"LeaveOverlay": {"slide": false},
+	"HostLeftDialog": {"rise": false},
 }
 
 var _low := false
@@ -468,3 +475,41 @@ func test_gameplay_background_style_switches_live() -> void:
 	Settings.settings_changed.emit()
 	assert_str(arena.effect_counts()["style"]).is_equal("living")
 	assert_int(int(arena.effect_counts()["snow"])).is_equal(80)
+
+
+func _online_overlays() -> Control:
+	var host := Control.new()
+	UiLayout.fill_rect(host)
+	add_child(host)
+	auto_free(host)
+	var sync := StartSyncOverlay.new()
+	host.add_child(sync)
+	sync.setup([{"seat": 0, "name": "MAKO", "is_you": true}, {"seat": 1, "name": "DIVER", "is_you": false}])
+	var leave := LeaveOverlay.new()
+	host.add_child(leave)
+	leave.open(false, 30)
+	var dlg := HostLeftDialog.new()
+	host.add_child(dlg)
+	dlg.setup("host_left", "MAKO", [])
+	return host
+
+
+# 04-07 (04-UI-SPEC 14): StartSyncOverlay, LeaveOverlay and HostLeftDialog.
+func test_online_overlays_effect_nodes_follow_settings() -> void:
+	var host := _online_overlays()
+	await _check_context("online_overlays", host)
+	var sync := _find(host, "StartSyncOverlay")
+	var leave := _find(host, "LeaveOverlay")
+	var dlg := _find(host, "HostLeftDialog")
+	assert_dict(sync.effect_counts()).is_equal({"fade_out": true, "glow": true})
+	assert_dict(leave.effect_counts()).is_equal({"slide": true, "glow": true})
+	assert_dict(dlg.effect_counts()).is_equal({"rise": true, "glow": true})
+	_apply(true, false)
+	assert_dict(sync.effect_counts()).is_equal({"fade_out": true, "glow": false})
+	assert_dict(leave.effect_counts()).is_equal({"slide": true, "glow": false})
+	assert_dict(dlg.effect_counts()).is_equal({"rise": true, "glow": false})
+	_apply(false, true)
+	assert_dict(sync.effect_counts()).is_equal({"fade_out": true, "glow": true})
+	assert_dict(leave.effect_counts()).is_equal({"slide": false, "glow": true})
+	assert_dict(dlg.effect_counts()).is_equal({"rise": false, "glow": true})
+	_apply(false, false)

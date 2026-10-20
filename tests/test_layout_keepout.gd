@@ -278,3 +278,38 @@ func test_scanner_flags_intruders() -> void:
 		_scan(ch, keep_out_polygon(), [], Vector2(1920.0, 1080.0), out)
 	assert_int(out.size()).is_equal(2)
 	assert_str(str(out)).contains("without keepout_shapes")
+
+
+## 04-07 (04-UI-SPEC 11.4, 16): the Leave Match overlay sits at its exact rect (640, 120, 640, 152)
+## and entirely outside the note-path keep-out, so it can stay open while the song keeps playing.
+## StartSyncOverlay (600, 340, 720, 400) is the DECLARED EXCEPTION (UI-SPEC 10.2, Defaults Log
+## 11): it lies inside the keep-out but is only shown before the conductor begins, when no note
+## exists on the board. Here we only pin its declared rect; the "hidden before notes can draw"
+## proof (gone by conductor.begin + DUR_BASE) lives with the gameplay wiring in 04-14.
+func test_online_overlays_rects_and_keep_out() -> void:
+	var root: Control = auto_free(Control.new())
+	root.size = Vector2(1920.0, 1080.0)
+	add_child(root)
+	var leave := LeaveOverlay.new()
+	root.add_child(leave)
+	leave.open(false, 30)
+	leave.step(1.0)  # past the slide-in
+	await get_tree().process_frame
+	var keep := keep_out_polygon()
+	assert_object(leave.get_global_rect()).is_equal(Rect2(640, 120, 640, 152))
+	assert_bool(_hits(_rect_poly(leave.get_global_rect()), keep)).override_failure_message(
+		"LeaveOverlay intersects the note-path keep-out").is_false()
+	var bad: Array = []
+	_scan(leave, keep, [], Vector2(1920.0, 1080.0), bad)
+	assert_array(bad).override_failure_message("LeaveOverlay children:\n" + "\n".join(bad)).is_empty()
+	# Its bottom edge (272) is above the keep-out's top (the SPEC's y 348 note-path edge).
+	var top := INF
+	for p in keep:
+		top = minf(top, p.y)
+	assert_float(leave.get_global_rect().end.y).is_less(top)
+	var sync := StartSyncOverlay.new()
+	root.add_child(sync)
+	await get_tree().process_frame
+	assert_object(sync.get_global_rect()).is_equal(Rect2(600, 340, 720, 400))
+	# Documented: the exception really is inside the keep-out (so the 04-14 proof matters).
+	assert_bool(_hits(_rect_poly(sync.get_global_rect()), keep)).is_true()
