@@ -1345,6 +1345,8 @@ func open_song_pick() -> void:
 	if _carry != null:
 		_carry.from_pick = true
 	_leaving = true
+	# WR-07 (UI-SPEC 9.4): clients log "Host is choosing a song." while the host is in Song Select.
+	_call(&"host_choosing", null)
 	_go(SONG_SELECT_SCENE)
 
 

@@ -398,6 +398,14 @@ func host_set_song(song: Dictionary) -> bool:
 	return true
 
 
+## Host in LOBBY: tells every client the host opened Song Select (UI-SPEC 9.4, WR-07). Clients
+## log "choosing"; the host itself gets no log line for its own action.
+func host_choosing() -> void:
+	if _host_lobby():
+		transport.send(0, NetCodec.encode({"type": NetProtocol.NOTICE, "code": "choosing",
+			"name": "", "n": 0}))
+
+
 ## Host: torpedo flight 2 (default, internet) or 1 (LAN). Does not clear Ready.
 func host_set_flight(n: int) -> void:
 	if not _host_lobby():

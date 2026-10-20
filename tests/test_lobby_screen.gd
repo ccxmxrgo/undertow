@@ -105,6 +105,9 @@ class FakeSession:
 		calls.append(["start_match", opts])
 		return start_result
 
+	func host_choosing() -> void:
+		calls.append(["host_choosing"])
+
 	func report_load_failed() -> void:
 		calls.append(["report_load_failed"])
 
@@ -821,3 +824,12 @@ func test_every_constant_string_has_glyphs() -> void:
 				if not f.has_char(t.unicode_at(i)):
 					bad.append("'%s' in '%s'" % [t[i], t])
 	assert_array(bad).override_failure_message("missing glyphs:\n" + "\n".join(bad)).is_empty()
+
+
+## WR-07 (UI-SPEC 9.4): opening Song Select tells the clients the host is choosing.
+func test_open_song_pick_notifies_host_choosing() -> void:
+	var s := _session()
+	var m := _screen(s, _library())
+	m.open_song_pick()
+	assert_int(s.count("host_choosing")).is_equal(1)
+	assert_array(_nav).is_equal([LobbyScreen.SONG_SELECT_SCENE])

@@ -688,3 +688,19 @@ func test_enet_session_resolve_error() -> void:
 	var ok: bool = await _enet_until(func() -> bool: return not errors[c].is_empty())
 	assert_bool(ok).is_true()
 	assert_str(errors[c][0][0]).is_equal("resolve")
+
+
+# --- Review fix WR-07: "Host is choosing a song." reaches clients ---------------------------------
+
+func test_host_choosing_notice_reaches_clients_only() -> void:
+	var h := _host()
+	var c := _join_wait("ONE")
+	var host_before: int = logs[h].size()
+	var before: int = logs[c].size()
+	h.host_choosing()
+	assert_bool(_run_until(func() -> bool: return logs[c].size() > before, 1.0)).is_true()
+	assert_str(logs[c][logs[c].size() - 1][0]).is_equal("choosing")
+	assert_int(logs[h].size()).is_equal(host_before)
+	c.host_choosing()  # clients cannot send it
+	_run_until(func() -> bool: return false, 0.2)
+	assert_int(h.peer_strikes(h.lobby_state().peer_of(1))).is_equal(0)
