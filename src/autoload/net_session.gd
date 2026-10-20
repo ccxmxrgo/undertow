@@ -98,6 +98,8 @@ const HEARTBEAT_PERIOD_S := 0.5
 const DONE_GRACE_S := 3.0
 ## START_LATE is honoured this long after the scheduled start (later ones are ignored).
 const START_LATE_WINDOW_S := 5.0
+## IN-05: the longest accepted lead beyond START_DELAY_S (more is reported as START_LATE).
+const MAX_EXTRA_LEAD_S := 2.0
 ## WR-05: INPUTS bucket capacity (a 4 s burst at MAX_INPUTS_PER_S), so the backlog a lossy link
 ## releases after a stall fits. Refill stays MAX_INPUTS_PER_S.
 const INPUT_BURST := NetProtocol.MAX_INPUTS_PER_S * 4
@@ -636,6 +638,9 @@ func start_match(opts := {}) -> String:
 	var roster: Array = []
 	for r in _lobby.rows():
 		roster.append({"seat": r.seat, "name": r.name})
+		# IN-10: a seat with no host-side RTT samples still gets D cover (margin_for(D, 0)).
+		if not margins.has(r.seat):
+			margins[r.seat] = 0.0
 	var song := _lobby.song
 	var load_msg := {"type": NetProtocol.LOAD, "fp": song.fp, "sig": song.sig, "diff": song.diff,
 		"seed": seed_i, "flight": _lobby.flight_beats, "roster": roster, "d_ms": d_ms,
@@ -706,7 +711,9 @@ func lead_in_for_start() -> float:
 	if _lead_checked:
 		return lead
 	_lead_checked = true
-	if lead < NetProtocol.MIN_LEAD_S:
+	# IN-05: a start further away than START_DELAY + MAX_EXTRA_LEAD_S means a broken clock or
+	# offset; treat it like a late start (back to the lobby), not a long silent wait.
+	if lead < NetProtocol.MIN_LEAD_S or lead > NetProtocol.START_DELAY_S + MAX_EXTRA_LEAD_S:
 		_lead_late = true
 		_report_late(lead)
 		return -1.0

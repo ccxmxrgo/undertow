@@ -830,3 +830,35 @@ func test_host_stall_in_loading_does_not_trip_the_watchdog() -> void:
 	assert_bool(_run_until(func() -> bool: return c.is_offline(),
 		NetProtocol.LOAD_TIMEOUT_S + NetProtocol.START_DELAY_S)).is_true()
 	assert_array(_fired(c, "host_left")).is_equal([["connection_lost"]])
+
+
+# --- Review fixes IN-05 / IN-10 -------------------------------------------------------------------
+
+## IN-05: a START lead far beyond START_DELAY_S (broken offset) is reported as START_LATE.
+func test_start_far_in_the_future_is_start_late() -> void:
+	var all := _lobby([1_000_000])
+	var h: Node = all[0]
+	var c: Node = all[1]
+	for s in all:
+		s.match_loading.connect(func() -> void: s.report_loaded())
+	assert_str(h.start_match()).is_equal("")
+	assert_bool(_run_until(func() -> bool: return not _fired(c, "start_scheduled").is_empty()))\
+		.is_true()
+	c._local_start += 60_000_000  # a bogus offset puts the start a minute away
+	assert_float(c.lead_in_for_start()).is_equal(-1.0)
+	assert_bool(_run_until(func() -> bool: return c.is_in_lobby() and h.is_in_lobby()))\
+		.is_true()
+	assert_array(_fired(h, "match_aborted_to_lobby")).is_equal([["start_late", "ONE"]])
+
+
+## IN-10: every roster seat gets a margins entry, even without host-side RTT samples.
+func test_seat_without_rtt_samples_still_gets_a_margin() -> void:
+	var all := _lobby([1_000_000, 2_000_000])
+	var h: Node = all[0]
+	var peer: int = h.lobby_state().peer_of(2)
+	h._peers[peer].clock = ClockSync.new()
+	assert_str(h.start_match()).is_equal("")
+	var spec: Dictionary = h.pending_match()
+	assert_bool(spec.margins.has(2)).is_true()
+	assert_float(float(spec.margins[2])).is_equal(0.0)
+	assert_float(float(spec.margins[1])).is_greater(0.0)
