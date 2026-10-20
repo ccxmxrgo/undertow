@@ -751,3 +751,32 @@ func test_results_with_a_long_title_reach_clients_clipped() -> void:
 	assert_int(str(got.title).length()).is_equal(NetProtocol.MAX_TEXT)
 	assert_str(got.artist).is_equal("Artist")
 	assert_int(all[1].state).is_equal(all[1].State.RESULTS)
+
+
+# --- Review fix WR-04: the last INPUTS reach the queue before results_due -------------------------
+
+func test_final_inputs_sent_with_done_are_queued_before_results_due() -> void:
+	link_jit = 0.0
+	var m := _match([1_000_000])
+	var all: Array = m.all
+	var h: Node = all[0]
+	var c: Node = all[1]
+	var q: HostInputQueue = m.host_b.queue
+	var rr: RemoteReferee = m.client_b[0].remote
+	assert_bool(_run_until(func() -> bool: return _song_t(h) >= 2.0, 6.0, true)).is_true()
+	h.report_done(_song_t(h))
+	var at_due := {}
+	h.results_due.connect(func(_t: float) -> void:
+		var n := 0
+		for it in q._q:
+			if int(it.seat) == 1:
+				n += 1
+		at_due["n"] = n)
+	var t0 := _song_t(c)
+	for k in range(3):
+		rr.on_stray(rr.seat, t0 - 0.05 + k * 0.01)
+	rr.flush()
+	c.report_done(t0)
+	# Step only (no pump): INPUTS and DONE land in the same host poll.
+	assert_bool(_run_until(func() -> bool: return at_due.has("n"), 1.0, false)).is_true()
+	assert_int(int(at_due["n"])).is_equal(3)

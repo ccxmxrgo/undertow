@@ -1195,10 +1195,7 @@ func _host_heartbeat(p: PeerLink, msg: Dictionary) -> void:
 
 func _host_pump(song_time: float) -> void:
 	if _queue != null and is_finite(song_time) and state == State.PLAYING:
-		for e in _inbox:
-			for it in e[1]:
-				_queue.push_item(int(e[0]), it)
-		_inbox.clear()
+		_drain_inbox()
 		var t := song_time
 		if _host_done:
 			t = minf(t, _host_end_t + _d_s)
@@ -1225,7 +1222,20 @@ func _check_results_due() -> void:
 	if still_diving() > 0 and _ticks() < _done_deadline:
 		return
 	_results_due_sent = true
+	# WR-04: a client's final INPUTS flush arrives in the same poll as its DONE; queue it now so
+	# VersusController.finish (pump(t + D)) applies it before the standings are taken.
+	_drain_inbox()
 	results_due.emit(_host_end_t)
+
+
+## Validated INPUTS waiting in _inbox -> the host queue (seat from the sender, T-04-30).
+func _drain_inbox() -> void:
+	if _queue == null:
+		return
+	for e in _inbox:
+		for it in e[1]:
+			_queue.push_item(int(e[0]), it)
+	_inbox.clear()
 
 
 ## The first lead_in_for_start() call found the start too close (or the clock unsynced).
