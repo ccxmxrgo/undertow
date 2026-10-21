@@ -10,6 +10,9 @@ config/name="UNDERTOW"
 config/version="0.7.0"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://assets/ui/undertow_icon.png"
+boot_splash/bg_color=Color(0.011764706, 0.023529412, 0.050980393, 1)
+boot_splash/show_image=false
 
 [autoload]
 
