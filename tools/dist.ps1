@@ -16,6 +16,8 @@
 # src/autocharter/pack_spec.gd first, and again after the unzip; any mismatch fails the build.
 # The unzipped exe must then also print AC_PACK_FOUND. With the pack the zip uses Fastest
 # compression (the parts are already zips).
+# Right after the export, tools/check_exe.ps1 fails the build if the exe still has Godot's icon or its
+# FileVersion/ProductVersion do not equal config/version + ".0".
 # Paths use forward slashes: Windows PowerShell accepts them, and on Linux a backslash would be part
 # of the file name.
 param([string]$WithPack = "on")
@@ -113,6 +115,12 @@ try {
     $exe = Join-Path $root "build/UNDERTOW.exe"
     foreach ($f in @($exe) + @($docs.Keys)) {
         if (-not (Test-Path $f)) { Write-Error "Missing build artifact: $f"; exit 1 }
+    }
+    # The exe must carry the UNDERTOW icon and version info matching config/version (05-03).
+    & $shell -NoProfile -File (Join-Path $root "tools/check_exe.ps1") -Exe $exe
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "check_exe.ps1 failed (exit code $LASTEXITCODE)"
+        exit 1
     }
 
     New-Item -ItemType Directory -Force -Path $distDir | Out-Null

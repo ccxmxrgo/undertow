@@ -2,7 +2,7 @@ extends SceneTree
 ## Renders the UNDERTOW app icon (05-03, D-09): an original sonar scope in Palette colours.
 ## Saves two first-party files:
 ##   assets/ui/undertow_icon.png   256 x 256 RGBA (project icon, config/icon)
-##   assets/ui/undertow_icon.ico   one 256 px PNG-compressed entry (Windows exe icon,
+##   assets/ui/undertow_icon.ico   PNG-compressed entries 16/32/48/64/128/256 (Windows exe icon,
 ##                                 export_presets application/icon)
 ## Draws with the Image API only (no renderer), so it runs HEADLESS:
 ##   godot --headless --path . -s res://tools/make_icon.gd
@@ -13,6 +13,7 @@ const OUT_PNG := "res://assets/ui/undertow_icon.png"
 const OUT_ICO := "res://assets/ui/undertow_icon.ico"
 const SIZE := 256
 const SS := 4
+const ICO_SIZES := [16, 32, 48, 64, 128, 256]
 
 # Geometry as fractions of the icon size.
 const DISC_R := 0.47
@@ -85,6 +86,8 @@ func _initialize() -> void:
 				col = _over(Palette.ABYSS_900, Palette.SONAR, 0.85)
 			col.a = 1.0
 			img.set_pixel(x, y, col)
+	var master := img
+	img = master.duplicate()
 	img.resize(SIZE, SIZE, Image.INTERPOLATE_LANCZOS)
 	var err := img.save_png(OUT_PNG)
 	if err != OK:
@@ -92,6 +95,13 @@ func _initialize() -> void:
 		quit(1)
 		return
 	var png := img.save_png_to_buffer()
+	# One PNG entry per size Godot's resource editor asks for (16..256); every size is
+	# downsampled from the 1024 px master so the small icons stay crisp.
+	var entries: Array[PackedByteArray] = []
+	for s in ICO_SIZES:
+		var sized: Image = master.duplicate()
+		sized.resize(s, s, Image.INTERPOLATE_LANCZOS)
+		entries.append(sized.save_png_to_buffer())
 	var f := FileAccess.open(OUT_ICO, FileAccess.WRITE)
 	if f == null:
 		push_error("cannot open %s" % OUT_ICO)
@@ -101,20 +111,24 @@ func _initialize() -> void:
 	# ICONDIR
 	f.store_16(0)  # reserved
 	f.store_16(1)  # type: icon
-	f.store_16(1)  # count
-	# ICONDIRENTRY
-	f.store_8(0)  # width 0 = 256
-	f.store_8(0)  # height 0 = 256
-	f.store_8(0)  # colour count
-	f.store_8(0)  # reserved
-	f.store_16(1)  # planes
-	f.store_16(32)  # bpp
-	f.store_32(png.size())  # bytes in resource
-	f.store_32(22)  # offset of image data
-	f.store_buffer(png)
+	f.store_16(ICO_SIZES.size())  # count
+	# ICONDIRENTRY x count (16 bytes each), then the PNG blobs in order.
+	var offset := 6 + 16 * ICO_SIZES.size()
+	for i in ICO_SIZES.size():
+		var s: int = ICO_SIZES[i]
+		f.store_8(0 if s >= 256 else s)  # width (0 = 256)
+		f.store_8(0 if s >= 256 else s)  # height (0 = 256)
+		f.store_8(0)  # colour count
+		f.store_8(0)  # reserved
+		f.store_16(1)  # planes
+		f.store_16(32)  # bpp
+		f.store_32(entries[i].size())  # bytes in resource
+		f.store_32(offset)  # offset of image data
+		offset += entries[i].size()
+	for e in entries:
+		f.store_buffer(e)
 	f.close()
-	var ico_size := 22 + png.size()
-	print("ICON OK %d %d" % [png.size(), ico_size])
+	print("ICON OK %d %d" % [png.size(), offset])
 	quit(0)
 
 

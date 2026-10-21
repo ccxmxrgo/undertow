@@ -1,3 +1,16 @@
+START HERE
+----------
+- Needs Windows 10 or 11 (64-bit) and a graphics chip with OpenGL 3.3 or
+  Direct3D 11 (almost any PC or laptop from the last 10 years).
+- Nothing to install: no Godot, no installer. Unzip the WHOLE folder and
+  double-click UNDERTOW.exe.
+- "Windows protected your PC"? Click "More info", then "Run anyway"
+  (the game is not signed).
+- Keep everything in this folder together (the Autocharter Pack must
+  stay next to UNDERTOW.exe).
+- Choppy on a laptop? Settings > Display > Low effects.
+- Crashed? Send godot.log from %APPDATA%\Godot\app_userdata\UNDERTOW\logs
+
 UNDERTOW - early playtest build (v0.7.0, 2026-10-20)
 ====================================================
 
