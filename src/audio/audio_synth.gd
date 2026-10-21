@@ -294,9 +294,132 @@ static func make_creak(seed: int, rate: int = 0) -> AudioStreamWAV:
 	return _wav16(buf, rate)
 
 
+## Torpedo impact on your own board (D-05): a deep hit, distinct from VersusSfx.make_collision.
+## Recipe:
+##   body     sine falling 55 -> 35 Hz (pitch tau 0.25 s), amplitude decay tau 0.2 s
+##   crack    one-pole lowpassed LCG noise at 0.6, decay tau 0.04 s
+##   shape    2 ms attack (sub-thud), 10 ms tail fade
+##   level    peak normalised to -6 dBFS
+## 0.6 s, 16-bit mono, fixed seed.
+static func make_impact(rate: int = 0) -> AudioStreamWAV:
+	if rate <= 0:
+		rate = int(AudioServer.get_mix_rate())
+	var n := int(0.6 * rate)
+	var attack := maxf(0.002 * rate, 1.0)
+	var fade := maxf(0.01 * rate, 1.0)
+	var mix := PackedFloat32Array()
+	mix.resize(n)
+	var seed_v := 505050
+	var phase := 0.0
+	var lp := 0.0
+	for i in range(n):
+		var tt := float(i) / rate
+		seed_v = (seed_v * 1103515245 + 12345) & 0x7FFFFFFF
+		var noise := float(seed_v) / float(0x7FFFFFFF) * 2.0 - 1.0
+		lp += (noise - lp) * 0.15
+		var body := sin(TAU * phase) * exp(-tt / 0.2)
+		var crack := lp * 0.6 * exp(-tt / 0.04)
+		phase += (35.0 + 20.0 * exp(-tt / 0.25)) / rate
+		var env := minf(1.0, minf(float(i) / attack, float(n - 1 - i) / fade))
+		mix[i] = (body + crack) * env
+	return _encode_peak(mix, db_to_linear(-6.0), rate)
+
+
+## Torpedo launch for the shooter (D-05): a short thump then a rising whoosh. Recipe:
+##   thump    80 Hz sine, decay tau 0.06 s, 2 ms attack
+##   whoosh   LCG noise through a one-pole lowpass whose coefficient rises 0.02 -> 0.25 over
+##            0.3 s, envelope sin(pi * t / 0.4) (peaks around 0.2 s, silent after 0.4 s)
+##   level    10 ms tail fade, peak normalised to -9 dBFS
+## 0.45 s, 16-bit mono, fixed seed.
+static func make_launch(rate: int = 0) -> AudioStreamWAV:
+	if rate <= 0:
+		rate = int(AudioServer.get_mix_rate())
+	var n := int(0.45 * rate)
+	var attack := maxf(0.002 * rate, 1.0)
+	var fade := maxf(0.01 * rate, 1.0)
+	var mix := PackedFloat32Array()
+	mix.resize(n)
+	var seed_v := 616161
+	var lp := 0.0
+	for i in range(n):
+		var tt := float(i) / rate
+		seed_v = (seed_v * 1103515245 + 12345) & 0x7FFFFFFF
+		var noise := float(seed_v) / float(0x7FFFFFFF) * 2.0 - 1.0
+		lp += (noise - lp) * lerpf(0.02, 0.25, clampf(tt / 0.3, 0.0, 1.0))
+		var thump := sin(TAU * 80.0 * tt) * exp(-tt / 0.06)
+		var whoosh := lp * 2.0 * maxf(0.0, sin(PI * tt / 0.4))
+		var env := minf(1.0, minf(float(i) / attack, float(n - 1 - i) / fade))
+		mix[i] = (thump + whoosh) * env
+	return _encode_peak(mix, db_to_linear(-9.0), rate)
+
+
+## Implosion (D-05). Near = your own hull; distant = a rival's, heard through the water.
+## Recipe:
+##   rumble   40 Hz sine, decay tau 0.6 s
+##   crunch   LCG noise burst, decay tau 0.12 s
+##   metal    decaying sines 210 / 470 / 1130 Hz (tau 0.5 / 0.35 / 0.2 s) from 30 ms in
+##   groan    late secondary glide 90 -> 60 Hz from 0.5 s
+##   shape    2 ms attack, 10 ms tail fade
+##   near     peak normalised to -4 dBFS
+##   distant  same mix through a 2-stage one-pole lowpass (~600 Hz), peak = near peak x -14 dB
+## 1.4 s, 16-bit mono, fixed seed.
+static func make_implosion(distant: bool = false, rate: int = 0) -> AudioStreamWAV:
+	if rate <= 0:
+		rate = int(AudioServer.get_mix_rate())
+	var n := int(1.4 * rate)
+	var attack := maxf(0.002 * rate, 1.0)
+	var fade := maxf(0.01 * rate, 1.0)
+	var mix := PackedFloat32Array()
+	mix.resize(n)
+	var seed_v := 727272
+	var groan_phase := 0.0
+	for i in range(n):
+		var tt := float(i) / rate
+		seed_v = (seed_v * 1103515245 + 12345) & 0x7FFFFFFF
+		var noise := float(seed_v) / float(0x7FFFFFFF) * 2.0 - 1.0
+		var s := sin(TAU * 40.0 * tt) * exp(-tt / 0.6)
+		s += noise * 0.5 * exp(-tt / 0.12)
+		if tt >= 0.03:
+			var tm := tt - 0.03
+			var m_env := minf(1.0, tm / 0.002)
+			s += m_env * (0.30 * sin(TAU * 210.0 * tm) * exp(-tm / 0.5)
+				+ 0.22 * sin(TAU * 470.0 * tm) * exp(-tm / 0.35)
+				+ 0.14 * sin(TAU * 1130.0 * tm) * exp(-tm / 0.2))
+		if tt >= 0.5:
+			var tg := tt - 0.5
+			s += sin(TAU * groan_phase) * minf(1.0, tg / 0.05) * exp(-tg / 0.35) * 0.5
+			groan_phase += (60.0 + 30.0 * exp(-tg / 0.3)) / rate
+		mix[i] = s * minf(1.0, minf(float(i) / attack, float(n - 1 - i) / fade))
+	var near_peak := db_to_linear(-4.0)
+	if not distant:
+		return _encode_peak(mix, near_peak, rate)
+	var a := 1.0 - exp(-TAU * 600.0 / rate)
+	var y1 := 0.0
+	var y2 := 0.0
+	for i in range(n):
+		y1 += (mix[i] - y1) * a
+		y2 += (y1 - y2) * a
+		mix[i] = y2
+	return _encode_peak(mix, near_peak * db_to_linear(-14.0), rate)
+
+
+## Scales `mix` so its peak is `peak_lin` and encodes it as 16-bit mono.
+static func _encode_peak(mix: PackedFloat32Array, peak_lin: float, rate: int) -> AudioStreamWAV:
+	var peak := 0.0
+	for v in mix:
+		peak = maxf(peak, absf(v))
+	var gain := peak_lin / maxf(peak, 1e-9)
+	var buf := PackedByteArray()
+	buf.resize(mix.size() * 2)
+	for i in range(mix.size()):
+		buf.encode_s16(i * 2, int(round(clampf(mix[i] * gain, -1.0, 1.0) * 32767.0)))
+	return _wav16(buf, rate)
+
+
 ## The Phase 5 SFX bank, built once per process (and rebuilt only if the mix rate changes).
-## Keys: "sonar_ping", "creaks" (Array of 4 in CREAK_SEEDS order). Call it at gameplay load so
-## nothing is synthesised mid-song. Treat the returned Dictionary and streams as read-only.
+## Keys: "sonar_ping", "creaks" (Array of 4 in CREAK_SEEDS order), "impact", "launch",
+## "implosion", "implosion_distant". Call it at gameplay load so nothing is synthesised
+## mid-song. Treat the returned Dictionary and streams as read-only.
 static func sfx_bank() -> Dictionary:
 	var rate := int(AudioServer.get_mix_rate())
 	if not _sfx_cache.is_empty() and _sfx_rate == rate:
@@ -307,6 +430,10 @@ static func sfx_bank() -> Dictionary:
 	_sfx_cache = {
 		"sonar_ping": make_sonar_ping(rate),
 		"creaks": creaks,
+		"impact": make_impact(rate),
+		"launch": make_launch(rate),
+		"implosion": make_implosion(false, rate),
+		"implosion_distant": make_implosion(true, rate),
 	}
 	_sfx_rate = rate
 	return _sfx_cache
