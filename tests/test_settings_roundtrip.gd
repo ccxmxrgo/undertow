@@ -121,6 +121,47 @@ func test_menu_music_missing_or_wrong_type_loads_true() -> void:
 	assert_bool(s.menu_music).is_true()
 
 
+func test_sonar_pings_and_hull_sounds_default_on_and_roundtrip() -> void:
+	var a: Node = auto_free(SettingsScript.new())
+	assert_bool(a.sonar_pings).is_true()
+	assert_bool(a.hull_sounds).is_true()
+	a.sonar_pings = false
+	a.hull_sounds = false
+	assert_int(a.save_to(PATH)).is_equal(OK)
+	var cfg := ConfigFile.new()
+	cfg.load(PATH)
+	assert_bool(cfg.get_value("audio", "sonar_pings", true)).is_false()
+	assert_bool(cfg.get_value("audio", "hull_sounds", true)).is_false()
+	var b: Node = auto_free(SettingsScript.new())
+	b.load_from(PATH)
+	assert_bool(b.sonar_pings).is_false()
+	assert_bool(b.hull_sounds).is_false()
+	b.reset_defaults()
+	assert_bool(b.sonar_pings).is_true()
+	assert_bool(b.hull_sounds).is_true()
+
+
+func test_sonar_pings_hull_sounds_wrong_type_loads_true() -> void:
+	_write("[audio]
+music=0.5
+")
+	var s: Node = auto_free(SettingsScript.new())
+	s.sonar_pings = false
+	s.hull_sounds = false
+	s.load_from(PATH)
+	assert_bool(s.sonar_pings).is_true()
+	assert_bool(s.hull_sounds).is_true()
+	_write("[audio]
+sonar_pings=\"no\"
+hull_sounds=3
+")
+	s.sonar_pings = false
+	s.hull_sounds = false
+	s.load_from(PATH)
+	assert_bool(s.sonar_pings).is_true()
+	assert_bool(s.hull_sounds).is_true()
+
+
 func test_library_roundtrip() -> void:
 	var a: Node = auto_free(SettingsScript.new())
 	a.library_folders = ["C:/songs/one", "D:/ch"] as Array[String]

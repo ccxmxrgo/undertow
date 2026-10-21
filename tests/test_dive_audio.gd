@@ -273,3 +273,26 @@ func test_high_hull_no_creaks() -> void:
 	assert_int(d.creak_count()).is_equal(0)
 	d.free()
 
+
+# --- Scene level ------------------------------------------------------------------------
+
+func test_gameplay_scene_lpf_lifetime() -> void:
+	Gameplay.pending_chart = TestCharts.short_chart()
+	Gameplay.pending_autoplay = true
+	Gameplay.pending_intro = IntroTimeline.Mode.NONE
+	var gp: Gameplay = (load(SCENE) as PackedScene).instantiate()
+	add_child(gp)
+	await get_tree().process_frame
+	assert_object(gp.dive_audio).is_not_null()
+	assert_int(DiveAudio.music_lpf_count()).is_equal(1)
+	gp.restart(false)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert_int(DiveAudio.music_lpf_count()).is_equal(1)
+	gp.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert_int(DiveAudio.music_lpf_count()).is_equal(0)
+	Gameplay.pending_chart = null
+	Gameplay.pending_autoplay = false
+	Gameplay.pending_intro = IntroTimeline.Mode.FULL

@@ -48,6 +48,8 @@ const HEADER_H := 64.0  # Heading 40 + rule 16 px under its baseline + gap
 const HINT_REDUCE_MOTION := "Turns off screen shake, parallax and big movement. Effects fade instead of moving."
 const HINT_LOW_EFFECTS := "Fewer particles, no glow or CRT effect, simpler backgrounds. Notes and lanes stay fully bright."
 const HINT_MENU_MUSIC := "Plays a quiet song preview on the main menu."
+const HINT_SONAR_PINGS := "A soft sonar ping on the first beat of every bar."
+const HINT_HULL_SOUNDS := "Hull creaks and a muffled, underwater mix as your hull takes damage."
 const HINT_FULLSCREEN := "F11 toggles fullscreen at any time."
 const HINT_BACKGROUND := "Calm: still trench walls, soft glow on the beat. Living: walls move and pulse with the music."
 ## ONLINE section (04-UI-SPEC 13, D-20 / D-15).
@@ -176,6 +178,8 @@ var low_effects_button: Button
 ## 02.2-27 (gap G2): Display > Background value button (CALM / LIVING).
 var background_button: Button
 var menu_music_button: Button
+var sonar_pings_button: Button
+var hull_sounds_button: Button
 var reset_button: Button
 var recalibrate_button: Button
 var back_button: Button
@@ -650,6 +654,10 @@ func _build_audio(box: VBoxContainer) -> void:
 	menu_music_button = _toggle_row(box, "Menu music", func() -> void:
 		Settings.menu_music = not Settings.menu_music, HINT_MENU_MUSIC)
 	sfx_slider = _volume_row(box, "SFX", "SFX", Settings.volume_sfx, true)
+	sonar_pings_button = _toggle_row(box, "Sonar pings", func() -> void:
+		Settings.sonar_pings = not Settings.sonar_pings, HINT_SONAR_PINGS)
+	hull_sounds_button = _toggle_row(box, "Hull sounds", func() -> void:
+		Settings.hull_sounds = not Settings.hull_sounds, HINT_HULL_SOUNDS)
 
 
 ## ONLINE (UI-SPEC 13): Player name and Online port SonarTextFields. Commits save through
@@ -1030,6 +1038,8 @@ func _refresh_all(animate: bool = true) -> void:
 	(low_effects_button as PillToggle).set_on(Settings.low_effects, animate)
 	background_button.text = background_label(Settings.background_style)
 	(menu_music_button as PillToggle).set_on(Settings.menu_music, animate)
+	(sonar_pings_button as PillToggle).set_on(Settings.sonar_pings, animate)
+	(hull_sounds_button as PillToggle).set_on(Settings.hull_sounds, animate)
 	_offsets_label.text = "Audio offset: %+d ms    Visual offset: %+d ms" % [
 		roundi(Settings.audio_offset * 1000.0), roundi(Settings.visual_offset * 1000.0)]
 	for c in cells.values():

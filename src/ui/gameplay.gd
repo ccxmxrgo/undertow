@@ -41,6 +41,8 @@ var autoplay_used: bool = false
 var judge: InputJudge
 var score: HullScore
 var conductor: Conductor
+## 05-04 (AV-03): sonar pings, hull creaks and the runtime Music low-pass for this run.
+var dive_audio: DiveAudio
 var lane_input: LaneInput
 var highway: Highway
 ## Gem layer above Feedback (02.2-08): gems, missed remnants, lane numbers.
@@ -228,6 +230,10 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	conductor = Conductor.new()
 	conductor.tempo_map = chart.tempo_map
 	_run_root.add_child(conductor)
+	dive_audio = DiveAudio.new()
+	dive_audio.name = "DiveAudio"
+	_run_root.add_child(dive_audio)
+	dive_audio.bind(conductor, chart, score)
 	lane_input = LaneInput.new()
 	_run_root.add_child(lane_input)
 	lane_input.setup(conductor, judge)
@@ -340,6 +346,8 @@ func _begin_count_in(skipped: bool = false) -> void:
 	arena.beat_live = true
 	if intro != null and is_instance_valid(intro):
 		intro.on_count_started(skipped)
+	if dive_audio != null:
+		dive_audio.set_live(true)
 
 
 ## Online: the scheduled start (NET-03). song_time 0 lands on the host-scheduled instant. The
@@ -352,6 +360,8 @@ func _begin_online(lead_s: float) -> void:
 	_began = true
 	highway.notes_enabled = true
 	arena.beat_live = true
+	if dive_audio != null:
+		dive_audio.set_live(true)
 
 
 func _on_run_built() -> void:
@@ -405,6 +415,7 @@ func _teardown() -> void:
 	_run_root.queue_free()
 	_run_root = null
 	conductor = null
+	dive_audio = null
 	lane_input = null
 	pause_menu = null
 	debug_overlay = null
@@ -469,6 +480,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		restart(true)
 
 
+## 05-04: stop pings and creaks (the muffle stays until the run root leaves the tree).
+func _dive_audio_off() -> void:
+	if dive_audio != null and is_instance_valid(dive_audio):
+		dive_audio.set_live(false)
+
+
 ## Restart the current chart from the beginning, optionally with autoplay on (F4).
 func restart(with_autoplay: bool = false) -> void:
 	var c := chart
@@ -483,6 +500,7 @@ func restart(with_autoplay: bool = false) -> void:
 
 func _finish() -> void:
 	state = State.DONE
+	_dive_audio_off()
 	lane_input.enabled = false
 	if match_setup != null:
 		_finish_versus()
@@ -571,6 +589,7 @@ func _on_failed() -> void:
 	var fail_pct := progress_pct()  # read before the conductor stops
 	state = State.FAILED
 	conductor.stop()  # audio stops immediately
+	_dive_audio_off()
 	lane_input.enabled = false
 	if arena != null:
 		arena.fail()
@@ -857,6 +876,7 @@ func _on_returned_to_lobby() -> void:
 
 ## load_timeout / load_fail / start_late: back to the lobby (it shows the log line).
 func _on_match_aborted(_code: String, _who: String) -> void:
+	_dive_audio_off()
 	if conductor != null and is_instance_valid(conductor):
 		conductor.stop()
 	if lane_input != null:
@@ -886,6 +906,7 @@ func _on_host_left(kind: String) -> void:
 		return
 	_online_over = true
 	state = State.DONE
+	_dive_audio_off()
 	if conductor != null and is_instance_valid(conductor):
 		conductor.stop()
 	if lane_input != null:

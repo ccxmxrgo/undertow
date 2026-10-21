@@ -153,6 +153,10 @@ func isolate_settings(calibrated: bool) -> void:
 	Settings.background_style = Settings.BACKGROUND_LIVING
 	# Pitfall 7: no menu music in the harness unless a scenario opts in (polish menu block).
 	Settings.menu_music = false
+	# 05-04: the align scenario records the live mix and drift/perf measure without them, so no
+	# sonar pings or hull sounds unless a scenario opts in.
+	Settings.sonar_pings = false
+	Settings.hull_sounds = false
 	MenuMusic.stop(0.0)
 	if calibrated:
 		Settings.save_calibration(0.0, 0.0)

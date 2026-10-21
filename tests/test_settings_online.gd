@@ -78,7 +78,7 @@ func test_online_section_sits_between_audio_and_library() -> void:
 	var titles := s.row_titles()
 	var n := titles.find("Player name")
 	assert_int(n).is_greater(0)
-	assert_str(titles[n - 1]).is_equal("SFX")
+	assert_str(titles[n - 1]).is_equal("Hull sounds")  # 05-04: last Audio row (was SFX)
 	assert_str(titles[n + 1]).is_equal("Online port")
 	assert_str(titles[n + 2]).is_equal("Songs folder")
 
@@ -182,7 +182,7 @@ func test_esc_while_editing_reverts_and_stays_in_settings() -> void:
 func test_down_from_last_audio_row_focuses_player_name_then_port_then_library() -> void:
 	var s := _screen()
 	await _frames(2)
-	s.sfx_slider.grab_focus()
+	s.hull_sounds_button.grab_focus()  # 05-04: Hull sounds is the last Audio row (was SFX)
 	await _frames(1)
 	await Pad.tap(get_viewport(), JOY_BUTTON_DPAD_DOWN)
 	await _frames(1)
