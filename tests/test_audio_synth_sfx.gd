@@ -156,3 +156,76 @@ func test_sfx_bank_is_cached_once_per_process() -> void:
 	var c := AudioSynth.sfx_bank()
 	assert_bool(is_same(a["sonar_ping"], c["sonar_ping"])).is_false()
 	assert_bool(is_same(a["creaks"][0], c["creaks"][0])).is_false()
+
+
+# --- Torpedo impact, launch, implosion (D-05) ----------------------------------------------
+
+## One-pole lowpass at `hz` (for the low-energy share check).
+func _lowpass(s: PackedFloat32Array, hz: float) -> PackedFloat32Array:
+	var a := 1.0 - exp(-TAU * hz / RATE)
+	var out := PackedFloat32Array()
+	out.resize(s.size())
+	var y := 0.0
+	for i in s.size():
+		y += (s[i] - y) * a
+		out[i] = y
+	return out
+
+
+func test_impact_is_low_and_loud() -> void:
+	var w := AudioSynth.make_impact(RATE)
+	_assert_format(w)
+	var s := _samples(w)
+	assert_float(absf(s.size() - 0.6 * RATE)).is_less_equal(1.0)
+	assert_float(_peak(s)).is_equal_approx(db_to_linear(-6.0), 0.02)
+	assert_float(_rms(_lowpass(s, 200.0)) / _rms(s)).is_greater(0.6)
+	_assert_clean_ends(s)
+
+
+func test_launch_has_thump_and_whoosh() -> void:
+	var w := AudioSynth.make_launch(RATE)
+	_assert_format(w)
+	var s := _samples(w)
+	assert_float(absf(s.size() - 0.45 * RATE)).is_less_equal(1.0)
+	assert_float(_peak(s)).is_equal_approx(db_to_linear(-9.0), 0.02)
+	var head := _rms(s, 0, int(0.06 * RATE))
+	var tail := _rms(s, int(0.20 * RATE), int(0.30 * RATE))
+	assert_float(tail).is_greater(0.3 * head)
+	_assert_clean_ends(s)
+
+
+func test_implosion_near_and_distant() -> void:
+	var near := _samples(AudioSynth.make_implosion(false, RATE))
+	var far := _samples(AudioSynth.make_implosion(true, RATE))
+	assert_float(absf(near.size() - 1.4 * RATE)).is_less_equal(1.0)
+	assert_int(far.size()).is_equal(near.size())
+	var near_peak := _peak(near)
+	assert_float(near_peak).is_equal_approx(db_to_linear(-4.0), 0.02)
+	assert_float(_rms(near)).is_greater(0.05)
+	var far_peak := _peak(far)
+	assert_float(far_peak).is_less_equal(near_peak * db_to_linear(-14.0) + 0.01)
+	assert_float(far_peak).is_greater(0.01)
+	assert_float(_zcr_hz(far, 0, far.size())).is_less(_zcr_hz(near, 0, near.size()))
+	_assert_clean_ends(near)
+	_assert_clean_ends(far)
+
+
+func test_sfx_bank_holds_all_six_streams() -> void:
+	var bank := AudioSynth.sfx_bank()
+	for key in ["sonar_ping", "creaks", "impact", "launch", "implosion", "implosion_distant"]:
+		assert_bool(bank.has(key)).is_true()
+		assert_object(bank[key]).is_not_null()
+	for key in ["sonar_ping", "impact", "launch", "implosion", "implosion_distant"]:
+		assert_object(bank[key]).is_instanceof(AudioStreamWAV)
+
+
+func test_sfx_bank_cold_build_is_bounded() -> void:
+	AudioSynth.clear_sfx_cache()
+	var t0 := Time.get_ticks_usec()
+	AudioSynth.sfx_bank()
+	var ms := float(Time.get_ticks_usec() - t0) / 1000.0
+	print("05-01 cold sfx_bank() build: %.1f ms at %d Hz" % [ms, int(AudioServer.get_mix_rate())])
+	assert_float(ms).is_less(1500.0)
+	var t1 := Time.get_ticks_usec()
+	AudioSynth.sfx_bank()
+	assert_float(float(Time.get_ticks_usec() - t1) / 1000.0).is_less(5.0)
