@@ -290,6 +290,64 @@ func test_miss_requests_the_shake() -> void:
 	assert_vector(board.position).is_equal(Vector2.ZERO)
 
 
+# ---- Parameterised shake (05-05, D-05) ------------------------------------------------------
+
+func test_default_shake_unchanged_6px_120ms() -> void:
+	var board := _board()
+	var fx := _fx(board)
+	fx.clock_usec = 1000000
+	assert_bool(fx.request_shake()).is_true()
+	fx.advance_shake(1000000)
+	assert_float(board.position.x).is_equal_approx(6.0, 0.001)
+	assert_float(board.position.y).is_equal_approx(0.0, 0.001)
+	fx.advance_shake(1110000)
+	assert_bool(fx.shaking()).is_true()
+	fx.advance_shake(1120000)
+	assert_bool(fx.shaking()).is_false()
+	assert_vector(board.position).is_equal(Vector2.ZERO)
+
+
+func test_custom_shake_10px_160ms() -> void:
+	var board := _board()
+	var fx := _fx(board)
+	fx.clock_usec = 2000000
+	assert_bool(fx.request_shake(10.0, 160000)).is_true()
+	fx.advance_shake(2000000)
+	assert_float(board.position.x).is_equal_approx(10.0, 0.001)
+	fx.advance_shake(2150000)
+	assert_bool(fx.shaking()).is_true()
+	assert_float(board.position.length()).is_greater(0.0)
+	fx.advance_shake(2160000)
+	assert_bool(fx.shaking()).is_false()
+	assert_vector(board.position).is_equal(Vector2.ZERO)
+
+
+func test_custom_shake_off_under_reduce_motion() -> void:
+	var board := _board()
+	var fx := _fx(board)
+	Settings.reduce_motion = true
+	fx.apply_effect_settings()
+	fx.clock_usec = 1000000
+	assert_bool(fx.request_shake(10.0, 160000)).is_false()
+	assert_bool(fx.request_shake(3.0, 80000)).is_false()
+	assert_vector(board.position).is_equal(Vector2.ZERO)
+
+
+func test_shake_gap_spans_default_and_custom() -> void:
+	var board := _board()
+	var fx := _fx(board)
+	fx.clock_usec = 1000000
+	assert_bool(fx.request_shake(10.0, 160000)).is_true()
+	fx.clock_usec = 1100000
+	assert_bool(fx.request_shake()).is_false()  # within 150 ms of the custom shake
+	fx.clock_usec = 1160000
+	assert_bool(fx.request_shake()).is_true()
+	fx.advance_shake(1160000)
+	assert_float(board.position.x).is_equal_approx(6.0, 0.001)  # back to the default amplitude
+	fx.clock_usec = 1200000
+	assert_bool(fx.request_shake(3.0, 80000)).is_false()
+
+
 # ---- Sparks ---------------------------------------------------------------------------------
 
 func test_rail_sparks_follow_tier() -> void:
