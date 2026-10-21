@@ -299,11 +299,11 @@ static func cutoff_for_hull(hull: float) -> float:  # 0..100
 | A6 | `modify_resources=true` is needed to stamp icon/version into the exe | Pattern 6 | Icon missing; check Properties > Details, flip the option |
 | A7 | 2-CU 9800X3D iGPU is weaker than typical friend iGPUs (Iris Xe / 680M) | D-07 | Gate may be too harsh; D-07 treats Full on the proxy as informative only |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Ping loudness and frequency.** Every bar may feel busy on fast songs. Default: every bar at about −20 dB with a setting toggle. UAT question: "keep / every 2nd bar / off by default?"
-2. **Versus Full p95 on the new GPU.** It may now pass comfortably. If it does, record it and still do the cheap VersusHud redraw-on-change fix only if the measurement shows it is > 0.5 ms.
-3. **Second-PC UAT** is a human item carried since Phase 3. Phase 5 cannot close DIST-01 fully without it; the plan ends with a HUMAN-UAT row.
+1. **Ping loudness and frequency.** Every bar may feel busy on fast songs. Default: every bar at about −20 dB with a setting toggle. UAT question: "keep / every 2nd bar / off by default?" **RESOLVED:** D-02 (every bar, about -20 dB, Settings > Audio > Sonar pings; DownbeatScheduler.every_n_bars kept for a later change). Feel goes to 05-HUMAN-UAT item 3.
+2. **Versus Full p95 on the new GPU.** It may now pass comfortably. If it does, record it and still do the cheap VersusHud redraw-on-change fix only if the measurement shows it is > 0.5 ms. **RESOLVED:** D-08 (05-07 re-measures first; redraw-on-change only if versus Full p95 > 4.35 ms).
+3. **Second-PC UAT** is a human item carried since Phase 3. Phase 5 cannot close DIST-01 fully without it; the plan ends with a HUMAN-UAT row. **RESOLVED:** 05-HUMAN-UAT item 1 (friend PC run of the v0.8.0 friends zip, non-blocking).
 
 ## Environment Availability
 
