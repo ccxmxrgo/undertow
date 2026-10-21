@@ -43,6 +43,8 @@ var score: HullScore
 var conductor: Conductor
 ## 05-04 (AV-03): sonar pings, hull creaks and the runtime Music low-pass for this run.
 var dive_audio: DiveAudio
+## 05-06 (D-06): late-frame counter for the slow-frame results hint. Counts only; never a clock.
+var frame_watch := FrameWatch.new()
 var lane_input: LaneInput
 var highway: Highway
 ## Gem layer above Feedback (02.2-08): gems, missed remnants, lane numbers.
@@ -164,6 +166,7 @@ func start(p_chart: ChartData, p_autoplay: bool, p_intro: int = pending_intro) -
 	_teardown()
 	intro_mode = p_intro
 	_began = false
+	frame_watch = FrameWatch.new(DisplayServer.screen_get_refresh_rate())  # 05-06; headless -1 -> 60 Hz
 	_arena_miss_frame = -1
 	intro = null
 	chart = p_chart
@@ -425,11 +428,14 @@ func is_done() -> bool:
 	return state != State.RUNNING
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if _nav_pending != "":
 		_retry_nav()
 	if _launch_lost:
 		return
+	if _began and conductor != null and state == State.RUNNING:
+		# 05-06: count late frames only (the song clock stays on the Conductor).
+		frame_watch.sample(delta, conductor.song_time(), conductor.is_paused())
 	if is_online():
 		_process_online()
 		return
@@ -533,6 +539,7 @@ func _finish() -> void:
 		"accuracy": acc,
 		"grade": grade,
 		"perfect_window": JudgeConfig.new().perfect_window,
+		"slow_frames": frame_watch.should_hint(Settings.low_effects),
 	}
 	results = ResultsScreen.new()
 	_run_root.add_child(results)
@@ -548,7 +555,9 @@ func _finish_versus() -> void:
 	var t := conductor.song_time() if conductor != null else _end_time
 	versus_results = VersusResultsScreen.new()
 	_run_root.add_child(versus_results)
-	versus_results.setup(versus.finish(t))
+	var data := versus.finish(t)
+	data["slow_frames"] = frame_watch.should_hint(Settings.low_effects)
+	versus_results.setup(data)
 	versus_results.rematch_pressed.connect(_on_rematch)
 	versus_results.change_match_pressed.connect(_on_change_match)
 	versus_results.menu_pressed.connect(go_to_menu)
@@ -841,7 +850,11 @@ func _show_online_results(data: Dictionary) -> void:
 		versus.event_banner.hide_waiting()
 	versus_results = VersusResultsScreen.new()
 	_run_root.add_child(versus_results)
-	versus_results.setup(data)
+	# 05-06 (T-05-16): the slow-frame flag is this PC's own, on a local copy; a host-sent value is
+	# overwritten and the host never sends one.
+	var local := data.duplicate()
+	local["slow_frames"] = frame_watch.should_hint(Settings.low_effects)
+	versus_results.setup(local)
 	if _is_host():
 		versus_results.back_to_lobby_pressed.connect(_on_results_back_to_lobby)
 		versus_results.close_lobby_pressed.connect(_on_results_close_lobby)

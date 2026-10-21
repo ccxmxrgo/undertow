@@ -30,6 +30,17 @@ static func enable_low_effects() -> void:
 	Settings.settings_changed.emit()
 
 
+## Replaces the hint line's text, keeping its right edge at LINE_RIGHT.
+static func set_line(l: Label, text: String) -> void:
+	if l == null or not is_instance_valid(l):
+		return
+	l.text = text
+	var f := l.get_theme_font("font")
+	var w := ceilf(f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, l.get_theme_font_size("font_size")).x)
+	l.size.x = w
+	l.position.x = LINE_RIGHT - w
+
+
 ## Closes a focus loop over `order`: Right / Down / Tab next, Left / Up / Shift+Tab previous.
 static func link_loop(order: Array[Button]) -> void:
 	for i in order.size():

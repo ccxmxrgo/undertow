@@ -20,6 +20,10 @@ extends Control
 ## RECORD chip pops after it; the judgment bars fill (DUR_SLOW, 60 ms stagger) and the histogram
 ## grows from FILL_AT. Any key / joypad / mouse button / action press while it runs jumps to the
 ## final state and is consumed (never activates a button). Reduce motion: fades only.
+## Slow-frame hint (05-06, D-06): when run_info.slow_frames is true and Low effects is off, a
+## "Turn on Low effects" button (LowEffectsHint.BUTTON_RECT, the 4th slot, last in the focus loop)
+## and the LowEffectsHint.TEXT line (right-aligned at 1768, baseline 872). Public:
+## low_effects_button, slow_hint_label (null when not shown).
 
 signal retry_pressed
 signal menu_pressed
@@ -63,6 +67,9 @@ const ENTRANCE_SEC := FILL_AT + TimingHistogram.GROW_SEC  # 0.89 s, the longest 
 var retry_button: Button
 var song_select_button: Button
 var menu_button: Button
+## 05-06 slow-frame hint (null unless LowEffectsHint.wanted(run_info)).
+var low_effects_button: Button
+var slow_hint_label: Label
 ## Flag texts shown, e.g. "NO-FAIL USED", "AUTOPLAY USED", "SOLO DIVE".
 var flags: Array[String] = []
 ## Header chip texts in display order (difficulty, flags, NOT RECORDED).
@@ -184,6 +191,7 @@ func setup(score: HullScore, autoplay_used: bool, record_info: Dictionary = {},
 	focus_marker.name = "FocusMarker"
 	add_child(focus_marker)
 	_label("Hint", HINT, _caption(), Palette.SIZE_LABEL, Palette.TEXT_LO, Vector2(PAD_X, 872.0))
+	_build_low_effects_hint(run_info)
 	if is_inside_tree():
 		_start_animation()
 		retry_button.grab_focus()
@@ -371,6 +379,20 @@ func _build_buttons() -> void:
 		b.focus_neighbor_left = prv
 		b.focus_neighbor_top = prv
 		b.focus_previous = prv
+
+
+## 05-06 (D-06): the slow-frame hint line + one-press button, only when the run stuttered.
+func _build_low_effects_hint(run_info: Dictionary) -> void:
+	low_effects_button = null
+	slow_hint_label = null
+	if not LowEffectsHint.wanted(run_info):
+		return
+	slow_hint_label = _label("SlowFrameHint", LowEffectsHint.TEXT, Palette.font(), Palette.SIZE_BODY,
+		Palette.TEXT_MID, Vector2(LowEffectsHint.LINE_RIGHT, LowEffectsHint.LINE_BASELINE),
+		HORIZONTAL_ALIGNMENT_RIGHT)
+	var order: Array[Button] = [retry_button, song_select_button, menu_button]
+	low_effects_button = LowEffectsHint.add_button(_layout, order, func() -> void:
+		LowEffectsHint.set_line(slow_hint_label, LowEffectsHint.DONE_TEXT))
 
 
 # ---- helpers ----------------------------------------------------------------------------

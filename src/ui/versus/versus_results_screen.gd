@@ -32,6 +32,10 @@ extends Control
 ##   Host: Back to Lobby (primary, focus; Esc) + Back to Menu (CLOSE LOBBY confirm).
 ##   Client: Leave Lobby (LEAVE LOBBY confirm; Esc) + the waiting line; set_lobby_closed()
 ##   turns it into "The host closed the lobby." + Back to Menu (emits menu_pressed directly).
+## Slow-frame hint (05-06, D-06): data.slow_frames (a local-only flag gameplay adds; never sent
+## over the network) true and Low effects off adds "Turn on Low effects" at
+## LowEffectsHint.BUTTON_RECT (last in the focus loop; not part of focus_buttons()) and the
+## LowEffectsHint.TEXT line right-aligned at 1768 on baseline 872, offline and online alike.
 
 signal rematch_pressed
 signal change_match_pressed
@@ -120,6 +124,9 @@ var back_to_lobby_button: Button
 var leave_button: Button
 var focus_marker: FocusMarker
 var hint_label: Label
+## 05-06 slow-frame hint (null unless LowEffectsHint.wanted(data)).
+var low_effects_button: Button
+var slow_hint_label: Label
 ## Index of the YOU row in placement order (-1 when the local seat has no row).
 var you_row: int = -1
 
@@ -241,6 +248,7 @@ func setup(data: Dictionary) -> void:
 		_build_online_buttons(rows, data)
 	else:
 		_build_buttons()
+	_build_low_effects_hint(data)
 	focus_marker = FocusMarker.new()
 	focus_marker.name = "FocusMarker"
 	add_child(focus_marker)
@@ -542,6 +550,19 @@ func _build_online_buttons(rows: Array[Dictionary], data: Dictionary) -> void:
 		_waiting_label = _label("WaitingLine", _waiting_text, Palette.font(), Palette.SIZE_LABEL, Palette.TEXT_MID,
 			WAITING_AT)
 	_place_buttons(focus_buttons())
+
+
+## 05-06 (D-06): the slow-frame hint line + one-press button, only when this PC stuttered.
+func _build_low_effects_hint(data: Dictionary) -> void:
+	low_effects_button = null
+	slow_hint_label = null
+	if not LowEffectsHint.wanted(data):
+		return
+	slow_hint_label = _label("SlowFrameHint", LowEffectsHint.TEXT, Palette.font(), Palette.SIZE_BODY,
+		Palette.TEXT_MID, Vector2(LowEffectsHint.LINE_RIGHT, LowEffectsHint.LINE_BASELINE),
+		HORIZONTAL_ALIGNMENT_RIGHT)
+	low_effects_button = LowEffectsHint.add_button(_layout, focus_buttons(), func() -> void:
+		LowEffectsHint.set_line(slow_hint_label, LowEffectsHint.DONE_TEXT))
 
 
 func _host_display_name(rows: Array[Dictionary], data: Dictionary) -> String:
