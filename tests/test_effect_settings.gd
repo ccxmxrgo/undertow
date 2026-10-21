@@ -24,7 +24,9 @@ const EXPECTED := {
 	# mode and deliberately not registered.
 	"versus": ["Arena", "Highway", "HighwayNotes", "FxLayer", "MultiplierRing", "SectionBanner",
 		"StreakCounter", "ScreenTransition", "RewardSocket", "PeriscopeColumn", "PeriscopePanel",
-		"EventBanner", "IncomingAlert", "InkCloudLayer"],
+		"EventBanner", "IncomingAlert", "InkCloudLayer",
+		# 05-05 (D-05): torpedo juice (the launch ring is off under Low effects).
+		"TorpedoJuice"],
 	"match_setup": ["ScreenTransition"],
 	"versus_results": ["VersusResultsScreen", "ScreenTransition"],
 	# 04-04 (04-UI-SPEC 14): the shared online text field, editing.
