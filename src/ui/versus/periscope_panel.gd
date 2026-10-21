@@ -72,6 +72,7 @@ const BURST_SEC := 0.3
 const GLYPH_SEC := 0.6
 const LAUNCH_FLASH_SEC := 0.3
 const COLLIDE_FLASH_SEC := 0.2
+const IMPLODE_FLASH_SEC := 0.3
 const DASHES := 16
 const DASH_SEG := 3  # straight segments per dash (one draw_multiline for all 16)
 const PCT_REFRESH_S := 0.1  # live Solo Duel percent re-read at 10 Hz (WR-08)
@@ -313,6 +314,12 @@ func _flash_edge(c: Color, sec: float) -> void:
 	_edge_flash_color = c
 	_edge_flash_sec = sec
 	_edge_flash_left = sec
+
+
+## 05-05 (D-05): this rival imploded. The panel edge flashes WARNING_RED for 300 ms. Called by
+## TorpedoJuice through its FlashLimiter (03-UI-SPEC 11.6), never from on_event.
+func flash_implosion() -> void:
+	_flash_edge(Palette.WARNING_RED, IMPLODE_FLASH_SEC)
 
 
 ## One decorative scope blip (seeded angle and radius). Capped at 6 (Full) / 2 (Low); the

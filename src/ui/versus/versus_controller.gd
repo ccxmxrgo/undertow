@@ -103,6 +103,7 @@ var killfeed: Killfeed
 var incoming_alert: IncomingAlert
 var event_banner: EventBanner
 var edge_flash: EdgeFlash
+var torpedo_juice: TorpedoJuice
 var reward_popup: RewardPopup
 var versus_sfx: VersusSfx
 ## Refusal blips played (SHIELDED / NO TARGET). Tests read it; nothing plays on FIRE_NOTHING.
@@ -394,6 +395,11 @@ func bind_views(gp: Gameplay) -> void:
 	edge_flash.name = "EdgeFlash"
 	versus_hud.add_child(edge_flash)
 	edge_flash.bind(channel, local_seat)
+	# 05-05 (D-05): impact / launch / implosion juice, view-only on the same channel.
+	torpedo_juice = TorpedoJuice.new()
+	torpedo_juice.name = "TorpedoJuice"
+	versus_hud.add_child(torpedo_juice)
+	torpedo_juice.bind(channel, local_seat, gp.fx_layer, reward_socket, periscope_column)
 	reward_popup = RewardPopup.new()
 	reward_popup.name = "RewardPopup"
 	versus_hud.add_child(reward_popup)

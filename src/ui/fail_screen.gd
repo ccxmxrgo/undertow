@@ -67,6 +67,9 @@ var _panel_sb: StyleBoxFlat
 var _title_x := 0.0
 var _low := false
 var _reduce := false
+## 05-05 (D-05): the implosion sound, created once on the first play().
+var _implosion_player: AudioStreamPlayer
+var _implosion_played := false
 
 
 ## Draws through a callable (backdrop, panel, progress track).
@@ -147,6 +150,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Fade the panel in over 300 ms after `delay` seconds (the highway squash).
 func play(delay: float = SQUASH_SEC) -> void:
 	modulate.a = 0.0
+	_play_implosion()
 	if is_inside_tree():
 		# Inert until visible (WR-06): a mashed Space/Enter must not hit an invisible Retry.
 		retry_button.disabled = true
@@ -161,6 +165,29 @@ func play(delay: float = SQUASH_SEC) -> void:
 			retry_button.grab_focus())
 	else:
 		modulate.a = 1.0
+
+
+## 05-05 (D-05): the implosion sound at the start of the squash, on the SFX bus (Master if it
+## is missing). Solo only (versus never shows the FailScreen); the same sound TorpedoJuice plays
+## for the local versus implosion. Audio only: the visual effect contract is unchanged.
+func _play_implosion() -> void:
+	if not is_inside_tree():
+		return
+	if _implosion_player == null:
+		_implosion_player = AudioStreamPlayer.new()
+		_implosion_player.name = "ImplosionSfx"
+		_implosion_player.bus = &"SFX" if AudioServer.get_bus_index(&"SFX") >= 0 else &"Master"
+		_implosion_player.stream = AudioSynth.sfx_bank().get("implosion") as AudioStream
+		add_child(_implosion_player)
+	if _implosion_player.stream == null:
+		return
+	_implosion_player.play()
+	_implosion_played = true
+
+
+## True once play() started the implosion sound (tests).
+func implosion_played() -> bool:
+	return _implosion_played
 
 
 # ---- effects ------------------------------------------------------------------------------
