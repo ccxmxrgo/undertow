@@ -93,6 +93,8 @@ var _shake_active: bool = false
 var _shake_start: int = 0
 var _last_shake: int = -1000000000
 var _shake_base: Vector2 = Vector2.ZERO
+var _shake_px: float = SHAKE_PX
+var _shake_usec: int = SHAKE_USEC
 static var _cracks: Array = []
 
 
@@ -385,9 +387,11 @@ func _update_sustains() -> void:
 
 # ---- Shake -----------------------------------------------------------------------------------
 
-## Board-only shake: 6 px decaying over 120 ms, at most one per 150 ms, off under Reduce
-## motion. Returns true when a shake started.
-func request_shake() -> bool:
+## Board-only shake: px decaying over usec, at most one per 150 ms (across every caller), off
+## under Reduce motion. Returns true when a shake started. The defaults (6 px / 120 ms) are the
+## Miss shake, unchanged; 05-05 TorpedoJuice passes 10 px / 160 ms (impact) and 3 px / 80 ms
+## (launch kick).
+func request_shake(px: float = SHAKE_PX, usec: int = SHAKE_USEC) -> bool:
 	if _reduce or _board == null or not is_instance_valid(_board):
 		return false
 	var t := now()
@@ -398,6 +402,8 @@ func request_shake() -> bool:
 		_shake_base = Vector2.ZERO
 	_shake_active = true
 	_shake_start = t
+	_shake_px = px if is_finite(px) else SHAKE_PX
+	_shake_usec = maxi(usec, 1)
 	return true
 
 
@@ -411,11 +417,11 @@ func advance_shake(t: int) -> void:
 	if _board == null or not is_instance_valid(_board):
 		_shake_active = false
 		return
-	var k := float(t - _shake_start) / float(SHAKE_USEC)
+	var k := float(t - _shake_start) / float(_shake_usec)
 	if k >= 1.0 or k < 0.0:
 		_end_shake()
 		return
-	var amp := SHAKE_PX * pow(1.0 - k, 2.0)
+	var amp := _shake_px * pow(1.0 - k, 2.0)
 	var ang := k * TAU * SHAKE_TURNS
 	var dir := Vector2(cos(ang), 0.5 * sin(ang)).limit_length(1.0)
 	_board.position = _shake_base + dir * amp
