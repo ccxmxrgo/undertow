@@ -4131,6 +4131,9 @@ func _bg_diff(a: Image, b: Image) -> float:
 ## Low effects, at a forced 1920x1080 window. Refresh rate is logged, never a failure.
 func sc_perf() -> void:
 	isolate_settings(true)
+	# 05-07: measure with Phase 5 audio on
+	Settings.sonar_pings = true
+	Settings.hull_sounds = true
 	await wait_library_idle(60.0)
 	var win := _densest_bundled_window()
 	metrics["perf_windows"] = win["per_song"]
@@ -5243,6 +5246,9 @@ func _vs_ink_keeper(g: Gameplay, state: Dictionary) -> void:
 
 func sc_versus() -> void:
 	isolate_settings(true)
+	# 05-07: measure with Phase 5 audio on
+	Settings.sonar_pings = true
+	Settings.hull_sounds = true
 	await wait_library_idle(60.0)
 	var dir := "res://songs/%s" % VERSUS_SONG
 	var e := SongLibrary.find(dir)
@@ -5550,7 +5556,7 @@ func _vs_match(e: SongEntry) -> void:
 					(d["n"] as CanvasItem).visible = d["vis"]
 	_vs_view(1.0, true)
 	var c3 := await capture_frames(6.0)
-	attrib["low_effects"] = {"p50": c3["p50"], "p95": c3["p95"], "n": c3["n"]}
+	attrib["low_effects"] = {"p50": c3["p50"], "p95": c3["p95"], "p99": c3["p99"], "n": c3["n"]}
 	_vs_view(1.0, false)
 	ks["stop"] = true
 	metrics["versus_perf_attribution"] = attrib

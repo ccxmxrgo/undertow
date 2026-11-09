@@ -6,7 +6,14 @@
 # Every scenario runs with the user arg --no-boot-scan, so SongLibrary never scans the real Songs folder
 # (the driver points it at user://playtest_library). SHA-256 of the protected files and a listing of the
 # real Songs folder are taken before and after the run and compared (T-02-26).
-param([string[]]$Scenarios = @("a", "b", "c", "d", "e", "f", "g", "h", "i", "layout", "polish", "immersion", "songs", "visual", "background", "pad", "perf", "versus", "autoplay5", "drift"), [switch]$SkipDrift)
+# 05-07 weak-GPU proxy switches (process-scoped only; no registry or OS setting is ever written):
+#   -RenderingDriver <name>  adds --rendering-driver <name> (e.g. opengl3_angle)
+#   -GpuIndex <n>            adds --gpu-index <n> (Godot documents it for Forward+/Mobile; may be ignored)
+#   -ChildEnv @{K="V"}       env vars set in THIS PowerShell process only around Start-Process (inherited by the
+#                            child), then restored in finally. Never the User/Machine scopes.
+# With no switches the launch is the same Start-Process call with the same args as before.
+param([string[]]$Scenarios = @("a", "b", "c", "d", "e", "f", "g", "h", "i", "layout", "polish", "immersion", "songs", "visual", "background", "pad", "perf", "versus", "autoplay5", "drift"), [switch]$SkipDrift,
+    [string]$RenderingDriver = "", [int]$GpuIndex = -1, [hashtable]$ChildEnv = @{})
 
 $godot = $env:GODOT_BIN
 if (-not $godot) { $godot = [Environment]::GetEnvironmentVariable("GODOT_BIN", "User") }
@@ -44,6 +51,10 @@ function Get-TestScreenPosition {
     return "{0},{1}" -f ($b.X + 160), ($b.Y + 90)
 }
 $testPos = Get-TestScreenPosition
+$extraArgs = @()
+if ($RenderingDriver -ne "") { $extraArgs += @("--rendering-driver", $RenderingDriver); Write-Host "[note] switch: --rendering-driver $RenderingDriver" }
+if ($GpuIndex -ge 0) { $extraArgs += @("--gpu-index", "$GpuIndex"); Write-Host "[note] switch: --gpu-index $GpuIndex" }
+foreach ($k in $ChildEnv.Keys) { Write-Host "[note] switch: child env $k=$($ChildEnv[$k]) (process scope only)" }
 Write-Host "[note] harness window position $testPos (UNDERTOW_TEST_SCREEN='$env:UNDERTOW_TEST_SCREEN')"
 $proofBefore = Get-UserDataProof
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
@@ -62,8 +73,23 @@ try {
         $limit = if ($s -eq "drift") { 600 } elseif ($s -eq "perf") { 480 } elseif ($s -eq "visual") { 450 } elseif ($s -eq "songs") { 420 } elseif ($s -eq "background") { 330 } elseif ($s -eq "pad") { 330 } elseif ($s -eq "versus") { 510 } elseif ($s -eq "autoplay5") { 1530 } else { 300 }
         $log = Join-Path $root "build\playtest\${s}_stdout.txt"
         $err = Join-Path $root "build\playtest\${s}_stderr.txt"
-        $p = Start-Process -FilePath $godot -ArgumentList @("--path", ".", "--position", $testPos, "res://tools/playtest/playtest.tscn", "--", $s, "--no-boot-scan") `
-            -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError $err
+        if ($extraArgs.Count -eq 0 -and $ChildEnv.Count -eq 0) {
+            $p = Start-Process -FilePath $godot -ArgumentList @("--path", ".", "--position", $testPos, "res://tools/playtest/playtest.tscn", "--", $s, "--no-boot-scan") `
+                -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError $err
+        } else {
+            $launchArgs = @("--path", ".", "--position", $testPos) + $extraArgs + @("res://tools/playtest/playtest.tscn", "--", $s, "--no-boot-scan")
+            $savedEnv = @{}
+            try {
+                foreach ($k in $ChildEnv.Keys) {
+                    $savedEnv[$k] = [Environment]::GetEnvironmentVariable($k, "Process")
+                    [Environment]::SetEnvironmentVariable($k, [string]$ChildEnv[$k], "Process")
+                }
+                $p = Start-Process -FilePath $godot -ArgumentList $launchArgs `
+                    -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError $err
+            } finally {
+                foreach ($k in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($k, $savedEnv[$k], "Process") }
+            }
+        }
         $null = $p.Handle
         if (-not $p.WaitForExit($limit * 1000)) {
             Write-Host "[FAIL] scenario $s killed after $limit s (stalled)"
